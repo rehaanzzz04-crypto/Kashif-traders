@@ -1,0 +1,10 @@
+{
+  "name": "kashif-traders",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Independent Kashif Traders supplier and credit management system",
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.1"
+  }
+}
