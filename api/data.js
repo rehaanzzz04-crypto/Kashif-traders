@@ -58,7 +58,15 @@ export default async function handler(req,res){
   const resource=String(req.query?.resource||'').trim();if(!allowed.has(resource))return res.status(400).json({error:'Unknown resource'});
   try{
     const sql=db();const user=await getSessionUser(req,sql);if(!user)return res.status(401).json({error:'Authentication required'});
-    const view=resourceView[resource];const direct=await canAccess(sql,user.designation,view);const searchRead=req.method==='GET'&&await canAccess(sql,user.designation,'search');if(!direct&&!searchRead)return res.status(403).json({error:'Access denied'});
+    const view=resourceView[resource];
+    const direct=await canAccess(sql,user.designation,view);
+    const searchRead=req.method==='GET'&&await canAccess(sql,user.designation,'search');
+    let statementRead=false;
+    if(req.method==='GET'){
+      if((resource==='client_invoices'||resource==='client_receipts')&&await canAccess(sql,user.designation,'clients'))statementRead=true;
+      if((resource==='supplier_invoices'||resource==='supplier_payments')&&await canAccess(sql,user.designation,'suppliers'))statementRead=true;
+    }
+    if(!direct&&!searchRead&&!statementRead)return res.status(403).json({error:'Access denied'});
     const id=asId(req.query?.id);
     if(req.method==='GET')return res.status(200).json({records:await list(sql,resource,id)});
     if(req.method==='POST'){const records=await create(sql,resource,bodyOf(req));return res.status(201).json({record:records[0]||null});}
