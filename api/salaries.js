@@ -1,9 +1,10 @@
-import { requireUser, bodyOf, cleanText } from './_auth.js';
+import { requireUser, bodyOf, cleanText, canAccess } from './_auth.js';
 const id=v=>{const n=Number(v);return Number.isInteger(n)&&n>0?n:null};
 const amt=v=>{const n=Number(v);return Number.isFinite(n)&&n>0?n:null};
 export default async function handler(req,res){
  try{
   const auth=await requireUser(req,res);if(!auth)return;const{sql,user}=auth;
+  if(user.designation!=='admin'&&!(await canAccess(sql,user.designation,'salary-advances')))return res.status(403).json({error:'Access denied'});
   if(req.method==='GET'){
    const rows=user.designation==='admin'?await sql`SELECT * FROM salary_requests ORDER BY requested_at DESC,id DESC LIMIT 500`:await sql`SELECT * FROM salary_requests WHERE employee_id=${user.id} ORDER BY requested_at DESC,id DESC LIMIT 200`;
    return res.status(200).json({records:rows});
@@ -17,7 +18,8 @@ export default async function handler(req,res){
     const dup=await sql`SELECT id,status FROM salary_requests WHERE employee_id=${user.id} AND request_type='monthly_salary' AND salary_month=${month}::date AND status IN ('pending','approved','paid') LIMIT 1`;
     if(dup[0])return res.status(409).json({error:'Salary request already exists for this month'});
    }
-   const rows=await sql`INSERT INTO salary_requests(employee_id,employee_code,employee_name,designation,request_type,salary_month,amount,reason,status) VALUES(${user.id},${user.employee_code},${user.full_name},${user.designation},${type},${month}::date,${amount},${reason},'pending') RETURNING *`;
+   const salaryMonth=type==='monthly_salary'?month:null;
+   const rows=await sql`INSERT INTO salary_requests(employee_id,employee_code,employee_name,designation,request_type,salary_month,amount,reason,status) VALUES(${user.id},${user.employee_code},${user.full_name},${user.designation},${type},${salaryMonth}::date,${amount},${reason},'pending') RETURNING *`;
    return res.status(201).json({record:rows[0],pending_approval:true,message:'Sent to Admin for approval'});
   }
   if(req.method==='PATCH'){
