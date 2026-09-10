@@ -1,0 +1,27 @@
+/* Product list readability upgrade — keeps approved Kashif Traders theme */
+#pList{width:100%;}
+#pList .tablewrap{width:100%;}
+#pList table{width:100%;}
+#pList th,#pList td{font-size:14px;}
+#pList td:nth-child(2) b{font-size:15px;}
+
+@media(max-width:620px){
+  #pList .tablewrap{border:0;background:transparent;overflow:visible;}
+  #pList table{min-width:0;width:100%;display:block;background:transparent;}
+  #pList thead{display:none;}
+  #pList tbody{display:grid;gap:12px;width:100%;}
+  #pList tr{display:block;width:100%;background:#fffdf7;border:1px solid #ded7c8;border-top:4px solid #b89246;border-radius:16px;padding:10px 14px;box-shadow:0 8px 22px rgba(31,41,35,.08);}
+  #pList td{display:flex;align-items:center;justify-content:space-between;gap:16px;width:100%;padding:10px 0;border:0;border-bottom:1px solid #eee7da;font-size:14px;text-align:right;}
+  #pList td:last-child{border-bottom:0;}
+  #pList td::before{font-size:11px;font-weight:800;letter-spacing:.45px;text-transform:uppercase;color:#718078;text-align:left;}
+  #pList td:nth-child(1)::before{content:'SKU';}
+  #pList td:nth-child(2)::before{content:'Product';}
+  #pList td:nth-child(3)::before{content:'Category';}
+  #pList td:nth-child(4)::before{content:'Unit';}
+  #pList td:nth-child(5)::before{content:'Purchase';}
+  #pList td:nth-child(6)::before{content:'Sale';}
+  #pList td:nth-child(7)::before{content:'Reorder';}
+  #pList td:nth-child(1),#pList td:nth-child(2){font-size:16px;}
+  #pList td:nth-child(2) b{font-size:17px;color:#173f35;}
+  #pList .empty{display:block;text-align:center;padding:26px 12px;}
+}
