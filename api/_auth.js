@@ -1,8 +1,9 @@
 import { neon } from '@neondatabase/serverless';
 import crypto from 'node:crypto';
 
-export const ROLE_ACCESS={
-  admin:['dashboard','employees','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','products','goods-receiving','inventory-ledger','warehouses','warehouse-stock','stock-transfer','stock-adjustment','documents','search','reports','settings'],
+export const MENU_KEYS=['dashboard','employees','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','products','goods-receiving','inventory-ledger','warehouses','warehouse-stock','stock-transfer','stock-adjustment','documents','search','reports','settings'];
+export const ROLE_ACCESS_DEFAULTS={
+  admin:[...MENU_KEYS],
   manager:['dashboard','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','products','goods-receiving','inventory-ledger','warehouses','warehouse-stock','stock-transfer','stock-adjustment','documents','search','reports'],
   accountant:['dashboard','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','documents','search','reports'],
   salesman:['dashboard','clients','client-sales','client-receipts','products','search']
@@ -46,11 +47,25 @@ export async function getSessionUser(req,sql=db()){
   return rows[0];
 }
 
-export function canAccess(role,view){return Boolean(ROLE_ACCESS[role]?.includes(view));}
+export async function getRoleAccess(sql,role){
+  try{
+    const rows=await sql`SELECT menu_key FROM role_permissions WHERE designation=${role} AND allowed=true ORDER BY menu_key`;
+    if(rows.length)return rows.map(x=>x.menu_key);
+  }catch(e){
+    if(e?.code!=='42P01') throw e;
+  }
+  return ROLE_ACCESS_DEFAULTS[role]||[];
+}
+
+export async function canAccess(sql,role,view){
+  const access=await getRoleAccess(sql,role);
+  return access.includes(view);
+}
+
 export async function requireUser(req,res,view=null){
   const sql=db();
   const user=await getSessionUser(req,sql);
   if(!user){res.status(401).json({error:'Authentication required'});return null;}
-  if(view&&!canAccess(user.designation,view)){res.status(403).json({error:'Access denied'});return null;}
+  if(view&&!(await canAccess(sql,user.designation,view))){res.status(403).json({error:'Access denied'});return null;}
   return {sql,user};
 }
