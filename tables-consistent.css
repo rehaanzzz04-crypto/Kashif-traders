@@ -1,0 +1,162 @@
+/* Kashif Traders — shared table system
+   Applies the same visual language to accounts, documents, reports,
+   products, warehouses, stock, GRN, transfers and inventory ledger. */
+
+.tablewrap,
+.statement .tablewrap{
+  width:100%;
+  max-width:100%;
+  overflow-x:auto;
+  overflow-y:hidden;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:contain;
+  border:1px solid #d8cfbd;
+  border-radius:16px;
+  background:#fffdf9;
+  box-shadow:0 8px 22px rgba(31,41,35,.07);
+  scrollbar-width:thin;
+  scrollbar-color:#b89246 #efe9dc;
+}
+
+.tablewrap::-webkit-scrollbar{height:8px}
+.tablewrap::-webkit-scrollbar-track{background:#efe9dc;border-radius:999px}
+.tablewrap::-webkit-scrollbar-thumb{background:#b89246;border-radius:999px}
+
+.tablewrap table,
+.statement table{
+  width:100%;
+  min-width:780px;
+  border-collapse:separate;
+  border-spacing:0;
+  background:#fffdf9;
+}
+
+.tablewrap thead th,
+.statement thead th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  padding:12px 14px;
+  background:linear-gradient(180deg,#f1eadc,#ece3d2);
+  color:#3f554b;
+  border-bottom:1px solid #d8cfbd;
+  font-size:11px;
+  line-height:1.25;
+  font-weight:850;
+  letter-spacing:.55px;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
+.tablewrap tbody td,
+.statement tbody td{
+  padding:12px 14px;
+  color:#26352f;
+  background:#fffdf9;
+  border-bottom:1px solid #ece5d8;
+  font-size:13px;
+  line-height:1.42;
+  vertical-align:middle;
+}
+
+.tablewrap tbody tr:nth-child(even) td,
+.statement tbody tr:nth-child(even) td{background:#fcf8ef}
+
+.tablewrap tbody tr:hover td,
+.statement tbody tr:hover td{background:#f7f0df}
+
+.tablewrap tbody tr:last-child td,
+.statement tbody tr:last-child td{border-bottom:0}
+
+.tablewrap th:first-child,
+.tablewrap td:first-child,
+.statement th:first-child,
+.statement td:first-child{padding-left:16px}
+
+.tablewrap th:last-child,
+.tablewrap td:last-child,
+.statement th:last-child,
+.statement td:last-child{padding-right:16px}
+
+.tablewrap td b,
+.statement td b{color:#183d34;font-weight:800}
+
+.tablewrap .money,
+.statement .money{color:#173f35;font-weight:850;white-space:nowrap}
+
+.tablewrap .badge,
+.statement .badge{
+  min-width:64px;
+  text-align:center;
+  border:1px solid rgba(29,90,71,.12);
+}
+
+.tablewrap .rowactions{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:nowrap;
+  white-space:nowrap;
+}
+
+.tablewrap .rowactions .btn{
+  min-height:32px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.tablewrap .empty{
+  min-height:92px;
+  padding:28px 18px;
+  color:#6f7a73;
+  background:#fffdf9;
+  text-align:center;
+}
+
+/* Keep inputs used inside GRN/receiving tables visually consistent. */
+.tablewrap td input,
+.tablewrap td select{
+  min-height:36px;
+  border:1px solid #d6cdbd;
+  border-radius:9px;
+  background:#fff;
+  color:#18211d;
+  padding:7px 9px;
+}
+
+/* A subtle visual cue that wide tables can be swiped on smaller screens. */
+@media(max-width:900px){
+  .tablewrap,
+  .statement .tablewrap{
+    border-radius:14px;
+    box-shadow:0 6px 18px rgba(31,41,35,.06);
+  }
+  .tablewrap table,
+  .statement table{min-width:720px}
+  .tablewrap thead th,
+  .statement thead th{padding:11px 12px}
+  .tablewrap tbody td,
+  .statement tbody td{padding:11px 12px}
+}
+
+@media(max-width:620px){
+  .tablewrap table,
+  .statement table{min-width:680px}
+  .tablewrap thead th,
+  .statement thead th{font-size:10px;letter-spacing:.4px}
+  .tablewrap tbody td,
+  .statement tbody td{font-size:12.5px}
+  .tablewrap .rowactions .btn{padding:6px 8px;font-size:11px}
+}
+
+@media print{
+  .tablewrap,
+  .statement .tablewrap{overflow:visible;border-color:#ccc;box-shadow:none}
+  .tablewrap table,
+  .statement table{min-width:0;width:100%}
+  .tablewrap thead th,
+  .statement thead th{position:static;background:#eee!important;color:#222!important}
+  .tablewrap tbody td,
+  .statement tbody td{background:#fff!important;color:#222!important}
+}
