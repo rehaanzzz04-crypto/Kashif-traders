@@ -10,9 +10,50 @@ const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
 const text=v=>v===undefined||v===null||String(v).trim()===''?null:String(v).trim();
 const body=req=>typeof req.body==='string'?JSON.parse(req.body||'{}'):(req.body||{});
 
+async function listProductsPaged(sql,q){
+  const search=String(q.search||'').trim();
+  const pattern=`%${search}%`;
+  const category=String(q.category||'').trim();
+  const status=String(q.status||'').trim();
+  const page=Math.max(1,Number.parseInt(q.page||'1',10)||1);
+  const pageSize=Math.min(100,Math.max(10,Number.parseInt(q.page_size||'25',10)||25));
+  const offset=(page-1)*pageSize;
+
+  const rows=await sql`
+    SELECT p.*,
+           COALESCE(st.stock_on_hand,0)::numeric AS stock_on_hand
+    FROM products p
+    LEFT JOIN (
+      SELECT product_id,SUM(quantity)::numeric AS stock_on_hand
+      FROM inventory_movements
+      GROUP BY product_id
+    ) st ON st.product_id=p.id
+    WHERE (${search}='' OR p.sku ILIKE ${pattern} OR p.name ILIKE ${pattern} OR COALESCE(p.category,'') ILIKE ${pattern} OR COALESCE(p.barcode,'') ILIKE ${pattern} OR COALESCE(p.unit,'') ILIKE ${pattern})
+      AND (${category}='' OR COALESCE(p.category,'')=${category})
+      AND (${status}='' OR p.status=${status})
+    ORDER BY p.name ASC,p.id ASC
+    LIMIT ${pageSize} OFFSET ${offset}
+  `;
+
+  const counts=await sql`
+    SELECT COUNT(*)::int AS total
+    FROM products p
+    WHERE (${search}='' OR p.sku ILIKE ${pattern} OR p.name ILIKE ${pattern} OR COALESCE(p.category,'') ILIKE ${pattern} OR COALESCE(p.barcode,'') ILIKE ${pattern} OR COALESCE(p.unit,'') ILIKE ${pattern})
+      AND (${category}='' OR COALESCE(p.category,'')=${category})
+      AND (${status}='' OR p.status=${status})
+  `;
+  const categories=await sql`SELECT DISTINCT category FROM products WHERE category IS NOT NULL AND BTRIM(category)<>'' ORDER BY category`;
+  const total=Number(counts[0]?.total||0);
+  return {
+    records:rows,
+    pagination:{page,page_size:pageSize,total,total_pages:Math.max(1,Math.ceil(total/pageSize))},
+    filters:{categories:categories.map(x=>x.category)}
+  };
+}
+
 async function list(sql,resource,q){
   if(resource==='warehouses') return sql`SELECT * FROM warehouses ORDER BY is_default DESC,name`;
-  if(resource==='products') return sql`SELECT * FROM products ORDER BY name,id`;
+  if(resource==='products') return sql`SELECT p.*,COALESCE(st.stock_on_hand,0)::numeric AS stock_on_hand FROM products p LEFT JOIN (SELECT product_id,SUM(quantity)::numeric stock_on_hand FROM inventory_movements GROUP BY product_id) st ON st.product_id=p.id ORDER BY p.name,p.id`;
   if(resource==='stock') return sql`SELECT * FROM warehouse_stock ORDER BY warehouse_name,product_name`;
   if(resource==='movements') return sql`SELECT m.*,w.name warehouse_name,p.name product_name,p.sku FROM inventory_movements m JOIN warehouses w ON w.id=m.warehouse_id JOIN products p ON p.id=m.product_id ORDER BY m.movement_date DESC,m.id DESC LIMIT 500`;
   if(resource==='invoice_items'){
@@ -87,6 +128,7 @@ async function postTransfer(sql,b){
 export default async function handler(req,res){
   try{
     const sql=db(), resource=String(req.query?.resource||'').trim();
+    if(req.method==='GET'&&resource==='products'&&String(req.query?.paged||'')==='1') return res.status(200).json(await listProductsPaged(sql,req.query||{}));
     if(req.method==='GET') return res.status(200).json({records:await list(sql,resource,req.query||{})});
     const b=body(req);
     if(req.method==='POST'&&resource==='grn_post') return res.status(201).json({record:await postGrn(sql,b)});
