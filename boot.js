@@ -15,7 +15,7 @@
     await load('/product-status-fix.js?v=20260910-status1');
     await load('/products-scalable.js?v=20260911-rbac3');
     await load('/employees-ui.js?v=20260911-rbac3');
-    await load('/role-dashboard.js?v=20260911-rbac3');
+    await load('/role-dashboard.js?v=20260911-rbac4');
     if(!access.has('dashboard')){
       const first=[...document.querySelectorAll('#nav [data-view]')].find(b=>b.style.display!=='none');
       if(first) setTimeout(()=>first.click(),50);
