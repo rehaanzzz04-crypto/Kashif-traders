@@ -14,5 +14,11 @@
   }
   setTimeout(apply,250);
   nav.addEventListener('click',e=>{if(e.target.closest('[data-view="dashboard"]'))setTimeout(apply,250);},true);
-  const top=document.querySelector('.topin');if(top&&!document.getElementById('logoutBtn')){const b=document.createElement('button');b.id='logoutBtn';b.className='btn alt';b.textContent='Logout';b.style.marginLeft='8px';b.onclick=async()=>{await fetch('/api/auth?action=logout',{method:'POST'}).catch(()=>{});location.replace('/login.html');};top.appendChild(b);}
+  const topLogout=document.getElementById('logoutBtn');if(topLogout)topLogout.remove();
+  if(nav&&!document.getElementById('logoutBtn')){
+    const foot=nav.querySelector('.navfoot');
+    const b=document.createElement('button');b.id='logoutBtn';b.className='logoutMenuBtn';b.innerHTML='<span class="ico">↪</span><span class="label">Logout</span><span class="arr">›</span>';
+    b.onclick=async()=>{b.disabled=true;await fetch('/api/auth?action=logout',{method:'POST'}).catch(()=>{});location.replace('/login.html');};
+    if(foot)nav.insertBefore(b,foot);else nav.appendChild(b);
+  }
 })();
