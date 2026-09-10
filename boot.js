@@ -17,7 +17,7 @@
     await load('/employees-ui.js?v=20260911-rbac3');
     await load('/salary-ui.js?v=20260911-salary3');
     await load('/role-dashboard.js?v=20260911-rbac5');
-    await load('/admin-dashboard-fix.js?v=20260911-admin1');
+    await load('/admin-dashboard-fix.js?v=20260911-admin2');
     document.body.classList.add('auth-ready');
     await new Promise(resolve=>requestAnimationFrame(resolve));
     const dash=document.querySelector('#nav [data-view="dashboard"]');const first=[...document.querySelectorAll('#nav [data-view]')].find(b=>b.style.display!=='none');const target=access.has('dashboard')&&dash?dash:first;if(target)target.click();
