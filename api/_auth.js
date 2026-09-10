@@ -1,12 +1,12 @@
 import { neon } from '@neondatabase/serverless';
 import crypto from 'node:crypto';
 
-export const MENU_KEYS=['dashboard','employees','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','products','goods-receiving','inventory-ledger','warehouses','warehouse-stock','stock-transfer','stock-adjustment','documents','search','reports','settings'];
+export const MENU_KEYS=['dashboard','employees','salary-advances','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','products','goods-receiving','inventory-ledger','warehouses','warehouse-stock','stock-transfer','stock-adjustment','documents','search','reports','settings'];
 export const ROLE_ACCESS_DEFAULTS={
   admin:[...MENU_KEYS],
-  manager:['dashboard','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','products','goods-receiving','inventory-ledger','warehouses','warehouse-stock','stock-transfer','stock-adjustment','documents','search','reports'],
-  accountant:['dashboard','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','documents','search','reports'],
-  salesman:['dashboard','clients','client-sales','client-receipts','products','search']
+  manager:['dashboard','salary-advances','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','products','goods-receiving','inventory-ledger','warehouses','warehouse-stock','stock-transfer','stock-adjustment','documents','search','reports'],
+  accountant:['dashboard','salary-advances','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','documents','search','reports'],
+  salesman:['dashboard','salary-advances','clients','client-sales','client-receipts','products','search']
 };
 
 export function db(){
