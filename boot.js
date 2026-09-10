@@ -12,7 +12,7 @@
     await load('/app.js?v=20260911-rbac5');
     await load('/inventory-ui.js?v=20260911-rbac3');
     await load('/product-status-fix.js?v=20260910-status1');
-    await load('/products-scalable.js?v=20260911-rbac3');
+    await load('/products-scalable.js?v=20260911-approval2');
     await load('/employees-ui.js?v=20260911-rbac3');
     await load('/role-dashboard.js?v=20260911-rbac5');
     if(access.has('dashboard')){
