@@ -14,6 +14,7 @@
     await load('/product-status-fix.js?v=20260910-status1');
     await load('/products-scalable.js?v=20260911-barcode1');
     await load('/employees-ui.js?v=20260911-rbac3');
+    await load('/salary-ui.js?v=20260911-salary1');
     await load('/role-dashboard.js?v=20260911-rbac5');
     if(access.has('dashboard')){
       const dash=document.querySelector('#nav [data-view="dashboard"]');
