@@ -11,7 +11,7 @@
     const dashboard=document.getElementById('dashboard'),module=document.getElementById('module');
     dashboard?.classList.add('hidden');module?.classList.add('hidden');
     const load=src=>new Promise((ok,bad)=>{const s=document.createElement('script');s.src=src;s.async=true;s.onload=ok;s.onerror=bad;document.body.appendChild(s);});
-    const extras=()=>load('/document-scan.js?v=20260911-scan1').catch(e=>console.error('Document scan feature unavailable',e));
+    const extras=()=>Promise.allSettled([load('/document-scan.js?v=20260911-scan1'),load('/offline-sync.js?v=20260911-offline1')]);
     if(j.user.designation==='admin'&&access.has('dashboard')){
       document.body.classList.add('auth-ready');
       await load('/admin-dashboard-fix.js?v=20260911-admin6');
