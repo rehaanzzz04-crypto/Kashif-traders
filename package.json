@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Independent Kashif Traders supplier and credit management system",
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.1"
+    "@neondatabase/serverless": "^1.0.1",
+    "@vercel/blob": "^2.0.0"
   }
 }
