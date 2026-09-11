@@ -26,8 +26,22 @@ async function cloudSend(payload){
  const j=await r.json().catch(()=>({}));if(!r.ok){console.error('WhatsApp send error',r.status,j);throw Error('WHATSAPP_SEND_FAILED')}return j;
 }
 
+async function uploadImageDataUrl(dataUrl){
+ const token=clean(process.env.WHATSAPP_ACCESS_TOKEN),phoneId=clean(process.env.WHATSAPP_PHONE_NUMBER_ID);if(!token||!phoneId)throw Error('WHATSAPP_SEND_NOT_CONFIGURED');
+ const m=String(dataUrl||'').match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/i);if(!m)throw Error('WHATSAPP_IMAGE_DATA_INVALID');
+ const type=m[1].toLowerCase()==='image/jpg'?'image/jpeg':m[1].toLowerCase(),buf=Buffer.from(m[2],'base64');if(buf.length>4000000)throw Error('MEDIA_TOO_LARGE');
+ const form=new FormData();form.append('messaging_product','whatsapp');form.append('type',type);form.append('file',new Blob([buf],{type}),`payment-${Date.now()}.${type==='image/png'?'png':type==='image/webp'?'webp':'jpg'}`);
+ const r=await fetch(`https://graph.facebook.com/v23.0/${encodeURIComponent(phoneId)}/media`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:form});const j=await r.json().catch(()=>({}));if(!r.ok||!j.id){console.error('WhatsApp media upload error',r.status,j);throw Error('WHATSAPP_MEDIA_UPLOAD_FAILED')}return j.id;
+}
+
 export async function sendWhatsAppText(to,body){return cloudSend({to:normalizePhone(to),type:'text',text:{preview_url:false,body:clean(body).slice(0,4096)}})}
 export async function sendWhatsAppImage(to,link,caption=''){return cloudSend({to:normalizePhone(to),type:'image',image:{link:clean(link),caption:clean(caption).slice(0,1024)}})}
+export async function sendWhatsAppAttachment(to,attachment,caption=''){
+ const src=clean(attachment);if(!src)throw Error('WHATSAPP_ATTACHMENT_MISSING');
+ if(/^https:\/\//i.test(src))return sendWhatsAppImage(to,src,caption);
+ if(/^data:image\//i.test(src)){const mediaId=await uploadImageDataUrl(src);return cloudSend({to:normalizePhone(to),type:'image',image:{id:mediaId,caption:clean(caption).slice(0,1024)}})}
+ throw Error('WHATSAPP_ATTACHMENT_UNSUPPORTED');
+}
 
 export async function supplierStatement(sql,supplierId){
  const parties=await sql`SELECT id,business_name,whatsapp_number,mobile_number,opening_balance FROM suppliers WHERE id=${supplierId}`;const p=parties[0];if(!p)throw Error('SUPPLIER_NOT_FOUND');
