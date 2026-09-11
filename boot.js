@@ -9,17 +9,13 @@
     const hero=document.querySelector('.hero');if(hero){const names={admin:'Admin Dashboard',manager:'Manager Dashboard',accountant:'Accountant Dashboard',salesman:'Sales Dashboard'};hero.querySelector('h1').textContent=names[j.user.designation]||'Kashif Traders';hero.querySelector('p').textContent='Access is controlled by the Admin permission settings for this designation.';}
     const status=document.getElementById('status');if(status)status.textContent=(j.user.full_name||j.user.employee_code)+' • '+String(j.user.designation||'').toUpperCase();
     const dashboard=document.getElementById('dashboard'),module=document.getElementById('module');dashboard?.classList.add('hidden');module?.classList.add('hidden');
-    const load=src=>new Promise((ok,bad)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=bad;document.body.appendChild(s);});
-    await load('/app.js?v=20260911-noautodash1');
-    await load('/inventory-ui.js?v=20260911-rbac3');
-    await load('/product-status-fix.js?v=20260910-status1');
-    await load('/products-scalable.js?v=20260911-barcode1');
-    await load('/employees-ui.js?v=20260911-rbac3');
-    await load('/salary-ui.js?v=20260911-salary3');
-    await load('/role-dashboard.js?v=20260911-rbac5');
-    await load('/admin-dashboard-fix.js?v=20260911-admin2');
+    const load=src=>new Promise((ok,bad)=>{const s=document.createElement('script');s.src=src;s.async=true;s.onload=ok;s.onerror=bad;document.body.appendChild(s);});
+    const core=['/app.js?v=20260911-noautodash1','/inventory-ui.js?v=20260911-rbac3','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260911-salary3','/role-dashboard.js?v=20260911-rbac5','/admin-dashboard-fix.js?v=20260911-admin3'];
+    await Promise.all(core.map(load));
+    const dash=document.querySelector('#nav [data-view="dashboard"]');const first=[...document.querySelectorAll('#nav [data-view]')].find(b=>b.style.display!=='none');const target=access.has('dashboard')&&dash?dash:first;
+    if(j.user.designation==='admin'&&target===dash&&typeof window.KT_OPEN_ADMIN_DASHBOARD==='function'){
+      await window.KT_OPEN_ADMIN_DASHBOARD();
+    }else if(target){target.click();}
     document.body.classList.add('auth-ready');
-    await new Promise(resolve=>requestAnimationFrame(resolve));
-    const dash=document.querySelector('#nav [data-view="dashboard"]');const first=[...document.querySelectorAll('#nav [data-view]')].find(b=>b.style.display!=='none');const target=access.has('dashboard')&&dash?dash:first;if(target)target.click();
   }catch(e){console.error(e);location.replace('/login.html');}
 })();
