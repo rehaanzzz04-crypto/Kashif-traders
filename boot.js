@@ -11,15 +11,16 @@
     const dashboard=document.getElementById('dashboard'),module=document.getElementById('module');
     dashboard?.classList.add('hidden');module?.classList.add('hidden');
     const load=src=>new Promise((ok,bad)=>{const s=document.createElement('script');s.src=src;s.async=true;s.onload=ok;s.onerror=bad;document.body.appendChild(s);});
+    const extras=()=>load('/document-scan.js?v=20260911-scan1').catch(e=>console.error('Document scan feature unavailable',e));
     if(j.user.designation==='admin'&&access.has('dashboard')){
       document.body.classList.add('auth-ready');
       await load('/admin-dashboard-fix.js?v=20260911-admin6');
       if(typeof window.KT_OPEN_ADMIN_DASHBOARD==='function')window.KT_OPEN_ADMIN_DASHBOARD();
-      Promise.all(['/app.js?v=20260911-noautodash1','/inventory-ui.js?v=20260911-rbac3','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260911-salary3','/role-dashboard.js?v=20260911-rbac6'].map(load)).catch(console.error);
+      Promise.all(['/app.js?v=20260911-noautodash1','/inventory-ui.js?v=20260911-rbac3','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260911-salary3','/role-dashboard.js?v=20260911-rbac6'].map(load)).then(extras).catch(console.error);
       return;
     }
     const core=['/app.js?v=20260911-noautodash1','/inventory-ui.js?v=20260911-rbac3','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260911-salary3','/role-dashboard.js?v=20260911-rbac6'];
-    await Promise.all(core.map(load));
+    await Promise.all(core.map(load));extras();
     const dash=document.querySelector('#nav [data-view="dashboard"]');const first=[...document.querySelectorAll('#nav [data-view]')].find(b=>b.style.display!=='none');const target=access.has('dashboard')&&dash?dash:first;if(target)target.click();
     document.body.classList.add('auth-ready');
   }catch(e){console.error(e);location.replace('/login.html');}
