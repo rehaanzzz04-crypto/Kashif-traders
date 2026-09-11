@@ -12,9 +12,9 @@
   function apply(){
     if(!access.has('dashboard'))return;
     const role=user.designation;
+    if(role==='admin'&&window.KT_OPEN_ADMIN_DASHBOARD)return;
     const hero=document.querySelector('.hero');
     if(hero){const h={admin:'Admin Dashboard',manager:'Manager Dashboard',accountant:'Accountant Dashboard',salesman:'Sales Dashboard'};hero.querySelector('h1').textContent=h[role]||'Dashboard';hero.querySelector('p').textContent='Your dashboard reflects the access assigned by Admin.';}
-    if(role==='admin'&&window.KT_OPEN_ADMIN_DASHBOARD)return;
     const stats=document.getElementById('stats');
     if(stats){
       const cards=[...stats.children];
