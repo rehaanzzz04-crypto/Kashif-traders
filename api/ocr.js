@@ -1,25 +1,24 @@
 import { neon } from '@neondatabase/serverless';
-import { getVercelOidcToken } from '@vercel/oidc';
 import { getSessionUser } from './_auth.js';
+import { extractDocument } from './_ocr-core.js';
 
 const allowedViews=new Set(['supplier-bills','supplier-payments','client-sales','client-receipts','documents']);
 function bodyOf(req){if(!req.body)return{};if(typeof req.body==='string'){try{return JSON.parse(req.body)}catch{return{}}}return req.body}
+const kindFor=view=>view==='supplier-bills'?'supplier_invoice':view==='client-sales'?'client_invoice':view==='supplier-payments'?'supplier_bank_payment':view==='client-receipts'?'client_bank_receipt':'business_document';
 export default async function handler(req,res){
  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
  try{
   const db=process.env.DATABASE_URL;if(!db)return res.status(503).json({error:'Database is not configured'});
   const sql=neon(db),user=await getSessionUser(req,sql);if(!user)return res.status(401).json({error:'Authentication required'});
   const b=bodyOf(req),view=String(b.view||'');if(!allowedViews.has(view))return res.status(400).json({error:'Unsupported document form'});
-  const dataUrl=String(b.dataUrl||'');if(!/^data:image\/(jpeg|jpg|png|webp);base64,/i.test(dataUrl))return res.status(400).json({error:'OCR requires a JPG, PNG or WebP image'});
-  if(dataUrl.length>5600000)return res.status(413).json({error:'Image is too large'});
-  let token=process.env.AI_GATEWAY_API_KEY||process.env.VERCEL_OIDC_TOKEN||'';
-  if(!token){try{token=await getVercelOidcToken()||''}catch(e){console.error('OIDC token error',e?.message||e)}}
-  if(!token)return res.status(503).json({error:'OCR authentication is not available on this deployment'});
-  const prompt='Read this business invoice, receipt or payment document carefully. Return ONLY valid JSON with keys invoice_number,date,amount,reference_number,bank,document_type. date must be YYYY-MM-DD when confidently visible. amount must contain digits only with optional decimal. Use empty string for unknown values. Do not guess.';
-  const r=await fetch('https://ai-gateway.vercel.sh/v1/responses',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({model:'openai/gpt-5-mini',input:[{role:'user',content:[{type:'input_text',text:prompt},{type:'input_image',image_url:dataUrl}]}],max_output_tokens:300})});
-  const j=await r.json().catch(()=>({}));if(!r.ok){console.error('OCR provider error',r.status,j?.error?.message||j?.error||'unknown');return res.status(502).json({error:'OCR service temporarily unavailable'})}
-  const text=(j.output||[]).flatMap(x=>x.content||[]).find(x=>x.type==='output_text')?.text||'';let fields={};try{const cleaned=text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');fields=JSON.parse(cleaned)}catch{console.error('OCR JSON parse failed',text.slice(0,300));return res.status(422).json({error:'Could not read document clearly'})}
-  const safe={};for(const k of ['invoice_number','date','amount','reference_number','bank','document_type'])safe[k]=String(fields[k]??'').slice(0,120);
-  return res.status(200).json({fields:safe});
- }catch(e){console.error('OCR endpoint error',e);return res.status(500).json({error:'OCR request failed'})}
+  const dataUrl=String(b.dataUrl||'');if(dataUrl.length>5600000)return res.status(413).json({error:'Image is too large'});
+  const fields=await extractDocument(dataUrl,kindFor(view));
+  return res.status(200).json({fields});
+ }catch(e){
+  if(e.message==='UNSUPPORTED_IMAGE')return res.status(400).json({error:'OCR requires a JPG, PNG or WebP image'});
+  if(e.message==='OCR_AUTH_UNAVAILABLE')return res.status(503).json({error:'OCR authentication is not available on this deployment'});
+  if(e.message==='OCR_PARSE_FAILED')return res.status(422).json({error:'Could not read document clearly'});
+  if(e.message==='OCR_PROVIDER')return res.status(502).json({error:'OCR service temporarily unavailable'});
+  console.error('OCR endpoint error',e);return res.status(500).json({error:'OCR request failed'});
+ }
 }
