@@ -10,11 +10,44 @@ export default async function handler(req,res){
     const user=await getSessionUser(req,sql);
     if(!user)return res.status(401).json({error:'Authentication required'});
     if(!(await canAccess(sql,user.designation,'dashboard'))&&!await canAccess(sql,user.designation,'reports'))return res.status(403).json({error:'Access denied'});
-    const [sp,cp,si,spay,ci,cr,sc,cc,recentSupplierBills,recentClientInvoices]=await Promise.all([
-      sql`SELECT COALESCE(SUM(s.opening_balance),0)+COALESCE((SELECT SUM(i.amount) FROM supplier_invoices i),0)-COALESCE((SELECT SUM(p.amount) FROM supplier_payments p),0) AS v FROM suppliers s`,
-      sql`SELECT COALESCE(SUM(c.opening_balance),0)+COALESCE((SELECT SUM(i.amount) FROM client_invoices i),0)-COALESCE((SELECT SUM(r.amount) FROM client_receipts r),0) AS v FROM clients c`,
-      sql`SELECT COALESCE(SUM(amount),0) AS v FROM supplier_invoices`,sql`SELECT COALESCE(SUM(amount),0) AS v FROM supplier_payments`,sql`SELECT COALESCE(SUM(amount),0) AS v FROM client_invoices`,sql`SELECT COALESCE(SUM(amount),0) AS v FROM client_receipts`,sql`SELECT COUNT(*)::int AS v FROM suppliers`,sql`SELECT COUNT(*)::int AS v FROM clients`,sql`SELECT i.invoice_number,i.amount,s.business_name FROM supplier_invoices i JOIN suppliers s ON s.id=i.supplier_id ORDER BY i.invoice_date DESC,i.id DESC LIMIT 5`,sql`SELECT i.invoice_number,i.amount,c.business_name FROM client_invoices i JOIN clients c ON c.id=i.client_id ORDER BY i.invoice_date DESC,i.id DESC LIMIT 5`
-    ]);
-    res.status(200).json({totalSupplierPayable:sp[0]?.v||0,totalClientReceivable:cp[0]?.v||0,totalSupplierPurchases:si[0]?.v||0,totalSupplierPayments:spay[0]?.v||0,totalClientSales:ci[0]?.v||0,totalClientReceipts:cr[0]?.v||0,supplierCount:sc[0]?.v||0,clientCount:cc[0]?.v||0,recentSupplierBills,recentClientInvoices});
+
+    const rows=await sql`
+      SELECT
+        (SELECT COALESCE(SUM(opening_balance),0) FROM suppliers)
+          +(SELECT COALESCE(SUM(amount),0) FROM supplier_invoices)
+          -(SELECT COALESCE(SUM(amount),0) FROM supplier_payments) AS supplier_payable,
+        (SELECT COALESCE(SUM(opening_balance),0) FROM clients)
+          +(SELECT COALESCE(SUM(amount),0) FROM client_invoices)
+          -(SELECT COALESCE(SUM(amount),0) FROM client_receipts) AS client_receivable,
+        (SELECT COALESCE(SUM(amount),0) FROM supplier_invoices) AS supplier_purchases,
+        (SELECT COALESCE(SUM(amount),0) FROM supplier_payments) AS supplier_payments,
+        (SELECT COALESCE(SUM(amount),0) FROM client_invoices) AS client_sales,
+        (SELECT COALESCE(SUM(amount),0) FROM client_receipts) AS client_receipts,
+        (SELECT COUNT(*)::int FROM suppliers) AS supplier_count,
+        (SELECT COUNT(*)::int FROM clients) AS client_count,
+        COALESCE((SELECT json_agg(x) FROM (
+          SELECT i.invoice_number,i.amount,s.business_name
+          FROM supplier_invoices i JOIN suppliers s ON s.id=i.supplier_id
+          ORDER BY i.invoice_date DESC,i.id DESC LIMIT 5
+        ) x),'[]'::json) AS recent_supplier_bills,
+        COALESCE((SELECT json_agg(x) FROM (
+          SELECT i.invoice_number,i.amount,c.business_name
+          FROM client_invoices i JOIN clients c ON c.id=i.client_id
+          ORDER BY i.invoice_date DESC,i.id DESC LIMIT 5
+        ) x),'[]'::json) AS recent_client_invoices
+    `;
+    const r=rows[0]||{};
+    res.status(200).json({
+      totalSupplierPayable:r.supplier_payable||0,
+      totalClientReceivable:r.client_receivable||0,
+      totalSupplierPurchases:r.supplier_purchases||0,
+      totalSupplierPayments:r.supplier_payments||0,
+      totalClientSales:r.client_sales||0,
+      totalClientReceipts:r.client_receipts||0,
+      supplierCount:r.supplier_count||0,
+      clientCount:r.client_count||0,
+      recentSupplierBills:r.recent_supplier_bills||[],
+      recentClientInvoices:r.recent_client_invoices||[]
+    });
   }catch(e){console.error(e);res.status(500).json({error:'Database query failed'});}
 }
