@@ -4,7 +4,11 @@
  const dash=document.getElementById('dashboard'),mod=document.getElementById('module'),stats=document.getElementById('stats'),ov=document.getElementById('overview'),nav=document.getElementById('nav');
  const money=v=>'PKR '+Number(v||0).toLocaleString('en-PK',{maximumFractionDigits:0});
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
- async function json(url){const r=await fetch(url,{cache:'no-store'}),j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.error||'Request failed');return j}
+ const prefetched=window.KT_ADMIN_PREFETCH||{};
+ async function json(url){
+  if(prefetched[url]){const p=prefetched[url];delete prefetched[url];return p;}
+  const r=await fetch(url,{cache:'no-store'}),j=await r.json().catch(()=>({}));if(!r.ok)throw Error(j.error||'Request failed');return j;
+ }
  async function openDashboard(){
   if(typeof closeMenu==='function')closeMenu();
   nav.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view==='dashboard'));
