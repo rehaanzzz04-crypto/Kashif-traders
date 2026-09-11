@@ -1,0 +1,8 @@
+'use strict';
+const CACHE='kt-shell-20260911-v1';
+const SHELL=['/','/index.html','/app.css?v=20260911-overview3','/tables-consistent.css?v=20260910-tables1','/approval-feedback.js?v=20260911-approval1','/boot.js?v=20260911-startup12','/app.js?v=20260911-noautodash1','/inventory-ui.js?v=20260911-rbac3','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260911-salary3','/role-dashboard.js?v=20260911-rbac6','/admin-dashboard-fix.js?v=20260911-admin6','/document-scan.js?v=20260911-scan1','/offline-sync.js?v=20260911-offline3'];
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(async c=>{for(const u of SHELL){try{const r=await fetch(u,{cache:'reload'});if(r.ok)await c.put(u,r)}catch{}}}).then(()=>self.skipWaiting()))});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('kt-shell-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
+self.addEventListener('fetch',e=>{const r=e.request;if(r.method!=='GET')return;const u=new URL(r.url);if(u.origin!==location.origin)return;if(u.pathname.startsWith('/api/'))return;
+ if(r.mode==='navigate'){e.respondWith(fetch(r).then(res=>{if(res.ok)caches.open(CACHE).then(c=>c.put('/index.html',res.clone())).catch(()=>{});return res}).catch(()=>caches.match('/index.html').then(x=>x||caches.match('/'))));return}
+ e.respondWith(caches.match(r).then(hit=>hit||fetch(r).then(res=>{if(res.ok&&['script','style','image','font'].includes(r.destination))caches.open(CACHE).then(c=>c.put(r,res.clone())).catch(()=>{});return res}).catch(()=>hit)))});
