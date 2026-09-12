@@ -6,9 +6,7 @@ export default async function handler(req,res){
  if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});
  try{
   const auth=await requireUser(req,res);if(!auth)return;const {sql,user}=auth,b=bodyOf(req),recordId=id(b.id||b.record_id);if(!recordId)return res.status(400).json({error:'Valid record id required'});
-  if(String(b.type||'')==='client_bill'){
-   const result=await notifyClientBill(sql,recordId);return res.status(200).json(result);
-  }
+  if(String(b.type||req.query?.type||'')==='client_bill'){const result=await notifyClientBill(sql,recordId);return res.status(200).json(result);}
   if(user.designation!=='admin')return res.status(403).json({error:'Admin access required'});
   const rows=await sql`SELECT * FROM supplier_payments WHERE id=${recordId}`;if(!rows[0])return res.status(404).json({error:'Supplier payment not found'});
   const result=await notifySupplierPayment(sql,rows[0]);if(!result.sent)return res.status(result.reason==='not_configured'?503:502).json({error:result.reason||'WhatsApp follow-up failed'});
