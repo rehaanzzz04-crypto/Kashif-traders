@@ -13,6 +13,7 @@ async function committed(sql,employeeId,month,excludeId=null){
  const r=excludeId?await sql`SELECT COALESCE(SUM(amount),0)::numeric AS total FROM salary_requests WHERE employee_id=${employeeId} AND status IN ('pending','approved','paid') AND COALESCE(salary_month,date_trunc('month',requested_at)::date)=${month}::date AND id<>${excludeId}`:await sql`SELECT COALESCE(SUM(amount),0)::numeric AS total FROM salary_requests WHERE employee_id=${employeeId} AND status IN ('pending','approved','paid') AND COALESCE(salary_month,date_trunc('month',requested_at)::date)=${month}::date`;
  return Number(r[0]?.total||0);
 }
+const autoPaymentRef=(row)=>{const ym=String(row.salary_month||row.requested_at||'').slice(0,7).replace('-','')||'000000';return `SALPAY-${ym}-${String(row.id).padStart(6,'0')}`};
 export default async function handler(req,res){
  try{
   const auth=await requireUser(req,res);if(!auth)return;const{sql,user}=auth;await ensureEntryNumbers(sql);await ensureSalaryProfile(sql);
@@ -59,9 +60,10 @@ export default async function handler(req,res){
    }
    if(action==='pay'){
     if(cur.status!=='approved')return res.status(409).json({error:'Approve request before payment'});
-    const rows=await sql`UPDATE salary_requests SET status='paid',paid_at=now(),payment_method=${cleanText(b.payment_method)||'Cash'},payment_reference=${cleanText(b.payment_reference)} WHERE id=${rid} AND status='approved' RETURNING *`;
+    const ref=cleanText(b.payment_reference)||autoPaymentRef(cur);
+    const rows=await sql`UPDATE salary_requests SET status='paid',paid_at=now(),payment_method=${cleanText(b.payment_method)||'Cash'},payment_reference=${ref} WHERE id=${rid} AND status='approved' RETURNING *`;
     const record=(await attachEntryNumbers(sql,'salary_requests',rows))[0]||null;
-    return res.status(200).json({record});
+    return res.status(200).json({record,payment_reference:record?.payment_reference||ref});
    }
    return res.status(400).json({error:'Valid action required'});
   }
