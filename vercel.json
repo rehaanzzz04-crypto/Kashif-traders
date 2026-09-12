@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/api/client-bill-whatsapp", "destination": "/api/payment-whatsapp?type=client_bill" }
+  ]
+}
