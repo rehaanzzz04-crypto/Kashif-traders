@@ -18,14 +18,14 @@ export async function generateProfessionalPartyStatementPdf(sql,id,type='client'
  const pays=isSupplier?await sql`SELECT * FROM supplier_payments WHERE supplier_id=${id} ORDER BY payment_date,id`:await sql`SELECT * FROM client_receipts WHERE client_id=${id} ORDER BY receipt_date,id`;
  const opening=Number(party.opening_balance||0),billTotal=bills.reduce((s,x)=>s+Number(x.amount||0),0),payTotal=pays.reduce((s,x)=>s+Number(x.amount||0),0),balance=opening+billTotal-payTotal,tx=buildTransactions({bills,pays,opening});
  const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
- const perPage=21,totalPages=Math.max(1,Math.ceil(tx.length/perPage)),widths=[70,52,142,77,77,82],headers=['Date','Type','Reference','Debit','Credit','Balance'];
+ const perPage=18,totalPages=Math.max(1,Math.ceil(tx.length/perPage)),widths=[70,52,142,77,77,82],headers=['Date','Type','Reference','Debit','Credit','Balance'];
  for(let pageIndex=0;pageIndex<totalPages;pageIndex++){
   const page=pdf.addPage([595,842]);drawHeader(page,font,bold,party,{opening,billTotal,payTotal,balance},isSupplier?'supplier':'client');
   const slice=tx.slice(pageIndex*perPage,(pageIndex+1)*perPage),x0=34,tableW=500;let y=610;
   page.drawRectangle({x:x0,y,width:tableW,height:25,color:green});let xx=x0;headers.forEach((h,i)=>{drawCell(page,h,xx,y,widths[i],bold,7.5,white,i>=3?'right':'left');xx+=widths[i]});y-=23;
   if(!slice.length){page.drawRectangle({x:x0,y,width:tableW,height:32,borderColor:line,borderWidth:.6});page.drawText('No transactions yet',{x:44,y:y+11,size:8,font,color:muted});y-=32}
   for(const t of slice){page.drawRectangle({x:x0,y,width:tableW,height:23,borderColor:line,borderWidth:.6});xx=x0;drawCell(page,dateLabel(t.date),xx,y,widths[0],font);xx+=widths[0];drawCell(page,t.type,xx,y,widths[1],font);xx+=widths[1];drawCell(page,t.ref||'-',xx,y,widths[2],font);xx+=widths[2];drawCell(page,t.debit?money(t.debit):'-',xx,y,widths[3],font,7,ink,'right');xx+=widths[3];drawCell(page,t.credit?money(t.credit):'-',xx,y,widths[4],font,7,ink,'right');xx+=widths[4];drawCell(page,money(t.balance),xx,y,widths[5],bold,7.1,green,'right');y-=23}
-  if(pageIndex===totalPages-1){page.drawRectangle({x:34,y:y-9,width:500,height:40,color:balanceFill});page.drawText('CURRENT OUTSTANDING BALANCE',{x:48,y:y+6,size:10,font:bold,color:green});const bal=money(balance),bw=bold.widthOfTextAtSize(bal,12);page.drawText(bal,{x:520-bw,y:y+4,size:12,font:bold,color:green})}
+  if(pageIndex===totalPages-1){const boxY=y-50;page.drawRectangle({x:34,y:boxY,width:500,height:40,color:balanceFill});page.drawText('CURRENT OUTSTANDING BALANCE',{x:48,y:boxY+14,size:10,font:bold,color:green});const bal=money(balance),bw=bold.widthOfTextAtSize(bal,12);page.drawText(bal,{x:520-bw,y:boxY+13,size:12,font:bold,color:green})}
   drawFooter(page,font,bold,pageIndex+1,totalPages);
  }
  const safe=clean(party.business_name).replace(/[^a-z0-9]+/gi,'-').replace(/^-|-$/g,'')||type;
