@@ -40,9 +40,15 @@ const documentSchema={
  required:fields,
  additionalProperties:false
 };
+function promptFor(kind){
+ const base=`Read this ${kind.replaceAll('_',' ')} carefully. Extract only facts visible on the document. Dates must be YYYY-MM-DD when visible. amount must contain digits only with optional decimal, no commas or currency symbols. For an invoice use invoice_number. Use empty string for unknown values. Never guess.`;
+ if(kind==='supplier_bank_payment')return `${base} This is a supplier payment/bank transfer slip. For party_name, prioritize the beneficiary, recipient, paid-to name, account title, or receiving account holder because that is the supplier. Do not use the sender, payer, remitter, or debited account holder as party_name. For bank, return the clearly visible bank name associated with the receiving/beneficiary account when identifiable; otherwise return the clearly branded bank name shown on the slip. For reference_number, prioritize transaction/reference/trace number; if no transaction reference is visible but an IBAN/account identifier is clearly shown, use that. Preserve the existing visible amount and payment date exactly according to the output rules.`;
+ if(kind==='client_bank_receipt')return `${base} This is a client receipt/bank transfer slip. For party_name, prioritize the payer, sender, remitter, or debited account holder because that is the client. For bank, return the clearly visible bank name. For reference_number, prioritize transaction/reference/trace number; if none is visible but an IBAN/account identifier is clearly shown, use that.`;
+ return `${base} For a bank transfer/receipt use reference_number and bank. party_name is the supplier/client name printed on the document.`;
+}
 export async function extractDocument(dataUrl,kind='business_document'){
  const part=inputPart(dataUrl),token=await gatewayToken();if(!token)throw new Error('OCR_AUTH_UNAVAILABLE');
- const prompt=`Read this ${kind.replaceAll('_',' ')} carefully. Extract only facts visible on the document. Dates must be YYYY-MM-DD when visible. amount must contain digits only with optional decimal, no commas or currency symbols. For a bank transfer/receipt use reference_number and bank. For an invoice use invoice_number. party_name is the supplier/client name printed on the document. Use empty string for unknown values. Never guess.`;
+ const prompt=promptFor(kind);
  const body={
   model:'openai/gpt-5-mini',
   input:[{role:'user',content:[{type:'input_text',text:prompt},part]}],
