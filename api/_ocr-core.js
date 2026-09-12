@@ -41,8 +41,8 @@ const documentSchema={
  additionalProperties:false
 };
 function promptFor(kind){
- const base=`Read this ${kind.replaceAll('_',' ')} carefully. Extract only facts visible on the document. Dates must be YYYY-MM-DD when visible. amount must contain digits only with optional decimal, no commas or currency symbols. For an invoice use invoice_number. Use empty string for unknown values. Never guess.`;
- if(kind==='client_invoice')return `${base} This is a client/customer sales bill. party_name is especially important: inspect the top heading, first handwritten line, customer/client label, shop/business name, stamp, or prominent name near the top of the bill and return the customer/client business name exactly as visibly written. A handwritten business name still counts as visible text even if spelling is imperfect. Do not use Kashif Traders, the seller name, product names, salesperson names, or totals as party_name. If a client/customer business name is visible anywhere, do not leave party_name empty. Preserve the visible invoice date and total amount according to the output rules. Do not infer due_date unless it is explicitly written on the bill.`;
+ const base=`Read this ${kind.replaceAll('_',' ')}. Extract only visible facts. Dates must be YYYY-MM-DD. amount must contain digits only with optional decimal, no commas or currency symbols. For an invoice use invoice_number. Use empty string when unknown. Never guess.`;
+ if(kind==='client_invoice')return `${base} Priority fields are date, amount, and party_name. party_name is the customer/client business name, including a handwritten name near the top of the bill. Do not use Kashif Traders, seller name, product names, salesperson names, or totals as party_name. Leave due_date empty unless explicitly written.`;
  if(kind==='supplier_bank_payment')return `${base} This is a supplier payment/bank transfer slip. For party_name, prioritize the beneficiary, recipient, paid-to name, account title, or receiving account holder because that is the supplier. Do not use the sender, payer, remitter, or debited account holder as party_name. For bank, return the clearly visible bank name associated with the receiving/beneficiary account when identifiable; otherwise return the clearly branded bank name shown on the slip. For reference_number, prioritize transaction/reference/trace number; if no transaction reference is visible but an IBAN/account identifier is clearly shown, use that. Preserve the existing visible amount and payment date exactly according to the output rules.`;
  if(kind==='client_bank_receipt')return `${base} This is a client receipt/bank transfer slip. For party_name, prioritize the payer, sender, remitter, or debited account holder because that is the client. For bank, return the clearly visible bank name. For reference_number, prioritize transaction/reference/trace number; if none is visible but an IBAN/account identifier is clearly shown, use that.`;
  return `${base} For a bank transfer/receipt use reference_number and bank. party_name is the supplier/client name printed on the document.`;
@@ -54,7 +54,7 @@ export async function extractDocument(dataUrl,kind='business_document'){
   model:'openai/gpt-5-mini',
   input:[{role:'user',content:[{type:'input_text',text:prompt},part]}],
   reasoning:{effort:'low'},
-  max_output_tokens:1200,
+  max_output_tokens:700,
   text:{format:{type:'json_schema',name:'document_fields',strict:true,schema:documentSchema}}
  };
  const r=await fetch('https://ai-gateway.vercel.sh/v1/responses',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(body)});
