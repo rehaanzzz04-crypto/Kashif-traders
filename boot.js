@@ -11,7 +11,7 @@
     const dashboard=document.getElementById('dashboard'),module=document.getElementById('module');dashboard?.classList.add('hidden');module?.classList.add('hidden');
     const load=src=>new Promise((ok,bad)=>{const s=document.createElement('script');s.src=src;s.async=true;s.onload=ok;s.onerror=bad;document.body.appendChild(s);});
     const offline=()=>load('/offline-sync.js?v=20260911-offline3').catch(e=>console.error('Offline feature unavailable',e));
-    const extras=()=>load('/document-scan.js?v=20260911-scan3').catch(e=>console.error('Document scan feature unavailable',e));
+    const extras=()=>load('/document-scan.js?v=20260913-clientbill1').catch(e=>console.error('Document scan feature unavailable',e));
     const salaryExtras=()=>load('/salary-statement-enhance.js?v=20260912-pdf1').catch(e=>console.error('Salary statement enhancement unavailable',e));
     if(isAdmin&&access.has('dashboard')){await load('/admin-dashboard-fix.js?v=20260913-admin9');if(typeof window.KT_OPEN_ADMIN_DASHBOARD==='function')window.KT_OPEN_ADMIN_DASHBOARD();document.body.classList.add('auth-ready');offline();Promise.all(['/app.js?v=20260911-noautodash1','/inventory-ui.js?v=20260911-rbac3','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260912-polish2','/role-dashboard.js?v=20260911-rbac6'].map(load)).then(()=>{salaryExtras();extras()}).catch(console.error);return;}
     await offline();
