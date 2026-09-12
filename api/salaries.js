@@ -18,13 +18,13 @@ const autoPaymentRef=row=>{const ym=(monthKey(row.salary_month||row.requested_at
 export default async function handler(req,res){
  try{
   const auth=await requireUser(req,res);if(!auth)return;const{sql,user}=auth;await ensureEntryNumbers(sql);await ensureSalaryProfile(sql);
-  if(user.designation!=='admin'&&!(await canAccess(sql,user.designation,'salary-advances')))return res.status(403).json({error:'Access denied'});
   if(req.method==='GET'){
    const rows=user.designation==='admin'?await sql`SELECT * FROM salary_requests ORDER BY requested_at DESC,id DESC LIMIT 500`:await sql`SELECT * FROM salary_requests WHERE employee_id=${user.id} ORDER BY requested_at DESC,id DESC LIMIT 200`;
    const profiles=user.designation==='admin'?await sql`SELECT id,employee_code,full_name,designation,monthly_salary,salary_effective_from,salary_status FROM employees WHERE status='active' ORDER BY full_name`:await sql`SELECT id,employee_code,full_name,designation,monthly_salary,salary_effective_from,salary_status FROM employees WHERE id=${user.id}`;
    const numbered=[];for(const row of rows){const final=['approved','paid'].includes(row.status);numbered.push(...await attachEntryNumbers(sql,'salary_requests',[row],{assignMissing:final}))}
    return res.status(200).json({records:numbered,salary_profiles:profiles});
   }
+  if(user.designation!=='admin'&&!(await canAccess(sql,user.designation,'salary-advances')))return res.status(403).json({error:'Access denied'});
   if(req.method==='POST'){
    const b=bodyOf(req),type=cleanText(b.request_type),amount=amt(b.amount),reason=cleanText(b.reason);
    if(!['monthly_salary','salary_advance'].includes(type))return res.status(400).json({error:'Valid request type required'});
