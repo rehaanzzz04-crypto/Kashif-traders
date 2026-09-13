@@ -71,10 +71,10 @@
     let buttons=[],tones=[];
     if(['suppliers','supplier-payments','clients','client-sales','client-receipts'].includes(view)){
       buttons=[module.querySelector('#refreshBtn'),module.querySelector('#addBtn'),module.querySelector('#printBtn'),mainCommon];
-      tones=['gold','green','green','gold'];
+      tones=['gold','green','green','green'];
     }else if(view==='supplier-bills'){
       buttons=[module.querySelector('#refreshBtn'),module.querySelector('#addBtn'),module.querySelector('#printBtn'),supplierExcel,billItems];
-      tones=['gold','green','green','gold','gold'];
+      tones=['gold','green','green','green','green'];
     }else if(view==='warehouses'){
       buttons=[module.querySelector('#wAdd'),mainCommon];tones=['green','gold'];
     }else if(view==='stock-adjustment'){
