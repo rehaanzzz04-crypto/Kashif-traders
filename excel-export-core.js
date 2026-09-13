@@ -52,36 +52,11 @@ async function load(sql,key){
  throw Error('Unknown Excel export type');
 }
 
-function orderedKeys(rows){
- const set=new Set();for(const r of rows)for(const k of Object.keys(r||{}))set.add(k);
- const preferred=['entry_number','id','business_name','supplier_name','client_name','employee_code','employee_name','full_name','invoice_number','reference_number','grn_number','transfer_number','sku','product_name','warehouse_name','from_warehouse','to_warehouse'];
- return[...preferred.filter(k=>set.has(k)),...[...set].filter(k=>!preferred.includes(k))];
-}
-
-function addSheet(wb,name,title,rows){
- const cleanRows=normalizeRows(rows),keys=orderedKeys(cleanRows),lastCol=Math.max(1,keys.length),ws=wb.addWorksheet(String(name).slice(0,31),{views:[{state:'frozen',ySplit:4}]});
- ws.mergeCells(1,1,1,lastCol);const head=ws.getCell(1,1);head.value=`KASHIF TRADERS — ${title.toUpperCase()}`;head.font={bold:true,size:16,color:{argb:'FFFFFFFF'}};head.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF173F35'}};head.alignment={vertical:'middle',horizontal:'left'};ws.getRow(1).height=28;
- ws.mergeCells(2,1,2,lastCol);ws.getCell(2,1).value='Final ERP records';ws.getCell(2,1).font={italic:true,color:{argb:'FF666666'}};
- if(!keys.length){ws.getCell('A4').value='No records';return ws;}
- ws.getRow(4).values=keys.map(titleCase);ws.getRow(4).font={bold:true,color:{argb:'FFFFFFFF'}};ws.getRow(4).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF2F6657'}};ws.getRow(4).alignment={vertical:'middle',horizontal:'center',wrapText:true};ws.getRow(4).height=30;ws.autoFilter={from:{row:4,column:1},to:{row:4,column:lastCol}};
- for(const r of cleanRows){const row=ws.addRow(keys.map(k=>r[k]??''));row.alignment={vertical:'top'};keys.forEach((k,i)=>{const c=row.getCell(i+1);if(dateKey(k)&&c.value instanceof Date)c.numFmt=/_at$|last_login_at|created_at|updated_at|reviewed_at|paid_at|requested_at/i.test(k)?'dd-mmm-yyyy hh:mm':'dd-mmm-yyyy';else if(moneyKey(k)&&typeof c.value==='number')c.numFmt='#,##0.00';else if(qtyKey(k)&&typeof c.value==='number')c.numFmt='#,##0.###';if(linkKey(k)&&text(r[k])){c.value={text:'Open Link',hyperlink:text(r[k])};c.font={color:{argb:'FF0563C1'},underline:true};}if(/notes|remarks|address|reason|description|review_note/i.test(k))c.alignment={vertical:'top',wrapText:true};});}
- keys.forEach((k,i)=>{let width=Math.max(12,Math.min(34,titleCase(k).length+4));if(/name|address|notes|remarks|reason|description/i.test(k))width=28;if(linkKey(k))width=18;ws.getColumn(i+1).width=width;});
- ws.eachRow((row,n)=>{if(n>=5)row.eachCell(cell=>{cell.border={bottom:{style:'hair',color:{argb:'FFD9D9D9'}}};});});
- return ws;
-}
+function orderedKeys(rows){const set=new Set();for(const r of rows)for(const k of Object.keys(r||{}))set.add(k);const preferred=['entry_number','id','business_name','supplier_name','client_name','employee_code','employee_name','full_name','invoice_number','reference_number','grn_number','transfer_number','sku','product_name','warehouse_name','from_warehouse','to_warehouse'];return[...preferred.filter(k=>set.has(k)),...[...set].filter(k=>!preferred.includes(k))];}
+function addSheet(wb,name,title,rows){const cleanRows=normalizeRows(rows),keys=orderedKeys(cleanRows),lastCol=Math.max(1,keys.length),ws=wb.addWorksheet(String(name).slice(0,31),{views:[{state:'frozen',ySplit:4}]});ws.mergeCells(1,1,1,lastCol);const head=ws.getCell(1,1);head.value=`KASHIF TRADERS — ${title.toUpperCase()}`;head.font={bold:true,size:16,color:{argb:'FFFFFFFF'}};head.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF173F35'}};head.alignment={vertical:'middle',horizontal:'left'};ws.getRow(1).height=28;ws.mergeCells(2,1,2,lastCol);ws.getCell(2,1).value='Final ERP records';ws.getCell(2,1).font={italic:true,color:{argb:'FF666666'}};if(!keys.length){ws.getCell('A4').value='No records';return ws}ws.getRow(4).values=keys.map(titleCase);ws.getRow(4).font={bold:true,color:{argb:'FFFFFFFF'}};ws.getRow(4).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF2F6657'}};ws.getRow(4).alignment={vertical:'middle',horizontal:'center',wrapText:true};ws.getRow(4).height=30;ws.autoFilter={from:{row:4,column:1},to:{row:4,column:lastCol}};for(const r of cleanRows){const row=ws.addRow(keys.map(k=>r[k]??''));row.alignment={vertical:'top'};keys.forEach((k,i)=>{const c=row.getCell(i+1);if(dateKey(k)&&c.value instanceof Date)c.numFmt=/_at$|last_login_at|created_at|updated_at|reviewed_at|paid_at|requested_at/i.test(k)?'dd-mmm-yyyy hh:mm':'dd-mmm-yyyy';else if(moneyKey(k)&&typeof c.value==='number')c.numFmt='#,##0.00';else if(qtyKey(k)&&typeof c.value==='number')c.numFmt='#,##0.###';if(linkKey(k)&&text(r[k])){c.value={text:'Open Link',hyperlink:text(r[k])};c.font={color:{argb:'FF0563C1'},underline:true}}if(/notes|remarks|address|reason|description|review_note/i.test(k))c.alignment={vertical:'top',wrapText:true}})}keys.forEach((k,i)=>{let width=Math.max(12,Math.min(34,titleCase(k).length+4));if(/name|address|notes|remarks|reason|description/i.test(k))width=28;if(linkKey(k))width=18;ws.getColumn(i+1).width=width});ws.eachRow((row,n)=>{if(n>=5)row.eachCell(cell=>{cell.border={bottom:{style:'hair',color:{argb:'FFD9D9D9'}}}})});return ws;}
 
 export async function generateExcelExport(sql,key){
- const meta=META[key];if(!meta)throw Error('Unknown Excel export type');
- const data=await load(sql,key);
- data.main=await numberRows(sql,meta.entry,data.main||[]);
- if(key==='salary_requests')data.main=await numberRows(sql,'salary_requests',data.main||[]);
- if(key==='supplier_bill_items')data.main=await numberRows(sql,'supplier_invoice_items',data.main||[]);
- const wb=new ExcelJS.Workbook();wb.creator='Kashif Traders ERP';wb.company='Kashif Traders';wb.created=new Date();
- addSheet(wb,meta.title,meta.title,data.main||[]);
- if(key==='goods_receiving'&&data.items)addSheet(wb,'Goods Receipt Items','Goods Receipt Items',data.items);
- if(key==='stock_transfers'&&data.items)addSheet(wb,'Transfer Items','Stock Transfer Items',data.items);
- const buffer=Buffer.from(await wb.xlsx.writeBuffer()),stamp=new Date().toISOString().slice(0,10);
- return{buffer,filename:`Kashif-Traders-${safeName(meta.file)}-${stamp}.xlsx`,count:(data.main||[]).length};
+ if(key==='complete_backup'){const {generateCompleteExcelBackup}=await import('./excel-backup-core.js');return generateCompleteExcelBackup(sql)}
+ const meta=META[key];if(!meta)throw Error('Unknown Excel export type');const data=await load(sql,key);data.main=await numberRows(sql,meta.entry,data.main||[]);if(key==='salary_requests')data.main=await numberRows(sql,'salary_requests',data.main||[]);if(key==='supplier_bill_items')data.main=await numberRows(sql,'supplier_invoice_items',data.main||[]);const wb=new ExcelJS.Workbook();wb.creator='Kashif Traders ERP';wb.company='Kashif Traders';wb.created=new Date();addSheet(wb,meta.title,meta.title,data.main||[]);if(key==='goods_receiving'&&data.items)addSheet(wb,'Goods Receipt Items','Goods Receipt Items',data.items);if(key==='stock_transfers'&&data.items)addSheet(wb,'Transfer Items','Stock Transfer Items',data.items);const buffer=Buffer.from(await wb.xlsx.writeBuffer()),stamp=new Date().toISOString().slice(0,10);return{buffer,filename:`Kashif-Traders-${safeName(meta.file)}-${stamp}.xlsx`,count:(data.main||[]).length};
 }
-
-export const excelExportTypes=Object.freeze(Object.keys(META));
+export const excelExportTypes=Object.freeze([...Object.keys(META),'complete_backup']);
