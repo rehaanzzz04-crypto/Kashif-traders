@@ -32,9 +32,10 @@
     const active=q('#nav [data-view="employees"].active');if(!active)return;
     const module=q('#module'),head=module?.querySelector('.modulehead');if(!head)return;
     const b=module.querySelector('[data-common-excel="employees"]');if(!b)return;
-    let slot=head.querySelector('.employee-excel-slot');
-    if(!slot){const left=head.firstElementChild;if(!left)return;slot=document.createElement('div');slot.className='employee-excel-slot';left.appendChild(slot);}
-    if(b.parentElement!==slot)slot.appendChild(b);
+    const actions=[...head.children].find(el=>el!==head.firstElementChild&&(el.querySelector?.('#approvalBtn')||el.querySelector?.('#accessBtn')||el.querySelector?.('#empAdd')));
+    if(!actions)return;
+    actions.classList.add('employee-head-actions');
+    if(b.parentElement!==actions)actions.appendChild(b);
   }
 
   const observer=new MutationObserver(()=>{enhanceSettings();setTimeout(moveEmployeeExcel,0);});
