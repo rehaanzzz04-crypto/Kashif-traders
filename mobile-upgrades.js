@@ -51,6 +51,7 @@
     if(b.parentElement!==actions)actions.appendChild(b);
   }
 
+  const noPrintViews=new Set(['suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts']);
   const managedActionViews=new Set(['suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','inventory-ledger','warehouses','stock-adjustment','stock-transfer']);
   function tone(button,name){
     if(!button)return;
@@ -62,6 +63,7 @@
     const active=q('#nav [data-view].active'),view=active?.dataset.view||'';
     if(!managedActionViews.has(view))return;
     const module=q('#module'),head=module?.querySelector('.modulehead');if(!module||!head)return;
+    if(noPrintViews.has(view))module.querySelector('#printBtn')?.remove();
     const common=[...module.querySelectorAll('[data-common-excel]')];
     const mainCommon=common.find(b=>b.dataset.commonExcel!=='supplier_bill_items');
     const billItems=common.find(b=>b.dataset.commonExcel==='supplier_bill_items');
