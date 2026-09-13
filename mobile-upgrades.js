@@ -37,12 +37,6 @@
     if(b.parentElement!==slot)slot.appendChild(b);
   }
 
-  let startY=0,pulling=false,armed=false;
-  const indicator=document.createElement('div');indicator.className='kt-pull-refresh';indicator.textContent='Pull down to refresh';document.body.appendChild(indicator);
-  document.addEventListener('touchstart',e=>{if(window.scrollY>2||e.touches.length!==1)return;startY=e.touches[0].clientY;pulling=true;armed=false;},{passive:true});
-  document.addEventListener('touchmove',e=>{if(!pulling)return;const d=e.touches[0].clientY-startY;if(d<=10){indicator.classList.remove('show','ready');return;}indicator.classList.add('show');armed=d>=72;indicator.classList.toggle('ready',armed);indicator.textContent=armed?'Release to refresh':'Pull down to refresh';},{passive:true});
-  document.addEventListener('touchend',()=>{if(!pulling)return;pulling=false;if(armed){indicator.textContent='Refreshing…';setTimeout(()=>location.reload(),120);}else indicator.classList.remove('show','ready');armed=false;},{passive:true});
-
   const observer=new MutationObserver(()=>{enhanceSettings();setTimeout(moveEmployeeExcel,0);});
   const module=q('#module');if(module)observer.observe(module,{childList:true,subtree:true});
   q('#nav')?.addEventListener('click',()=>setTimeout(()=>{enhanceSettings();moveEmployeeExcel();},40));
