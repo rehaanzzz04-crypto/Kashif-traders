@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { excelAttachmentLink } from './attachment-links.js';
 
 const asDate=v=>{if(!v)return null;const d=new Date(v);return Number.isNaN(d.getTime())?null:d};
 const text=v=>v===undefined||v===null?'':String(v);
@@ -29,7 +30,7 @@ export async function generateSupplierBillsExcel(sql,{from=null,to=null}={}){
   ws.getCell('A2').value=`Final ERP records${from||to?` | Date range: ${from||'Beginning'} to ${to||'Latest'}`:''}`;
   ws.getCell('A2').font={italic:true,color:{argb:'FF666666'}};
 
-  const headers=['ERP Entry No.','Database Record ID','Supplier','Supplier Invoice No.','Invoice Date','Due Date','Bill Amount','Payment Status','Notes','Original Bill Image URL','Created At','Updated At'];
+  const headers=['ERP Entry No.','Database Record ID','Supplier','Supplier Invoice No.','Invoice Date','Due Date','Bill Amount','Payment Status','Notes','Bill Image','Created At','Updated At'];
   ws.getRow(4).values=headers;
   ws.getRow(4).font={bold:true,color:{argb:'FFFFFFFF'}};
   ws.getRow(4).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF2F6657'}};
@@ -41,7 +42,7 @@ export async function generateSupplierBillsExcel(sql,{from=null,to=null}={}){
   for(const r of rows){
     const amount=Number(r.amount||0);totalAmount+=Number.isFinite(amount)?amount:0;
     const row=ws.addRow([
-      text(r.entry_number)||text(r.invoice_number),r.id,text(r.business_name),text(r.invoice_number),asDate(r.invoice_date),asDate(r.due_date),amount,text(r.status)||'unpaid',text(r.notes),text(r.attachment_url),asDate(r.created_at),asDate(r.updated_at)
+      text(r.entry_number)||text(r.invoice_number),r.id,text(r.business_name),text(r.invoice_number),asDate(r.invoice_date),asDate(r.due_date),amount,text(r.status)||'unpaid',text(r.notes),'',asDate(r.created_at),asDate(r.updated_at)
     ]);
     row.alignment={vertical:'top'};
     row.getCell(5).numFmt='dd-mmm-yyyy';
@@ -50,7 +51,8 @@ export async function generateSupplierBillsExcel(sql,{from=null,to=null}={}){
     row.getCell(9).alignment={vertical:'top',wrapText:true};
     row.getCell(11).numFmt='dd-mmm-yyyy hh:mm';
     row.getCell(12).numFmt='dd-mmm-yyyy hh:mm';
-    if(r.attachment_url){row.getCell(10).value={text:'Open Bill Image',hyperlink:text(r.attachment_url)};row.getCell(10).font={color:{argb:'FF0563C1'},underline:true};}
+    const href=excelAttachmentLink('supplier_invoices',r.id,r.attachment_url);
+    if(href){row.getCell(10).value={text:'View Image',hyperlink:href};row.getCell(10).font={color:{argb:'FF0563C1'},underline:true};}
   }
 
   const totalRow=ws.addRow([]);
@@ -61,7 +63,7 @@ export async function generateSupplierBillsExcel(sql,{from=null,to=null}={}){
   totalRow.getCell(7).font={bold:true};
   totalRow.getCell(6).fill=totalRow.getCell(7).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF3E6B3'}};
 
-  ws.columns=[18,18,30,22,16,16,18,16,34,22,21,21].map(width=>({width}));
+  ws.columns=[18,18,30,22,16,16,18,16,34,18,21,21].map(width=>({width}));
   ws.eachRow((row,n)=>{if(n>=5)row.eachCell(cell=>{cell.border={bottom:{style:'hair',color:{argb:'FFD9D9D9'}}};});});
 
   const buffer=Buffer.from(await wb.xlsx.writeBuffer());
