@@ -25,17 +25,17 @@ jobs:
         working-directory: android-app
         run: gradle assembleDebug --no-daemon
       - name: Rename APK
-        run: cp android-app/app/build/outputs/apk/debug/app-debug.apk Kashif-Traders-ERP-v1.0.1.apk
+        run: cp android-app/app/build/outputs/apk/debug/app-debug.apk Kashif-Traders-ERP-v1.0.2.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: Kashif-Traders-ERP-v1.0.1
-          path: Kashif-Traders-ERP-v1.0.1.apk
+          name: Kashif-Traders-ERP-v1.0.2
+          path: Kashif-Traders-ERP-v1.0.2.apk
       - name: Publish permanent APK release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.0.1 >/dev/null 2>&1; then
-            gh release upload v1.0.1 Kashif-Traders-ERP-v1.0.1.apk --clobber
+          if gh release view v1.0.2 >/dev/null 2>&1; then
+            gh release upload v1.0.2 Kashif-Traders-ERP-v1.0.2.apk --clobber
           else
-            gh release create v1.0.1 Kashif-Traders-ERP-v1.0.1.apk --title "Kashif Traders ERP v1.0.1" --notes "Official Android APK for Kashif Traders ERP. The app loads the live production ERP, so web UI and business logic updates continue to appear without reinstalling unless native Android code changes."
+            gh release create v1.0.2 Kashif-Traders-ERP-v1.0.2.apk --title "Kashif Traders ERP v1.0.2" --notes "Official Android APK for Kashif Traders ERP. Uses the permanent production URL and includes the latest final ERP release."
           fi
