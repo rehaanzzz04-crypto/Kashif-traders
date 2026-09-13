@@ -13,9 +13,39 @@
     const offline=()=>load('/offline-sync.js?v=20260911-offline3').catch(e=>console.error('Offline feature unavailable',e));
     const extras=()=>Promise.all([load('/document-scan.js?v=20260913-clientbill1'),load('/supplier-bill-pdf-ui.js?v=20260913-supplierpdf1'),load('/supplier-payment-pdf-ui.js?v=20260913-supplierpaymentpdf1')]).catch(e=>console.error('Document/PDF feature unavailable',e));
     const salaryExtras=()=>load('/salary-statement-enhance.js?v=20260912-pdf1').catch(e=>console.error('Salary statement enhancement unavailable',e));
-    if(isAdmin&&access.has('dashboard')){await load('/admin-dashboard-fix.js?v=20260913-admin9');if(typeof window.KT_OPEN_ADMIN_DASHBOARD==='function')window.KT_OPEN_ADMIN_DASHBOARD();document.body.classList.add('auth-ready');offline();Promise.all(['/app.js?v=20260913-profdates1','/inventory-ui.js?v=20260911-rbac3','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260912-polish2','/role-dashboard.js?v=20260911-rbac6'].map(load)).then(()=>{salaryExtras();extras()}).catch(console.error);return;}
+    const installExcelExports=()=>{
+      if(!isAdmin)return;
+      const map={
+        suppliers:'suppliers',
+        'supplier-payments':'supplier_payments',
+        clients:'clients',
+        'client-sales':'client_invoices',
+        'client-receipts':'client_receipts',
+        products:'products',
+        'goods-receiving':'goods_receiving',
+        'inventory-ledger':'inventory_ledger',
+        warehouses:'warehouses',
+        'warehouse-stock':'warehouse_stock',
+        'stock-transfer':'stock_transfers',
+        'stock-adjustment':'stock_adjustments',
+        documents:'documents',
+        employees:'employees',
+        'salary-advances':'salary_requests'
+      };
+      const download=async(type,button)=>{const old=button.textContent;button.disabled=true;button.textContent='Exporting…';try{const x=await fetch('/api/payment-whatsapp?type=excel_export&export_type='+encodeURIComponent(type),{cache:'no-store'});if(!x.ok){const e=await x.json().catch(()=>({}));throw new Error(e.error||'Excel export failed')}const blob=await x.blob(),dis=x.headers.get('content-disposition')||'',m=dis.match(/filename="?([^";]+)"?/i),name=m?.[1]||('Kashif-Traders-'+type+'-'+new Date().toISOString().slice(0,10)+'.xlsx'),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);if(typeof toast==='function')toast('Excel exported')}catch(e){if(typeof toast==='function')toast(e.message||'Excel export failed',true);else console.error(e)}finally{button.disabled=false;button.textContent=old}};
+      const addButton=(host,type,label,key)=>{if(!host||host.querySelector('[data-common-excel="'+key+'"]'))return;const b=document.createElement('button');b.className='btn light';b.dataset.commonExcel=key;b.textContent=label;b.addEventListener('click',()=>download(type,b));host.appendChild(b)};
+      const enhance=()=>{
+        const active=document.querySelector('#nav [data-view].active'),view=active?.dataset.view||'';
+        if(!view||view==='dashboard')return;
+        const host=document.querySelector('#module .toolbar')||document.querySelector('#module .modulehead')||document.querySelector('#module .actions');
+        const type=map[view];if(type)addButton(host,type,'Export Excel',type);
+        if(view==='supplier-bills')addButton(host,'supplier_bill_items','Export Bill Items','supplier_bill_items');
+      };
+      const ob=new MutationObserver(()=>enhance());if(module)ob.observe(module,{childList:true,subtree:true});document.getElementById('nav')?.addEventListener('click',()=>setTimeout(enhance,0));setTimeout(enhance,0);
+    };
+    if(isAdmin&&access.has('dashboard')){await load('/admin-dashboard-fix.js?v=20260913-admin9');if(typeof window.KT_OPEN_ADMIN_DASHBOARD==='function')window.KT_OPEN_ADMIN_DASHBOARD();document.body.classList.add('auth-ready');offline();Promise.all(['/app.js?v=20260913-profdates1','/inventory-ui.js?v=20260911-rbac3','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260912-polish2','/role-dashboard.js?v=20260911-rbac6'].map(load)).then(()=>{salaryExtras();extras();installExcelExports()}).catch(console.error);return;}
     await offline();
-    const core=['/app.js?v=20260913-profdates1','/inventory-ui.js?v=20260911-rbac3','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260912-polish2','/role-dashboard.js?v=20260911-rbac6'];await Promise.all(core.map(load));salaryExtras();extras();
+    const core=['/app.js?v=20260913-profdates1','/inventory-ui.js?v=20260911-rbac3','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260912-polish2','/role-dashboard.js?v=20260911-rbac6'];await Promise.all(core.map(load));salaryExtras();extras();installExcelExports();
     const dash=document.querySelector('#nav [data-view="dashboard"]');
     if(!isAdmin&&dash){dashboard?.classList.add('hidden');module?.classList.add('hidden');dash.style.display='';dash.classList.add('active');document.body.classList.add('auth-ready');dash.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));return;}
     const first=[...document.querySelectorAll('#nav [data-view]')].find(b=>b.style.display!=='none');if(first)first.click();document.body.classList.add('auth-ready');
