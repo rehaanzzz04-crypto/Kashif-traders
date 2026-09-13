@@ -8,6 +8,7 @@
     "@neondatabase/serverless": "^1.0.1",
     "@vercel/blob": "^2.0.0",
     "@vercel/oidc": "latest",
+    "exceljs": "^4.4.0",
     "pdf-lib": "^1.17.1",
     "sharp": "^0.33.5"
   }
