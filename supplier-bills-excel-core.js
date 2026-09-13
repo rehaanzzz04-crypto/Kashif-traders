@@ -37,14 +37,16 @@ export async function generateSupplierBillsExcel(sql,{from=null,to=null}={}){
   ws.getRow(4).height=30;
   ws.autoFilter={from:'A4',to:'L4'};
 
+  let totalAmount=0;
   for(const r of rows){
+    const amount=Number(r.amount||0);totalAmount+=Number.isFinite(amount)?amount:0;
     const row=ws.addRow([
-      text(r.entry_number)||text(r.invoice_number),r.id,text(r.business_name),text(r.invoice_number),asDate(r.invoice_date),asDate(r.due_date),Number(r.amount||0),text(r.status)||'unpaid',text(r.notes),text(r.attachment_url),asDate(r.created_at),asDate(r.updated_at)
+      text(r.entry_number)||text(r.invoice_number),r.id,text(r.business_name),text(r.invoice_number),asDate(r.invoice_date),asDate(r.due_date),amount,text(r.status)||'unpaid',text(r.notes),text(r.attachment_url),asDate(r.created_at),asDate(r.updated_at)
     ]);
     row.alignment={vertical:'top'};
     row.getCell(5).numFmt='dd-mmm-yyyy';
     row.getCell(6).numFmt='dd-mmm-yyyy';
-    row.getCell(7).numFmt='"PKR" #,##0.00';
+    row.getCell(7).numFmt='#,##0.00';
     row.getCell(9).alignment={vertical:'top',wrapText:true};
     row.getCell(11).numFmt='dd-mmm-yyyy hh:mm';
     row.getCell(12).numFmt='dd-mmm-yyyy hh:mm';
@@ -54,8 +56,8 @@ export async function generateSupplierBillsExcel(sql,{from=null,to=null}={}){
   const totalRow=ws.addRow([]);
   totalRow.getCell(6).value='TOTAL BILL AMOUNT';
   totalRow.getCell(6).font={bold:true};
-  totalRow.getCell(7).value={formula:`SUM(G5:G${Math.max(5,totalRow.number-1)})`};
-  totalRow.getCell(7).numFmt='"PKR" #,##0.00';
+  totalRow.getCell(7).value=totalAmount;
+  totalRow.getCell(7).numFmt='#,##0.00';
   totalRow.getCell(7).font={bold:true};
   totalRow.getCell(6).fill=totalRow.getCell(7).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF3E6B3'}};
 
