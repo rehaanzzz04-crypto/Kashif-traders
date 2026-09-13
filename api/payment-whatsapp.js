@@ -2,6 +2,7 @@ import { requireUser,bodyOf } from './_auth.js';
 import { notifySupplierPayment } from './_whatsapp.js';
 import { notifyClientBill,generateClientBillPdf,generateClientPaymentPdf } from '../client-bill-whatsapp-core.js';
 import { generateProfessionalPartyStatementPdf } from '../party-statement-pdf.js';
+import { generateSupplierBillsExcel } from '../supplier-bills-excel-core.js';
 import { PDFDocument,StandardFonts,rgb } from 'pdf-lib';
 import sharp from 'sharp';
 const id=v=>{const n=Number(v);return Number.isInteger(n)&&n>0?n:null};
@@ -63,8 +64,17 @@ async function generateSupplierPaymentPdf(sql,recordId){
 export default async function handler(req,res){
  if(req.method!=='POST'&&req.method!=='GET')return res.status(405).json({error:'Method not allowed'});
  try{
-  const auth=await requireUser(req,res);if(!auth)return;const {sql,user}=auth,b=req.method==='POST'?bodyOf(req):{},recordId=id(b.id||b.record_id||req.query?.id);if(!recordId)return res.status(400).json({error:'Valid record id required'});
+  const auth=await requireUser(req,res);if(!auth)return;const {sql,user}=auth,b=req.method==='POST'?bodyOf(req):{};
   const type=String(b.type||req.query?.type||'');
+  if(type==='supplier_bills_excel'){
+   if(user.designation!=='admin')return res.status(403).json({error:'Admin access required'});
+   const from=clean(req.query?.from||b.from)||null,to=clean(req.query?.to||b.to)||null,doc=await generateSupplierBillsExcel(sql,{from,to});
+   res.setHeader('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+   res.setHeader('Content-Disposition',`attachment; filename="${doc.filename}"`);
+   res.setHeader('Cache-Control','no-store');
+   return res.status(200).send(doc.buffer);
+  }
+  const recordId=id(b.id||b.record_id||req.query?.id);if(!recordId)return res.status(400).json({error:'Valid record id required'});
   if(type==='client_bill_pdf'){const doc=await generateClientBillPdf(sql,recordId);res.setHeader('Content-Type','application/pdf');res.setHeader('Content-Disposition',`attachment; filename="${doc.filename}"`);res.setHeader('Cache-Control','no-store');return res.status(200).send(doc.buffer);}
   if(type==='client_payment_pdf'){const doc=await generateClientPaymentPdf(sql,recordId);res.setHeader('Content-Type','application/pdf');res.setHeader('Content-Disposition',`attachment; filename="${doc.filename}"`);res.setHeader('Cache-Control','no-store');return res.status(200).send(doc.buffer);}
   if(type==='supplier_bill_pdf'){const doc=await generateSupplierBillPdf(sql,recordId);res.setHeader('Content-Type','application/pdf');res.setHeader('Content-Disposition',`attachment; filename="${doc.filename}"`);res.setHeader('Cache-Control','no-store');return res.status(200).send(doc.buffer);}
