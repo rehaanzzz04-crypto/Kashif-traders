@@ -1,6 +1,6 @@
 'use strict';
 (function(){
-  const VERSION='1.0.0';
+  const VERSION='1.0.1';
   const q=s=>document.querySelector(s);
   const notify=(m,b=false)=>typeof window.toast==='function'?window.toast(m,b):console[b?'error':'log'](m);
 
@@ -15,7 +15,7 @@
     const panel=document.createElement('div');panel.className='panel kt-app-updates';panel.dataset.ktAppUpdates='1';
     panel.innerHTML='<h2>App & Updates</h2><p class="kt-app-sub">Download or update the Kashif Traders mobile app.</p><div class="kt-app-list"><button class="kt-app-option" data-app-action="android"><span class="kt-app-icon">A</span><span><strong>Download Android App</strong><small>Get the latest APK version</small></span><span class="kt-app-arrow">›</span></button><button class="kt-app-option" data-app-action="ios"><span class="kt-app-icon">i</span><span><strong>Install iOS App (TestFlight)</strong><small>Join our TestFlight app</small></span><span class="kt-app-arrow">›</span></button><button class="kt-app-option" data-app-action="check"><span class="kt-app-icon">↻</span><span><strong>Check for App Update</strong><small>Current version: '+VERSION+'</small></span><span class="kt-app-arrow">›</span></button></div><div class="kt-update-note">App updates are separate from the existing Settings Excel backup. Existing backup/export controls are unchanged.</div>';
     module.appendChild(panel);
-    panel.querySelector('[data-app-action="android"]').onclick=()=>download(window.KT_ANDROID_APK_URL||'/kashif-traders.apk','Android app');
+    panel.querySelector('[data-app-action="android"]').onclick=()=>download(window.KT_ANDROID_APK_URL||'https://github.com/rehaanzzz04-crypto/Kashif-traders/releases/download/v1.0.1/Kashif-Traders-ERP-v1.0.1.apk','Android app');
     panel.querySelector('[data-app-action="ios"]').onclick=()=>download(window.KT_IOS_TESTFLIGHT_URL||'', 'iOS TestFlight');
     panel.querySelector('[data-app-action="check"]').onclick=()=>{notify('You are using Kashif Traders app version '+VERSION+'.');};
   }
