@@ -1,0 +1,21 @@
+/* Approved mobile/app upgrade fixes — 2026-09-13 */
+.topin{padding-top:calc(13px + env(safe-area-inset-top));padding-left:calc(18px + env(safe-area-inset-left));padding-right:calc(18px + env(safe-area-inset-right))}
+@media(max-width:900px){.nav{padding-top:calc(14px + env(safe-area-inset-top));padding-left:calc(12px + env(safe-area-inset-left))}}
+.employee-excel-slot{display:flex;justify-content:flex-end;margin-top:10px}
+.employee-excel-slot .btn{min-height:40px}
+.kt-app-updates{margin-top:14px}
+.kt-app-updates h2{margin-bottom:4px}
+.kt-app-updates .kt-app-sub{margin:0 0 12px;color:var(--muted);font-size:13px}
+.kt-app-list{display:grid;gap:8px}
+.kt-app-option{width:100%;display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:13px;background:#fff;color:var(--ink);text-align:left;cursor:pointer}
+.kt-app-option:hover{background:#fbf8f0}
+.kt-app-icon{width:42px;height:42px;display:grid;place-items:center;flex:0 0 42px;border-radius:12px;background:#edf5f1;color:var(--g);font-size:20px;font-weight:900}
+.kt-app-option strong{display:block;color:var(--ink)}
+.kt-app-option small{display:block;margin-top:2px;color:var(--muted)}
+.kt-app-arrow{margin-left:auto;color:var(--gold);font-size:22px}
+.kt-update-note{margin-top:10px;padding:10px 12px;border:1px solid #cfe3d9;border-radius:11px;background:#f2f8f5;color:#36594b;font-size:12px}
+.kt-pull-refresh{position:fixed;left:50%;top:calc(8px + env(safe-area-inset-top));z-index:200;transform:translate(-50%,-150%);opacity:0;transition:transform .16s ease,opacity .16s ease;background:#fff;color:var(--g);border:1px solid #d8d0c0;border-radius:999px;padding:8px 13px;box-shadow:0 8px 24px #0002;font-size:12px;font-weight:800;pointer-events:none}
+.kt-pull-refresh.show{transform:translate(-50%,0);opacity:1}
+.kt-pull-refresh.ready{background:#eef7f2;border-color:#bdd8ca}
+.kt-delete-note{margin:0 0 14px;color:var(--muted);line-height:1.45}
+@media(max-width:620px){.modulehead{align-items:flex-start}.employee-excel-slot{justify-content:flex-start}.employee-excel-slot .btn{min-height:38px;padding:8px 10px}.kt-app-option{padding:11px}.kt-app-icon{width:38px;height:38px;flex-basis:38px}.rowactions .empDelete{min-width:60px}}
