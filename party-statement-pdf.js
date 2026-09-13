@@ -18,7 +18,7 @@ export async function generateProfessionalPartyStatementPdf(sql,id,type='client'
  const pays=isSupplier?await sql`SELECT * FROM supplier_payments WHERE supplier_id=${id} ORDER BY payment_date,id`:await sql`SELECT * FROM client_receipts WHERE client_id=${id} ORDER BY receipt_date,id`;
  const opening=Number(party.opening_balance||0),billTotal=bills.reduce((s,x)=>s+Number(x.amount||0),0),payTotal=pays.reduce((s,x)=>s+Number(x.amount||0),0),balance=opening+billTotal-payTotal,tx=buildTransactions({bills,pays,opening});
  const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
- const perPage=18,totalPages=Math.max(1,Math.ceil(tx.length/perPage)),widths=[70,52,142,77,77,82],headers=['Date','Type','Reference','Debit','Credit','Balance'];
+ const perPage=18,totalPages=Math.max(1,Math.ceil(tx.length/perPage)),widths=[68,50,136,78,78,90],headers=['Date','Type','Reference','Debit','Credit','Balance'];
  for(let pageIndex=0;pageIndex<totalPages;pageIndex++){
   const page=pdf.addPage([595,842]);drawHeader(page,font,bold,party,{opening,billTotal,payTotal,balance},isSupplier?'supplier':'client');
   const slice=tx.slice(pageIndex*perPage,(pageIndex+1)*perPage),x0=34,tableW=500;let y=610;
