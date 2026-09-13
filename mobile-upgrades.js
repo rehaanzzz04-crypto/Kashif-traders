@@ -38,8 +38,50 @@
     if(b.parentElement!==actions)actions.appendChild(b);
   }
 
-  const observer=new MutationObserver(()=>{enhanceSettings();setTimeout(moveEmployeeExcel,0);});
+  const managedActionViews=new Set(['suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','inventory-ledger','warehouses','stock-adjustment','stock-transfer']);
+  function tone(button,name){
+    if(!button)return;
+    button.classList.add('kt-module-action-card');
+    button.classList.toggle('kt-action-gold',name==='gold');
+    button.classList.toggle('kt-action-green',name==='green');
+  }
+  function arrangeModuleActions(){
+    const active=q('#nav [data-view].active'),view=active?.dataset.view||'';
+    if(!managedActionViews.has(view))return;
+    const module=q('#module'),head=module?.querySelector('.modulehead');if(!module||!head)return;
+    const common=[...module.querySelectorAll('[data-common-excel]')];
+    const mainCommon=common.find(b=>b.dataset.commonExcel!=='supplier_bill_items');
+    const billItems=common.find(b=>b.dataset.commonExcel==='supplier_bill_items');
+    const supplierExcel=module.querySelector('[data-supplier-excel]');
+    let buttons=[],tones=[];
+    if(['suppliers','supplier-payments','clients','client-sales','client-receipts'].includes(view)){
+      buttons=[module.querySelector('#refreshBtn'),module.querySelector('#addBtn'),module.querySelector('#printBtn'),mainCommon];
+      tones=['gold','green','green','gold'];
+    }else if(view==='supplier-bills'){
+      buttons=[module.querySelector('#refreshBtn'),module.querySelector('#addBtn'),module.querySelector('#printBtn'),supplierExcel,billItems];
+      tones=['gold','green','green','gold','gold'];
+    }else if(view==='warehouses'){
+      buttons=[module.querySelector('#wAdd'),mainCommon];tones=['green','gold'];
+    }else if(view==='stock-adjustment'){
+      buttons=[module.querySelector('#adjAdd'),mainCommon];tones=['green','gold'];
+    }else if(view==='stock-transfer'){
+      buttons=[module.querySelector('#trAdd'),mainCommon];tones=['green','gold'];
+    }else if(view==='inventory-ledger'){
+      buttons=[mainCommon];tones=['gold'];
+    }
+    const pairs=buttons.map((b,i)=>({b,t:tones[i]})).filter(x=>x.b);
+    if(!pairs.length)return;
+    let grid=module.querySelector('.kt-module-action-grid');
+    if(!grid){grid=document.createElement('div');grid.className='kt-module-action-grid';head.insertAdjacentElement('afterend',grid);}
+    grid.className='kt-module-action-grid kt-action-count-'+pairs.length;
+    pairs.forEach(({b,t},i)=>{tone(b,t);b.classList.toggle('kt-action-wide',view==='supplier-bills'&&i===4);});
+    const ordered=pairs.map(x=>x.b),current=[...grid.children];
+    if(current.length!==ordered.length||ordered.some((b,i)=>current[i]!==b))ordered.forEach(b=>grid.appendChild(b));
+    const toolbar=module.querySelector('.toolbar');if(toolbar&&toolbar.querySelector('.searchbox'))toolbar.classList.add('kt-search-only-toolbar');
+  }
+
+  const observer=new MutationObserver(()=>{enhanceSettings();setTimeout(()=>{moveEmployeeExcel();arrangeModuleActions();},0);});
   const module=q('#module');if(module)observer.observe(module,{childList:true,subtree:true});
-  q('#nav')?.addEventListener('click',()=>setTimeout(()=>{enhanceSettings();moveEmployeeExcel();},40));
-  setTimeout(()=>{enhanceSettings();moveEmployeeExcel();},100);
+  q('#nav')?.addEventListener('click',()=>setTimeout(()=>{enhanceSettings();moveEmployeeExcel();arrangeModuleActions();},40));
+  setTimeout(()=>{enhanceSettings();moveEmployeeExcel();arrangeModuleActions();},100);
 })();
