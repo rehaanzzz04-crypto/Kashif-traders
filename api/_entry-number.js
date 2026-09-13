@@ -10,6 +10,8 @@ async function safe(sql,fn){try{await fn()}catch(e){if(!['42P01','42710'].includ
 
 export async function ensureEntryNumbers(sql){
  if(ready)return;
+ // Fast path for normal requests. The schema/triggers already exist in established databases.
+ try{await sql`SELECT 1 FROM erp_entry_numbers LIMIT 1`;ready=true;return}catch(e){if(e?.code!=='42P01')throw e}
  await sql`CREATE TABLE IF NOT EXISTS erp_entry_numbers(
   id BIGSERIAL PRIMARY KEY,
   resource_key TEXT NOT NULL,
@@ -87,11 +89,14 @@ export async function assignEntryNumber(sql,resource,recordId){
 export async function attachEntryNumbers(sql,resource,rows,{assignMissing=true}={}){
  if(!Array.isArray(rows)||!rows.length)return rows||[];
  await ensureEntryNumbers(sql);
+ // One lookup for the resource replaces one DB round-trip per displayed record.
+ const existing=await sql`SELECT record_id,entry_number FROM erp_entry_numbers WHERE resource_key=${resource} AND status='active'`;
+ const map=new Map(existing.map(x=>[Number(x.record_id),x.entry_number]));
  const out=[];
  for(const row of rows){
   if(!row?.id){out.push(row);continue;}
-  let code=(await sql`SELECT entry_number FROM erp_entry_numbers WHERE resource_key=${resource} AND record_id=${Number(row.id)} LIMIT 1`)[0]?.entry_number;
-  if(!code&&assignMissing)code=await assignEntryNumber(sql,resource,row.id);
+  const rid=Number(row.id);let code=row.entry_number||map.get(rid)||null;
+  if(!code&&assignMissing){code=await assignEntryNumber(sql,resource,rid);if(code)map.set(rid,code)}
   out.push({...row,entry_number:code||null});
  }
  return out;
