@@ -16,6 +16,19 @@
     m.querySelector('#ktIosInstallDone').onclick=()=>m.remove();
     m.onclick=e=>{if(e.target===m)m.remove();};
   }
+  function ensureAppRefresh(){
+    if(q('#ktAppRefresh'))return;
+    const top=q('.topin');if(!top)return;
+    if(!q('#ktAppRefreshStyle')){
+      const style=document.createElement('style');style.id='ktAppRefreshStyle';
+      style.textContent='.kt-app-refresh{flex:0 0 auto;margin-left:auto;width:38px;height:38px;display:grid;place-items:center;border:1px solid #e8d4a366;border-radius:11px;background:#0e3028;color:#f0dfb0;font-size:22px;font-weight:800;line-height:1;box-shadow:0 5px 14px #0002;cursor:pointer}.kt-app-refresh:active{transform:scale(.94)}.kt-app-refresh.is-refreshing{animation:ktRefreshSpin .65s linear infinite}@keyframes ktRefreshSpin{to{transform:rotate(360deg)}}.kt-app-refresh+.status{margin-left:0}@media(max-width:620px){.kt-app-refresh{width:38px;height:38px}}';
+      document.head.appendChild(style);
+    }
+    const button=document.createElement('button');button.id='ktAppRefresh';button.className='kt-app-refresh';button.type='button';button.setAttribute('aria-label','Refresh app');button.title='Refresh app';button.textContent='↻';
+    const status=q('#status');top.insertBefore(button,status||null);
+    button.addEventListener('click',()=>{button.classList.add('is-refreshing');button.disabled=true;setTimeout(()=>window.location.reload(),160);});
+  }
+
   function enhanceSettings(){
     const active=q('#nav [data-view="settings"].active');
     if(!active||q('[data-kt-app-updates]'))return;
@@ -80,8 +93,8 @@
     const toolbar=module.querySelector('.toolbar');if(toolbar&&toolbar.querySelector('.searchbox'))toolbar.classList.add('kt-search-only-toolbar');
   }
 
-  const observer=new MutationObserver(()=>{enhanceSettings();setTimeout(()=>{moveEmployeeExcel();arrangeModuleActions();},0);});
+  const observer=new MutationObserver(()=>{ensureAppRefresh();enhanceSettings();setTimeout(()=>{moveEmployeeExcel();arrangeModuleActions();},0);});
   const module=q('#module');if(module)observer.observe(module,{childList:true,subtree:true});
   q('#nav')?.addEventListener('click',()=>setTimeout(()=>{enhanceSettings();moveEmployeeExcel();arrangeModuleActions();},40));
-  setTimeout(()=>{enhanceSettings();moveEmployeeExcel();arrangeModuleActions();},100);
+  setTimeout(()=>{ensureAppRefresh();enhanceSettings();moveEmployeeExcel();arrangeModuleActions();},100);
 })();
