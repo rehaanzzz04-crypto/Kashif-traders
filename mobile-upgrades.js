@@ -1,6 +1,6 @@
 'use strict';
 (function(){
-  const VERSION='1.0.2';
+  const VERSION='1.0.2'; // Reports PDF share enabled
   const q=s=>document.querySelector(s);
   const notify=(m,b=false)=>typeof window.toast==='function'?window.toast(m,b):console[b?'error':'log'](m);
 
