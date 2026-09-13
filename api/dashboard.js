@@ -4,7 +4,11 @@ import { PDFDocument,StandardFonts,rgb } from 'pdf-lib';
 
 const money=n=>'PKR '+Number(n||0).toLocaleString('en-PK',{minimumFractionDigits:2,maximumFractionDigits:2});
 export async function reportPdf(d){
-  const pdf=await PDFDocument.create(),font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold),p=pdf.addPage([595,842]);
+  const pdf=await PDFDocument.create();
+  pdf.setTitle('Kashif Traders Business Report');
+  pdf.setAuthor('Kashif Traders');
+  pdf.setSubject('Reports & Analytics');
+  const font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold),p=pdf.addPage([595,842]);
   const green=rgb(.09,.25,.21),gold=rgb(.72,.57,.27),ink=rgb(.09,.13,.11),muted=rgb(.42,.48,.45),paper=rgb(.98,.97,.94),white=rgb(1,1,1);
   p.drawRectangle({x:0,y:748,width:595,height:94,color:green});
   p.drawText('KASHIF TRADERS',{x:34,y:798,size:22,font:bold,color:white});
