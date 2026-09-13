@@ -1,0 +1,30 @@
+// !$*UTF8*$!
+{
+ archiveVersion = 1;
+ classes = {};
+ objectVersion = 56;
+ objects = {
+  A1 /* KashifTradersApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KashifTradersApp.swift; sourceTree = "<group>"; };
+  A2 /* ERPWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ERPWebView.swift; sourceTree = "<group>"; };
+  A3 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+  A4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+  B1 /* KashifTradersApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1; };
+  B2 /* ERPWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2; };
+  B3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A3; };
+  G0 = {isa = PBXGroup; children = (G1, P1,); sourceTree = "<group>"; };
+  G1 = {isa = PBXGroup; path = KashifTraders; sourceTree = "<group>"; children = (A1,A2,A3,A4,); };
+  P1 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KashifTraders.app; sourceTree = BUILT_PRODUCTS_DIR; };
+  PH1 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (B1,B2,); runOnlyForDeploymentPostprocessing = 0; };
+  PH2 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (B3,); runOnlyForDeploymentPostprocessing = 0; };
+  PH3 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+  T1 = {isa = PBXNativeTarget; buildConfigurationList = CL2; buildPhases = (PH1,PH3,PH2,); buildRules = (); dependencies = (); name = KashifTraders; productName = KashifTraders; productReference = P1; productType = "com.apple.product-type.application"; };
+  PR = {isa = PBXProject; attributes = {LastSwiftUpdateCheck = 2600; LastUpgradeCheck = 2600; TargetAttributes = {T1 = {CreatedOnToolsVersion = 26.0;};};}; buildConfigurationList = CL1; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,); mainGroup = G0; productRefGroup = G0; projectDirPath = ""; projectRoot = ""; targets = (T1,); };
+  C1 = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 16.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;}; name = Debug; };
+  C2 = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 16.0; SDKROOT = iphoneos; SWIFT_VERSION = 5.0;}; name = Release; };
+  C3 = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = KashifTraders/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = com.kashiftraders.erp; PRODUCT_NAME = "Kashif Traders"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Debug; };
+  C4 = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = KashifTraders/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 16.0; MARKETING_VERSION = 1.0.0; PRODUCT_BUNDLE_IDENTIFIER = com.kashiftraders.erp; PRODUCT_NAME = "Kashif Traders"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = "1,2";}; name = Release; };
+  CL1 = {isa = XCConfigurationList; buildConfigurations = (C1,C2,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+  CL2 = {isa = XCConfigurationList; buildConfigurations = (C3,C4,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+ };
+ rootObject = PR;
+}

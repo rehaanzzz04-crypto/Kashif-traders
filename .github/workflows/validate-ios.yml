@@ -1,0 +1,16 @@
+name: Validate Kashif Traders iOS
+on:
+  push:
+    branches: [ 'ios/testflight' ]
+    paths: [ 'ios-app/**', '.github/workflows/validate-ios.yml' ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Validate project and compile without signing
+        working-directory: ios-app
+        run: xcodebuild -project KashifTraders.xcodeproj -target KashifTraders -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
