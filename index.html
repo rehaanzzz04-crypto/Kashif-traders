@@ -3,7 +3,7 @@
   const nav=document.getElementById('nav'),module=document.getElementById('module'),dashboard=document.getElementById('dashboard');
   if(!nav||!module)return;
   const loadingViews={'stock-transfer':['Stock Transfer','Move stock between warehouses'],'stock-adjustment':['Stock Adjustment','Increase or decrease warehouse stock with reason']};
-  nav.addEventListener('click',e=>{const b=e.target.closest('[data-view]'),view=b?.dataset.view;const meta=loadingViews[view];if(!meta)return;dashboard?.classList.add('hidden');module.classList.remove('hidden');module.innerHTML='<div class="modulehead"><div><h2>'+meta[0]+'</h2><p>'+meta[1]+'</p></div></div><div class="empty">Loading…</div>';},true);
+  nav.addEventListener('click',e=>{const b=e.target.closest('[data-view]'),view=b?.dataset.view;const meta=loadingViews[view];if(!meta)return;dashboard?.classList.add('hidden');module.classList.remove('hidden');module.innerHTML='<div class="kt-route-loading-head"><div><h2>'+meta[0]+'</h2><p>'+meta[1]+'</p></div></div><div class="empty">Loading…</div>';},true);
   const pdfReady=new Map();
   async function getSupplierPdf(id){const r=await fetch('/api/payment-whatsapp?type=supplier_bill_pdf&id='+encodeURIComponent(id),{cache:'no-store'});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Supplier bill PDF failed')}return r.blob()}
   function supplierPdfName(row){return ((row.invoice_number||('supplier-bill-'+row.id)).replace(/[^a-z0-9_-]+/gi,'-')||'supplier-bill')+'.pdf'}
