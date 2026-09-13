@@ -1,6 +1,6 @@
 'use strict';
 (function(){
-  const VERSION='1.0.1';
+  const VERSION='1.0.2';
   const q=s=>document.querySelector(s);
   const notify=(m,b=false)=>typeof window.toast==='function'?window.toast(m,b):console[b?'error':'log'](m);
 
@@ -23,7 +23,7 @@
     const panel=document.createElement('div');panel.className='panel kt-app-updates';panel.dataset.ktAppUpdates='1';
     panel.innerHTML='<h2>App & Updates</h2><p class="kt-app-sub">Install or update Kashif Traders on your phone.</p><div class="kt-app-list"><button class="kt-app-option" data-app-action="android"><span class="kt-app-icon">A</span><span><strong>Download Android App</strong><small>Get the latest APK version</small></span><span class="kt-app-arrow">›</span></button><button class="kt-app-option" data-app-action="ios"><span class="kt-app-icon">i</span><span><strong>Install on iPhone / iPad</strong><small>Safari → Share → Add to Home Screen</small></span><span class="kt-app-arrow">›</span></button><button class="kt-app-option" data-app-action="check"><span class="kt-app-icon">↻</span><span><strong>Check for App Update</strong><small>Current version: '+VERSION+'</small></span><span class="kt-app-arrow">›</span></button></div><div class="kt-update-note">App updates are separate from the existing Settings Excel backup. Existing backup/export controls are unchanged.</div>';
     module.appendChild(panel);
-    panel.querySelector('[data-app-action="android"]').onclick=()=>download(window.KT_ANDROID_APK_URL||'https://github.com/rehaanzzz04-crypto/Kashif-traders/releases/download/v1.0.1/Kashif-Traders-ERP-v1.0.1.apk','Android app');
+    panel.querySelector('[data-app-action="android"]').onclick=()=>download(window.KT_ANDROID_APK_URL||'https://github.com/rehaanzzz04-crypto/Kashif-traders/releases/download/v1.0.2/Kashif-Traders-ERP-v1.0.2.apk','Android app');
     panel.querySelector('[data-app-action="ios"]').onclick=showIosInstallHelp;
     panel.querySelector('[data-app-action="check"]').onclick=()=>{notify('You are using Kashif Traders app version '+VERSION+'.');};
   }
