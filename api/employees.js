@@ -12,9 +12,9 @@ async function ensureSalaryColumns(sql){
 export default async function handler(req,res){
   try{
     const auth=await requireUser(req,res,'employees'); if(!auth)return;
-    const {sql}=auth; await ensureSalaryColumns(sql);
+    const {sql,user}=auth; await ensureSalaryColumns(sql);
     if(req.method==='GET'){
-      const rows=await sql`SELECT id,employee_code,full_name,mobile_number,designation,status,last_login_at,created_at,updated_at,monthly_salary,salary_effective_from,salary_status FROM employees ORDER BY designation,employee_code`;
+      const rows=await sql`SELECT id,employee_code,full_name,mobile_number,designation,status,last_login_at,created_at,updated_at,monthly_salary,salary_effective_from,salary_status FROM employees WHERE status<>'deleted' ORDER BY designation,employee_code`;
       return res.status(200).json({records:rows});
     }
     if(req.method==='POST'){
@@ -39,10 +39,18 @@ export default async function handler(req,res){
       if(status&&!validStatus.has(status))return res.status(400).json({error:'Invalid status'});
       if(pin&& !/^\d{4,8}$/.test(pin))return res.status(400).json({error:'PIN must be 4 to 8 digits'});
       if(b.monthly_salary!==undefined&&b.monthly_salary!==''&&monthlySalary===null)return res.status(400).json({error:'Monthly salary must be zero or more'});
-      const rows=await sql`UPDATE employees SET full_name=COALESCE(${cleanText(b.full_name)},full_name),mobile_number=COALESCE(${cleanText(b.mobile_number)},mobile_number),designation=COALESCE(${role||null},designation),status=COALESCE(${status||null},status),monthly_salary=COALESCE(${monthlySalary},monthly_salary),salary_effective_from=COALESCE(${salaryEffective}::date,salary_effective_from),salary_status=COALESCE(${salaryStatus},salary_status),updated_at=now() WHERE id=${id} RETURNING id,employee_code,full_name,mobile_number,designation,status,last_login_at,created_at,updated_at,monthly_salary,salary_effective_from,salary_status`;
+      const rows=await sql`UPDATE employees SET full_name=COALESCE(${cleanText(b.full_name)},full_name),mobile_number=COALESCE(${cleanText(b.mobile_number)},mobile_number),designation=COALESCE(${role||null},designation),status=COALESCE(${status||null},status),monthly_salary=COALESCE(${monthlySalary},monthly_salary),salary_effective_from=COALESCE(${salaryEffective}::date,salary_effective_from),salary_status=COALESCE(${salaryStatus},salary_status),updated_at=now() WHERE id=${id} AND status<>'deleted' RETURNING id,employee_code,full_name,mobile_number,designation,status,last_login_at,created_at,updated_at,monthly_salary,salary_effective_from,salary_status`;
       if(!rows[0])return res.status(404).json({error:'Employee not found'});
       if(pin){const salt=newSalt(),pinHash=hashPin(pin,salt);await sql`UPDATE employees SET pin_salt=${salt},pin_hash=${pinHash},updated_at=now() WHERE id=${id}`;await sql`DELETE FROM employee_sessions WHERE employee_id=${id}`;}
       return res.status(200).json({record:rows[0]});
+    }
+    if(req.method==='DELETE'){
+      const id=Number(req.query?.id);if(!Number.isInteger(id)||id<1)return res.status(400).json({error:'Valid employee id required'});
+      if(Number(user.id)===id)return res.status(400).json({error:'You cannot delete your own signed-in employee ID'});
+      const rows=await sql`UPDATE employees SET status='deleted',salary_status='inactive',updated_at=now() WHERE id=${id} AND status<>'deleted' RETURNING id,employee_code,full_name`;
+      if(!rows[0])return res.status(404).json({error:'Employee not found'});
+      await sql`DELETE FROM employee_sessions WHERE employee_id=${id}`;
+      return res.status(200).json({record:rows[0],historical_records_preserved:true});
     }
     return res.status(405).json({error:'Method not allowed'});
   }catch(e){console.error('Employees API error',e);return res.status(500).json({error:e?.message||'Employee request failed'});}
