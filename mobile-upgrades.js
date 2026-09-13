@@ -52,7 +52,7 @@
   }
 
   const noPrintViews=new Set(['suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts']);
-  const managedActionViews=new Set(['suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','inventory-ledger','warehouses','stock-adjustment','stock-transfer']);
+  const managedActionViews=new Set(['suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','inventory-ledger','warehouses','warehouse-stock','stock-adjustment','stock-transfer']);
   function tone(button,name){
     if(!button)return;
     button.classList.add('kt-module-action-card');
@@ -81,8 +81,8 @@
       buttons=[module.querySelector('#adjAdd'),mainCommon];tones=['green','gold'];
     }else if(view==='stock-transfer'){
       buttons=[module.querySelector('#trAdd'),mainCommon];tones=['green','gold'];
-    }else if(view==='inventory-ledger'){
-      buttons=[mainCommon];tones=['gold'];
+    }else if(view==='inventory-ledger'||view==='warehouse-stock'){
+      buttons=[mainCommon];tones=['green'];
     }
     const pairs=buttons.map((b,i)=>({b,t:tones[i]})).filter(x=>x.b);
     if(!pairs.length)return;
