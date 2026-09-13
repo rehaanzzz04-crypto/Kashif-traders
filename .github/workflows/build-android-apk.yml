@@ -1,9 +1,14 @@
 name: Build Kashif Traders APK
+
 on:
   push:
     branches: [ 'android/official-apk' ]
     paths: [ 'android-app/**', '.github/workflows/build-android-apk.yml' ]
   workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,3 +30,12 @@ jobs:
         with:
           name: Kashif-Traders-ERP-v1.0.1
           path: Kashif-Traders-ERP-v1.0.1.apk
+      - name: Publish permanent APK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v1.0.1 >/dev/null 2>&1; then
+            gh release upload v1.0.1 Kashif-Traders-ERP-v1.0.1.apk --clobber
+          else
+            gh release create v1.0.1 Kashif-Traders-ERP-v1.0.1.apk --title "Kashif Traders ERP v1.0.1" --notes "Official Android APK for Kashif Traders ERP. The app loads the live production ERP, so web UI and business logic updates continue to appear without reinstalling unless native Android code changes."
+          fi
