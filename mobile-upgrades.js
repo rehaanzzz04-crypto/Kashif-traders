@@ -41,6 +41,23 @@
     panel.querySelector('[data-app-action="check"]').onclick=()=>{notify('You are using Kashif Traders app version '+VERSION+'.');};
   }
 
+  async function shareReportsPdf(button){
+    const old=button.textContent;button.disabled=true;button.textContent='Generating PDF…';
+    try{
+      const r=await fetch('/api/dashboard?format=pdf',{cache:'no-store'});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Report PDF failed');}
+      const blob=await r.blob(),file=new File([blob],'Kashif-Traders-Business-Report-'+new Date().toISOString().slice(0,10)+'.pdf',{type:'application/pdf'});
+      if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]})))await navigator.share({files:[file],title:'Kashif Traders Business Report'});
+      else{const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);notify('Report PDF downloaded');}
+    }catch(e){if(e?.name!=='AbortError')notify(e.message||'Report PDF failed',true);}
+    finally{button.disabled=false;button.textContent=old;}
+  }
+  function enhanceReports(){
+    if(!q('#nav [data-view="reports"].active'))return;
+    const old=q('#printReport');if(!old||old.dataset.ktReportPdf)return;
+    const button=old.cloneNode(true);button.dataset.ktReportPdf='1';button.textContent='Generate PDF & Share';old.replaceWith(button);
+    button.addEventListener('click',()=>shareReportsPdf(button));
+  }
+
   function moveEmployeeExcel(){
     const active=q('#nav [data-view="employees"].active');if(!active)return;
     const module=q('#module'),head=module?.querySelector('.modulehead');if(!head)return;
@@ -95,8 +112,8 @@
     const toolbar=module.querySelector('.toolbar');if(toolbar&&toolbar.querySelector('.searchbox'))toolbar.classList.add('kt-search-only-toolbar');
   }
 
-  const observer=new MutationObserver(()=>{ensureAppRefresh();enhanceSettings();setTimeout(()=>{moveEmployeeExcel();arrangeModuleActions();},0);});
+  const observer=new MutationObserver(()=>{ensureAppRefresh();enhanceSettings();enhanceReports();setTimeout(()=>{moveEmployeeExcel();arrangeModuleActions();},0);});
   const module=q('#module');if(module)observer.observe(module,{childList:true,subtree:true});
-  q('#nav')?.addEventListener('click',()=>setTimeout(()=>{enhanceSettings();moveEmployeeExcel();arrangeModuleActions();},40));
-  setTimeout(()=>{ensureAppRefresh();enhanceSettings();moveEmployeeExcel();arrangeModuleActions();},100);
+  q('#nav')?.addEventListener('click',()=>setTimeout(()=>{enhanceSettings();enhanceReports();moveEmployeeExcel();arrangeModuleActions();},40));
+  setTimeout(()=>{ensureAppRefresh();enhanceSettings();enhanceReports();moveEmployeeExcel();arrangeModuleActions();},100);
 })();
