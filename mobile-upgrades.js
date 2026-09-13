@@ -51,7 +51,8 @@
     if(b.parentElement!==actions)actions.appendChild(b);
   }
 
-  const managedActionViews=new Set(['suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','inventory-ledger','warehouses','stock-adjustment','stock-transfer']);
+  const noPrintViews=new Set(['suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts']);
+  const managedActionViews=new Set(['suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','inventory-ledger','warehouses','warehouse-stock','stock-adjustment','stock-transfer']);
   function tone(button,name){
     if(!button)return;
     button.classList.add('kt-module-action-card');
@@ -62,6 +63,7 @@
     const active=q('#nav [data-view].active'),view=active?.dataset.view||'';
     if(!managedActionViews.has(view))return;
     const module=q('#module'),head=module?.querySelector('.modulehead');if(!module||!head)return;
+    if(noPrintViews.has(view))module.querySelector('#printBtn')?.remove();
     const common=[...module.querySelectorAll('[data-common-excel]')];
     const mainCommon=common.find(b=>b.dataset.commonExcel!=='supplier_bill_items');
     const billItems=common.find(b=>b.dataset.commonExcel==='supplier_bill_items');
@@ -69,18 +71,18 @@
     let buttons=[],tones=[];
     if(['suppliers','supplier-payments','clients','client-sales','client-receipts'].includes(view)){
       buttons=[module.querySelector('#refreshBtn'),module.querySelector('#addBtn'),module.querySelector('#printBtn'),mainCommon];
-      tones=['gold','green','green','gold'];
+      tones=['gold','green','green','green'];
     }else if(view==='supplier-bills'){
       buttons=[module.querySelector('#refreshBtn'),module.querySelector('#addBtn'),module.querySelector('#printBtn'),supplierExcel,billItems];
-      tones=['gold','green','green','gold','gold'];
+      tones=['gold','green','green','green','green'];
     }else if(view==='warehouses'){
       buttons=[module.querySelector('#wAdd'),mainCommon];tones=['green','gold'];
     }else if(view==='stock-adjustment'){
       buttons=[module.querySelector('#adjAdd'),mainCommon];tones=['green','gold'];
     }else if(view==='stock-transfer'){
       buttons=[module.querySelector('#trAdd'),mainCommon];tones=['green','gold'];
-    }else if(view==='inventory-ledger'){
-      buttons=[mainCommon];tones=['gold'];
+    }else if(view==='inventory-ledger'||view==='warehouse-stock'){
+      buttons=[mainCommon];tones=['green'];
     }
     const pairs=buttons.map((b,i)=>({b,t:tones[i]})).filter(x=>x.b);
     if(!pairs.length)return;
