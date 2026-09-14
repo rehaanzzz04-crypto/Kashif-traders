@@ -133,13 +133,6 @@
   };
   $("cashierDiscount").oninput = total;
   $("cashierReceived").oninput = total;
-  $("cashierVoice").onclick = () =>
-    $("voiceModal").classList.remove("cs-hidden");
-  $("voiceClose").onclick = () => $("voiceModal").classList.add("cs-hidden");
-  $("voiceModal").onclick = (e) => {
-    if (e.target === $("voiceModal"))
-      $("voiceModal").classList.add("cs-hidden");
-  };
   async function load() {
     try {
       const r = await fetch("/api/data?resource=cash_sales", { cache: "no-store" });
