@@ -1,1 +1,26 @@
 .cashier-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:16px 0 10px}.cashier-head h1{margin:0;font:700 25px Georgia,serif}.cashier-head p{margin:5px 0 0;color:var(--cs-muted);font-size:12px}.cashier-head>div:last-child{color:var(--cs-muted);font-size:11px;font-weight:800}.cashier-layout{display:grid;grid-template-columns:minmax(310px,.7fr) minmax(350px,1.3fr);gap:14px}.cashier-search{display:flex;gap:8px;margin-bottom:10px}.cashier-search input{min-width:0;flex:1;border:1px solid var(--cs-line);border-radius:10px;padding:10px}.cashier-search button{border:0;border-radius:10px;background:var(--cs-green);color:#fff;padding:10px 13px;font-weight:800}.cashier-list{display:grid;gap:8px}.cashier-list button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--cs-line);border-radius:12px;background:#fff;color:var(--cs-ink);padding:13px;text-align:left;cursor:pointer}.cashier-list button.active{border-color:#b89246;background:#fff8e8}.cashier-list b,.cashier-list small{display:block}.cashier-list small{margin-top:4px;color:var(--cs-muted);font-size:10px}.cashier-list strong{color:var(--cs-green);white-space:nowrap}.cashier-items{display:grid;gap:0;margin-bottom:14px}.cashier-items div{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--cs-line);font-size:12px}.cashier-pay{margin:15px 0 10px}@media(max-width:760px){.cashier-layout{grid-template-columns:1fr}.cashier-head>div:last-child{display:none}}
+
+@media(max-width:620px){
+  .cashier-head{align-items:flex-start;margin:12px 2px 8px}
+  .cashier-head h1{font-size:22px}.cashier-head p{font-size:11px;line-height:1.4}
+  .cashier-layout{gap:10px}
+  .cashier-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;overflow:visible}
+  .cashier-tabs button{min-width:0;min-height:44px;padding:8px 5px;font-size:12px}
+  .cashier-search{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
+  .cashier-search input{min-height:46px;font-size:16px;width:100%}
+  .cashier-search button{min-height:46px;padding:9px 12px}
+  .cashier-list button{align-items:flex-start;flex-direction:column;padding:11px;min-height:70px}
+  .cashier-list button strong{align-self:flex-end;font-size:15px}
+  .cashier-list small{line-height:1.4}
+  .cashier-items div{grid-template-columns:minmax(0,1fr) auto!important;gap:8px;padding:11px 2px;line-height:1.4}
+  .cashier-items div span{min-width:0;overflow-wrap:anywhere}
+  .cashier-rate{grid-column:1/-1;width:100%;min-height:44px;font-size:16px}
+  .cashier-discount input,.cashier-pay select,#cashierReceived{min-height:46px;font-size:16px}
+  .cashier-change{min-height:48px;align-items:center}
+  .cashier-receipt-actions{grid-template-columns:1fr;gap:7px}
+  .cashier-receipt-actions button{min-height:46px}
+}
+@media(max-width:380px){
+  .cashier-search{grid-template-columns:1fr}.cashier-search button{width:100%}
+  .cashier-edit-tools{grid-template-columns:1fr}
+}
