@@ -67,6 +67,7 @@ const cleanOcrItems = (v) => {
 };
 const autoClientInvoiceSeed = () =>
   `AUTO-CINV-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+// OCR review schema is migrated lazily on first client bill request.
 async function ensureClientOcrAudit(sql) {
   await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_status TEXT`;
   await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_written_total NUMERIC(14,2)`;
