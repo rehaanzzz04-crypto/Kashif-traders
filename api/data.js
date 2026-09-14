@@ -2,6 +2,7 @@ import { neon } from "@neondatabase/serverless";
 import { getSessionUser, canAccess } from "./_auth.js";
 import { queueApproval } from "./approvals.js";
 import { ensureEntryNumbers, attachEntryNumbers } from "./_entry-number.js";
+import { ensurePaymentAllocationTables, allocateSupplierPayment, allocateClientReceipt } from "./_payment-allocation.js";
 
 const allowed = new Set([
   "suppliers",
@@ -67,6 +68,8 @@ async function cashSales(sql, req, user) {
   return { status: 405, data: { error: "Method not allowed" } };
 }
 async function list(sql, r, id) {
+  if (["supplier_invoices", "supplier_payments", "client_invoices", "client_receipts"].includes(r))
+    await ensurePaymentAllocationTables(sql);
   if (r === "suppliers")
     return id
       ? sql`SELECT * FROM suppliers WHERE id=${id}`
@@ -76,17 +79,13 @@ async function list(sql, r, id) {
       ? sql`SELECT * FROM clients WHERE id=${id}`
       : sql`SELECT * FROM clients ORDER BY business_name,id`;
   if (r === "supplier_invoices")
-    return id
-      ? sql`SELECT i.*,s.business_name FROM supplier_invoices i JOIN suppliers s ON s.id=i.supplier_id WHERE i.id=${id}`
-      : sql`SELECT i.*,s.business_name FROM supplier_invoices i JOIN suppliers s ON s.id=i.supplier_id ORDER BY i.invoice_date DESC,i.id DESC`;
+    return sql`SELECT i.*,s.business_name,COALESCE((SELECT SUM(p.amount) FROM supplier_payments p WHERE p.supplier_invoice_id=i.id),0)+COALESCE((SELECT SUM(a.amount) FROM supplier_payment_allocations a WHERE a.supplier_invoice_id=i.id),0) allocated_amount,GREATEST(i.amount-COALESCE((SELECT SUM(p.amount) FROM supplier_payments p WHERE p.supplier_invoice_id=i.id),0)-COALESCE((SELECT SUM(a.amount) FROM supplier_payment_allocations a WHERE a.supplier_invoice_id=i.id),0),0) outstanding FROM supplier_invoices i JOIN suppliers s ON s.id=i.supplier_id WHERE (${id}::bigint IS NULL OR i.id=${id}) ORDER BY i.invoice_date DESC,i.id DESC`;
   if (r === "supplier_payments")
     return id
       ? sql`SELECT p.*,s.business_name FROM supplier_payments p JOIN suppliers s ON s.id=p.supplier_id WHERE p.id=${id}`
       : sql`SELECT p.*,s.business_name FROM supplier_payments p JOIN suppliers s ON s.id=p.supplier_id ORDER BY p.payment_date DESC,p.id DESC`;
   if (r === "client_invoices")
-    return id
-      ? sql`SELECT i.*,c.business_name FROM client_invoices i JOIN clients c ON c.id=i.client_id WHERE i.id=${id}`
-      : sql`SELECT i.*,c.business_name FROM client_invoices i JOIN clients c ON c.id=i.client_id ORDER BY i.invoice_date DESC,i.id DESC`;
+    return sql`SELECT i.*,c.business_name,COALESCE((SELECT SUM(a.amount) FROM client_receipt_allocations a WHERE a.client_invoice_id=i.id),0) allocated_amount,GREATEST(i.amount-COALESCE((SELECT SUM(a.amount) FROM client_receipt_allocations a WHERE a.client_invoice_id=i.id),0),0) outstanding FROM client_invoices i JOIN clients c ON c.id=i.client_id WHERE (${id}::bigint IS NULL OR i.id=${id}) ORDER BY i.invoice_date DESC,i.id DESC`;
   if (r === "client_receipts")
     return id
       ? sql`SELECT x.*,c.business_name FROM client_receipts x JOIN clients c ON c.id=x.client_id WHERE x.id=${id}`
@@ -106,37 +105,22 @@ async function create(sql, r, b) {
     return sql`INSERT INTO supplier_invoices(supplier_id,invoice_number,invoice_date,due_date,amount,notes,attachment_url,status) VALUES(${asId(b.supplier_id)},${cleanText(b.invoice_number)},${cleanText(b.invoice_date)},${cleanText(b.due_date)},${cleanAmount(b.amount)},${cleanText(b.notes)},${cleanText(b.attachment_url)},${cleanText(b.status) ?? "unpaid"}) RETURNING *`;
   if (r === "supplier_payments") {
     const supplierId = asId(b.supplier_id),
-      invoiceId = asId(b.supplier_invoice_id),
       amount = cleanAmount(b.amount);
-    if (!invoiceId)
-      return sql`INSERT INTO supplier_payments(supplier_id,payment_date,amount,payment_method,bank,reference_number,notes,attachment_url) VALUES(${supplierId},${cleanText(b.payment_date)},${amount},${cleanText(b.payment_method)},${cleanText(b.bank)},${cleanText(b.reference_number)},${cleanText(b.notes)},${cleanText(b.attachment_url)}) RETURNING *`;
     if (!supplierId || !amount || amount <= 0)
-      throw Error("Supplier, invoice and valid amount are required");
-    const invoiceRows =
-        await sql`SELECT id,supplier_id,amount FROM supplier_invoices WHERE id=${invoiceId}`,
-      invoice = invoiceRows[0];
-    if (!invoice) throw Error("Supplier invoice not found");
-    if (Number(invoice.supplier_id) !== supplierId)
-      throw Error("Selected invoice does not belong to this supplier");
-    const paidRows =
-        await sql`SELECT COALESCE(SUM(amount),0)::numeric AS paid FROM supplier_payments WHERE supplier_invoice_id=${invoiceId}`,
-      alreadyPaid = Number(paidRows[0]?.paid || 0),
-      invoiceAmount = Number(invoice.amount || 0),
-      remaining = Math.max(0, invoiceAmount - alreadyPaid);
-    if (amount > remaining + 0.005)
-      throw Error("Payment exceeds invoice outstanding balance");
-    const rows =
-        await sql`INSERT INTO supplier_payments(supplier_id,supplier_invoice_id,payment_date,amount,payment_method,bank,reference_number,notes,attachment_url) VALUES(${supplierId},${invoiceId},${cleanText(b.payment_date)},${amount},${cleanText(b.payment_method)},${cleanText(b.bank)},${cleanText(b.reference_number)},${cleanText(b.notes)},${cleanText(b.attachment_url)}) RETURNING *`,
-      totalPaid = alreadyPaid + amount,
-      status =
-        Math.max(0, invoiceAmount - totalPaid) <= 0.005 ? "paid" : "partial";
-    await sql`UPDATE supplier_invoices SET status=${status},updated_at=now() WHERE id=${invoiceId}`;
+      throw Error("Supplier and valid amount are required");
+    const rows = await sql`INSERT INTO supplier_payments(supplier_id,payment_date,amount,payment_method,bank,reference_number,notes,attachment_url) VALUES(${supplierId},${cleanText(b.payment_date)},${amount},${cleanText(b.payment_method)},${cleanText(b.bank)},${cleanText(b.reference_number)},${cleanText(b.notes)},${cleanText(b.attachment_url)}) RETURNING *`;
+    await allocateSupplierPayment(sql, rows[0], { preferredInvoiceId: asId(b.supplier_invoice_id) });
     return rows;
   }
   if (r === "client_invoices")
     return sql`INSERT INTO client_invoices(client_id,invoice_number,invoice_date,due_date,amount,notes,attachment_url,status) VALUES(${asId(b.client_id)},${cleanText(b.invoice_number) || autoClientInvoiceSeed()},${cleanText(b.invoice_date)},${cleanText(b.due_date)},${cleanAmount(b.amount)},${cleanText(b.notes)},${cleanText(b.attachment_url)},${cleanText(b.status) ?? "unpaid"}) RETURNING *`;
-  if (r === "client_receipts")
-    return sql`INSERT INTO client_receipts(client_id,receipt_date,amount,payment_method,bank,reference_number,notes,attachment_url) VALUES(${asId(b.client_id)},${cleanText(b.receipt_date)},${cleanAmount(b.amount)},${cleanText(b.payment_method)},${cleanText(b.bank)},${cleanText(b.reference_number)},${cleanText(b.notes)},${cleanText(b.attachment_url)}) RETURNING *`;
+  if (r === "client_receipts") {
+    const clientId = asId(b.client_id), amount = cleanAmount(b.amount);
+    if (!clientId || !amount || amount <= 0) throw Error("Client and valid amount are required");
+    const rows = await sql`INSERT INTO client_receipts(client_id,receipt_date,amount,payment_method,bank,reference_number,notes,attachment_url) VALUES(${clientId},${cleanText(b.receipt_date)},${amount},${cleanText(b.payment_method)},${cleanText(b.bank)},${cleanText(b.reference_number)},${cleanText(b.notes)},${cleanText(b.attachment_url)}) RETURNING *`;
+    await allocateClientReceipt(sql, rows[0], { preferredInvoiceId: asId(b.client_invoice_id) });
+    return rows;
+  }
   if (r === "documents")
     return sql`INSERT INTO documents(entity_type,entity_id,document_type,file_url,file_name,mime_type) VALUES(${cleanText(b.entity_type)},${asId(b.entity_id)},${cleanText(b.document_type)},${cleanText(b.file_url)},${cleanText(b.file_name)},${cleanText(b.mime_type)}) RETURNING *`;
   return [];
