@@ -39,11 +39,11 @@ export default async function handler(req,res){
           +(SELECT COALESCE(SUM(amount),0) FROM supplier_invoices)
           -(SELECT COALESCE(SUM(amount),0) FROM supplier_payments) AS supplier_payable,
         (SELECT COALESCE(SUM(opening_balance),0) FROM clients)
-          +(SELECT COALESCE(SUM(amount),0) FROM client_invoices)
+          +(SELECT COALESCE(SUM(amount),0) FROM client_invoices WHERE COALESCE(status,'')<>'draft_review')
           -(SELECT COALESCE(SUM(amount),0) FROM client_receipts) AS client_receivable,
         (SELECT COALESCE(SUM(amount),0) FROM supplier_invoices) AS supplier_purchases,
         (SELECT COALESCE(SUM(amount),0) FROM supplier_payments) AS supplier_payments,
-        (SELECT COALESCE(SUM(amount),0) FROM client_invoices) AS client_sales,
+        (SELECT COALESCE(SUM(amount),0) FROM client_invoices WHERE COALESCE(status,'')<>'draft_review') AS client_sales,
         (SELECT COALESCE(SUM(amount),0) FROM client_receipts) AS client_receipts,
         (SELECT COUNT(*)::int FROM suppliers) AS supplier_count,
         (SELECT COUNT(*)::int FROM clients) AS client_count,
@@ -55,6 +55,7 @@ export default async function handler(req,res){
         COALESCE((SELECT json_agg(x) FROM (
           SELECT i.invoice_number,i.amount,c.business_name
           FROM client_invoices i JOIN clients c ON c.id=i.client_id
+          WHERE COALESCE(i.status,'')<>'draft_review'
           ORDER BY i.invoice_date DESC,i.id DESC LIMIT 5
         ) x),'[]'::json) AS recent_client_invoices
     `;
