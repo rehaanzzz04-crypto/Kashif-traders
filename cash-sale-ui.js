@@ -92,7 +92,7 @@
     const body = $("csItems");
     if (!state.items.length)
       body.innerHTML =
-        '<tr><td colspan="6"><div class="cs-empty"><b>No products added</b>Barcode, voice ya product search use karein</div></td></tr>';
+        '<tr><td colspan="6"><div class="cs-empty"><b>No products added</b>Barcode ya product search use karein</div></td></tr>';
     else
       body.innerHTML = state.items
         .map(
@@ -155,21 +155,6 @@
     $("csGrand").textContent = money(grand);
     $("csSave").disabled = !state.items.length || state.sending;
   }
-  async function voiceFind() {
-    const q = $("csVoiceInput").value.trim();
-    if (!q) return;
-    $("csVoiceText").textContent = "Searching: " + q;
-    try {
-      const rows = await requestProducts(q);
-      if (rows.length) {
-        addProduct(rows[0]);
-        $("csVoiceModal").classList.add("cs-hidden");
-        $("csVoiceInput").value = "";
-      } else $("csVoiceText").textContent = "Product nahi mila: " + q;
-    } catch (e) {
-      $("csVoiceText").textContent = e.message;
-    }
-  }
   $("csSearch").oninput = () => {
     clearTimeout(state.timer);
     const s = $("csSearch").value.trim();
@@ -197,40 +182,6 @@
   };
   $("csScan").onclick = () => $("csScanner").classList.remove("cs-hidden");
   $("csScannerClose").onclick = () => $("csScanner").classList.add("cs-hidden");
-  $("csVoice").onclick = () => $("csVoiceModal").classList.remove("cs-hidden");
-  $("csVoiceClose").onclick = () =>
-    $("csVoiceModal").classList.add("cs-hidden");
-  $("csVoiceFind").onclick = voiceFind;
-  $("csVoiceInput").onkeydown = (e) => {
-    if (e.key === "Enter") voiceFind();
-  };
-  $("csVoiceStart").onclick = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      $("csVoiceText").textContent =
-        "Voice support nahi—neeche product name likh kar Find Product karein.";
-      return;
-    }
-    const rec = new SR();
-    rec.lang = "en-PK";
-    rec.interimResults = false;
-    rec.onstart = () => {
-      $("csVoiceText").textContent = "🎙 Listening...";
-      $("csVoiceStart").disabled = true;
-    };
-    rec.onresult = (e) => {
-      $("csVoiceInput").value = e.results[0][0].transcript;
-      $("csVoiceText").textContent = "Heard: " + $("csVoiceInput").value;
-      voiceFind();
-    };
-    rec.onerror = (e) => {
-      $("csVoiceText").textContent = "Voice error: " + e.error;
-    };
-    rec.onend = () => {
-      $("csVoiceStart").disabled = false;
-    };
-    rec.start();
-  };
   $("csSave").onclick = async () => {
     if (!state.items.length || state.sending) return;
     state.sending = true;
