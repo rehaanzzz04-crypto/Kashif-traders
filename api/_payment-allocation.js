@@ -8,7 +8,7 @@ export function buildAllocationPlan(paymentAmount,invoices=[]){
 }
 
 export async function ensurePaymentAllocationTables(sql){
-  await sql`CREATE TABLE IF NOT EXISTS supplier_payment_allocations (
+  await sql`CREATE TABLE IF NOT EXISTS supplier_payment_invoice_allocations (
     id BIGSERIAL PRIMARY KEY,
     payment_id BIGINT NOT NULL REFERENCES supplier_payments(id) ON DELETE CASCADE,
     supplier_invoice_id BIGINT NOT NULL REFERENCES supplier_invoices(id) ON DELETE CASCADE,
@@ -16,7 +16,7 @@ export async function ensurePaymentAllocationTables(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(payment_id,supplier_invoice_id)
   )`;
-  await sql`CREATE INDEX IF NOT EXISTS supplier_payment_allocations_invoice_idx ON supplier_payment_allocations(supplier_invoice_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS supplier_payment_invoice_allocations_invoice_idx ON supplier_payment_invoice_allocations(supplier_invoice_id)`;
   await sql`CREATE TABLE IF NOT EXISTS client_receipt_allocations (
     id BIGSERIAL PRIMARY KEY,
     receipt_id BIGINT NOT NULL REFERENCES client_receipts(id) ON DELETE CASCADE,
@@ -39,19 +39,19 @@ export async function allocateSupplierPayment(sql,payment,{preferredInvoiceId=nu
   }
   const invoices=await sql`
     SELECT i.id,i.amount,
-      GREATEST(i.amount-COALESCE((SELECT SUM(p.amount) FROM supplier_payments p WHERE p.supplier_invoice_id=i.id),0)-COALESCE((SELECT SUM(a.amount) FROM supplier_payment_allocations a WHERE a.supplier_invoice_id=i.id),0),0)::numeric AS outstanding
+      GREATEST(i.amount-COALESCE((SELECT SUM(a.amount) FROM supplier_payment_invoice_allocations a WHERE a.supplier_invoice_id=i.id),0),0)::numeric AS outstanding
     FROM supplier_invoices i
     WHERE i.supplier_id=${supplierId}
     ORDER BY CASE WHEN i.id=${preferred} THEN 0 ELSE 1 END,i.invoice_date NULLS FIRST,i.id
   `;
   const plan=buildAllocationPlan(total,invoices);
   for(const allocation of plan.allocations){
-    await sql`INSERT INTO supplier_payment_allocations(payment_id,supplier_invoice_id,amount) VALUES(${paymentId},${allocation.invoiceId},${allocation.amount}) ON CONFLICT(payment_id,supplier_invoice_id) DO UPDATE SET amount=EXCLUDED.amount`;
+    await sql`INSERT INTO supplier_payment_invoice_allocations(payment_id,supplier_invoice_id,amount) VALUES(${paymentId},${allocation.invoiceId},${allocation.amount}) ON CONFLICT(payment_id,supplier_invoice_id) DO UPDATE SET amount=EXCLUDED.amount`;
   }
   await sql`
     UPDATE supplier_invoices i SET status=CASE
-      WHEN i.amount-COALESCE((SELECT SUM(p.amount) FROM supplier_payments p WHERE p.supplier_invoice_id=i.id),0)-COALESCE((SELECT SUM(a.amount) FROM supplier_payment_allocations a WHERE a.supplier_invoice_id=i.id),0)<=0.005 THEN 'paid'
-      WHEN COALESCE((SELECT SUM(p.amount) FROM supplier_payments p WHERE p.supplier_invoice_id=i.id),0)+COALESCE((SELECT SUM(a.amount) FROM supplier_payment_allocations a WHERE a.supplier_invoice_id=i.id),0)>0 THEN 'partial'
+      WHEN i.amount-COALESCE((SELECT SUM(a.amount) FROM supplier_payment_invoice_allocations a WHERE a.supplier_invoice_id=i.id),0)<=0.005 THEN 'paid'
+      WHEN COALESCE((SELECT SUM(a.amount) FROM supplier_payment_invoice_allocations a WHERE a.supplier_invoice_id=i.id),0)>0 THEN 'partial'
       ELSE 'unpaid' END,updated_at=now()
     WHERE i.supplier_id=${supplierId}
   `;
