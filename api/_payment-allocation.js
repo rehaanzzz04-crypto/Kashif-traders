@@ -17,7 +17,7 @@ export async function ensurePaymentAllocationTables(sql){
     UNIQUE(payment_id,supplier_invoice_id)
   )`;
   await sql`CREATE INDEX IF NOT EXISTS supplier_payment_invoice_allocations_invoice_idx ON supplier_payment_invoice_allocations(supplier_invoice_id)`;
-  await sql`CREATE TABLE IF NOT EXISTS client_receipt_allocations (
+  await sql`CREATE TABLE IF NOT EXISTS client_receipt_invoice_allocations (
     id BIGSERIAL PRIMARY KEY,
     receipt_id BIGINT NOT NULL REFERENCES client_receipts(id) ON DELETE CASCADE,
     client_invoice_id BIGINT NOT NULL REFERENCES client_invoices(id) ON DELETE CASCADE,
@@ -25,7 +25,7 @@ export async function ensurePaymentAllocationTables(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(receipt_id,client_invoice_id)
   )`;
-  await sql`CREATE INDEX IF NOT EXISTS client_receipt_allocations_invoice_idx ON client_receipt_allocations(client_invoice_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS client_receipt_invoice_allocations_invoice_idx ON client_receipt_invoice_allocations(client_invoice_id)`;
 }
 
 export async function allocateSupplierPayment(sql,payment,{preferredInvoiceId=null}={}){
@@ -68,18 +68,18 @@ export async function allocateClientReceipt(sql,receipt,{preferredInvoiceId=null
     if(!selected[0])throw Error('Selected invoice does not belong to this client');
   }
   const invoices=await sql`
-    SELECT i.id,i.amount,GREATEST(i.amount-COALESCE((SELECT SUM(a.amount) FROM client_receipt_allocations a WHERE a.client_invoice_id=i.id),0),0)::numeric AS outstanding
+    SELECT i.id,i.amount,GREATEST(i.amount-COALESCE((SELECT SUM(a.amount) FROM client_receipt_invoice_allocations a WHERE a.client_invoice_id=i.id),0),0)::numeric AS outstanding
     FROM client_invoices i WHERE i.client_id=${clientId}
     ORDER BY CASE WHEN i.id=${preferred} THEN 0 ELSE 1 END,i.invoice_date NULLS FIRST,i.id
   `;
   const plan=buildAllocationPlan(total,invoices);
   for(const allocation of plan.allocations){
-    await sql`INSERT INTO client_receipt_allocations(receipt_id,client_invoice_id,amount) VALUES(${receiptId},${allocation.invoiceId},${allocation.amount}) ON CONFLICT(receipt_id,client_invoice_id) DO UPDATE SET amount=EXCLUDED.amount`;
+    await sql`INSERT INTO client_receipt_invoice_allocations(receipt_id,client_invoice_id,amount) VALUES(${receiptId},${allocation.invoiceId},${allocation.amount}) ON CONFLICT(receipt_id,client_invoice_id) DO UPDATE SET amount=EXCLUDED.amount`;
   }
   await sql`
     UPDATE client_invoices i SET status=CASE
-      WHEN i.amount-COALESCE((SELECT SUM(a.amount) FROM client_receipt_allocations a WHERE a.client_invoice_id=i.id),0)<=0.005 THEN 'paid'
-      WHEN COALESCE((SELECT SUM(a.amount) FROM client_receipt_allocations a WHERE a.client_invoice_id=i.id),0)>0 THEN 'partial'
+      WHEN i.amount-COALESCE((SELECT SUM(a.amount) FROM client_receipt_invoice_allocations a WHERE a.client_invoice_id=i.id),0)<=0.005 THEN 'paid'
+      WHEN COALESCE((SELECT SUM(a.amount) FROM client_receipt_invoice_allocations a WHERE a.client_invoice_id=i.id),0)>0 THEN 'partial'
       ELSE 'unpaid' END,updated_at=now()
     WHERE i.client_id=${clientId}
   `;

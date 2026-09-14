@@ -85,7 +85,7 @@ async function list(sql, r, id) {
       ? sql`SELECT p.*,s.business_name FROM supplier_payments p JOIN suppliers s ON s.id=p.supplier_id WHERE p.id=${id}`
       : sql`SELECT p.*,s.business_name FROM supplier_payments p JOIN suppliers s ON s.id=p.supplier_id ORDER BY p.payment_date DESC,p.id DESC`;
   if (r === "client_invoices")
-    return sql`SELECT i.*,c.business_name,COALESCE((SELECT SUM(a.amount) FROM client_receipt_allocations a WHERE a.client_invoice_id=i.id),0) allocated_amount,GREATEST(i.amount-COALESCE((SELECT SUM(a.amount) FROM client_receipt_allocations a WHERE a.client_invoice_id=i.id),0),0) outstanding FROM client_invoices i JOIN clients c ON c.id=i.client_id WHERE (${id}::bigint IS NULL OR i.id=${id}) ORDER BY i.invoice_date DESC,i.id DESC`;
+    return sql`SELECT i.*,c.business_name,COALESCE((SELECT SUM(a.amount) FROM client_receipt_invoice_allocations a WHERE a.client_invoice_id=i.id),0) allocated_amount,GREATEST(i.amount-COALESCE((SELECT SUM(a.amount) FROM client_receipt_invoice_allocations a WHERE a.client_invoice_id=i.id),0),0) outstanding FROM client_invoices i JOIN clients c ON c.id=i.client_id WHERE (${id}::bigint IS NULL OR i.id=${id}) ORDER BY i.invoice_date DESC,i.id DESC`;
   if (r === "client_receipts")
     return id
       ? sql`SELECT x.*,c.business_name FROM client_receipts x JOIN clients c ON c.id=x.client_id WHERE x.id=${id}`
