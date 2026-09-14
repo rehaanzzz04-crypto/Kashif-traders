@@ -13,6 +13,7 @@ const allowed = new Set([
   "client_receipts",
   "documents",
   "cash_sales",
+  "sale_products",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -64,6 +65,59 @@ async function cashSales(sql, req, user) {
     const subtotal = items.reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.rate) || 0), 0), discount = Math.min(subtotal, Math.max(0, Number(b.discount) || 0)), total = subtotal - discount, no = `CS-${Date.now()}`;
     const rows = await sql`INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_name,sale_date,items,subtotal,discount,total) VALUES(${no},${user.id},${user.full_name || user.employee_code},${cleanText(b.customer_name) || "Walk-in Customer"},${cleanText(b.sale_date) || new Date().toISOString().slice(0, 10)},${JSON.stringify(items)},${subtotal},${discount},${total}) RETURNING *`;
     return { status: 201, data: { record: rows[0] } };
+  }
+  return { status: 405, data: { error: "Method not allowed" } };
+}
+async function saleProducts(sql, req) {
+  await sql`CREATE TABLE IF NOT EXISTS cash_sale_products (
+    id BIGSERIAL PRIMARY KEY,
+    sku TEXT,
+    name TEXT NOT NULL,
+    category TEXT,
+    unit TEXT NOT NULL DEFAULT 'pcs',
+    purchase_price NUMERIC(14,2) NOT NULL DEFAULT 0,
+    sale_price NUMERIC(14,2) NOT NULL DEFAULT 0,
+    reorder_level NUMERIC(14,3) NOT NULL DEFAULT 0,
+    barcode TEXT,
+    product_image_url TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS cash_sale_products_search_idx ON cash_sale_products (name, sku, barcode)`;
+  const id = asId(req.query?.id), b = bodyOf(req);
+  if (req.method === "GET") {
+    const search = cleanText(req.query?.search) || "", like = `%${search}%`, status = cleanText(req.query?.status);
+    const rows = await sql`SELECT id,sku,name,category,unit,purchase_price,sale_price,reorder_level,barcode,status,created_at,updated_at,(product_image_url IS NOT NULL) has_image,product_image_url
+      FROM cash_sale_products
+      WHERE (${id}::bigint IS NULL OR id=${id})
+        AND (${search}='' OR COALESCE(sku,'') ILIKE ${like} OR name ILIKE ${like} OR COALESCE(category,'') ILIKE ${like} OR COALESCE(barcode,'') ILIKE ${like})
+        AND (${status}::text IS NULL OR status=${status})
+      ORDER BY name,id LIMIT 200`;
+    return { status: 200, data: { records: rows } };
+  }
+  if (req.method === "POST") {
+    const name = cleanText(b.name);
+    if (!name) return { status: 400, data: { error: "Product name required" } };
+    const sku = cleanText(b.sku) || `SP-${Date.now()}`;
+    const rows = await sql`INSERT INTO cash_sale_products(sku,name,category,unit,purchase_price,sale_price,reorder_level,barcode,product_image_url,status)
+      VALUES(${sku},${name},${cleanText(b.category)},${cleanText(b.unit)||"pcs"},${cleanAmount(b.purchase_price)||0},${cleanAmount(b.sale_price)||0},${cleanAmount(b.reorder_level)||0},${cleanText(b.barcode)},${cleanText(b.product_image_url)},${cleanText(b.status)||"active"}) RETURNING *`;
+    return { status: 201, data: { record: rows[0] } };
+  }
+  if (req.method === "PATCH") {
+    if (!id) return { status: 400, data: { error: "Valid product id required" } };
+    const rows = await sql`UPDATE cash_sale_products SET
+      sku=COALESCE(${cleanText(b.sku)},sku), name=COALESCE(${cleanText(b.name)},name), category=COALESCE(${cleanText(b.category)},category),
+      unit=COALESCE(${cleanText(b.unit)},unit), purchase_price=COALESCE(${cleanAmount(b.purchase_price)},purchase_price),
+      sale_price=COALESCE(${cleanAmount(b.sale_price)},sale_price), reorder_level=COALESCE(${cleanAmount(b.reorder_level)},reorder_level),
+      barcode=COALESCE(${cleanText(b.barcode)},barcode), product_image_url=COALESCE(${cleanText(b.product_image_url)},product_image_url),
+      status=COALESCE(${cleanText(b.status)},status), updated_at=now() WHERE id=${id} RETURNING *`;
+    return rows[0] ? { status: 200, data: { record: rows[0] } } : { status: 404, data: { error: "Sale product not found" } };
+  }
+  if (req.method === "DELETE") {
+    if (!id) return { status: 400, data: { error: "Valid product id required" } };
+    const rows = await sql`DELETE FROM cash_sale_products WHERE id=${id} RETURNING id`;
+    return { status: 200, data: { deleted: Boolean(rows[0]) } };
   }
   return { status: 405, data: { error: "Method not allowed" } };
 }
@@ -170,6 +224,10 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Authentication required" });
     if (resource === "cash_sales") {
       const out = await cashSales(sql, req, user);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "sale_products") {
+      const out = await saleProducts(sql, req);
       return res.status(out.status).json(out.data);
     }
     await ensureEntryNumbers(sql);
