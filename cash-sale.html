@@ -7,12 +7,13 @@
   <title>Cash Sale Test Mode | Kashif Traders</title>
   <link rel="stylesheet" href="/cash-sale.css?v=20260914-ui1">
   <link rel="stylesheet" href="/cash-sale-role.css?v=20260914-role1">
+  <style>.cs-page-label{border-radius:10px;background:var(--cs-green);color:#fff;padding:9px 12px;font-weight:800}</style>
 </head>
 <body>
   <header class="cs-top"><div class="cs-topin"><button class="cs-back" id="csBack" aria-label="Back to ERP">‹</button><div class="cs-mark">KT</div><div class="cs-brand"><b>Cash Sale</b><span>KASHIF TRADERS</span></div><div class="cs-sale-no">TEST SALE NO.<b>CS-TEST-000001</b></div></div></header>
   <main class="cs-wrap">
     <div class="cs-mode"><div><strong>TEST MODE</strong>Products ERP se read-only hain</div><span>Salesman billing → Cashier payment flow</span></div>
-    <div class="cs-rolebar"><button class="active" id="csCreateTab" type="button">Create Bill</button><button id="csQueueTab" type="button">Cashier Queue <span>2</span></button><div class="cs-user" id="csUser">Employee session</div></div>
+    <div class="cs-rolebar"><div class="cs-page-label">Salesman Billing</div><div class="cs-user" id="csUser">Employee session</div></div>
     <div id="csCreateView"><div class="cs-layout">
       <section class="cs-card">
         <div class="cs-heading"><div><h1>New Cash Sale</h1><p>Walk-in customer ke products scan ya search karein</p></div></div>
@@ -23,10 +24,9 @@
       </section>
       <aside class="cs-card"><div class="cs-heading"><div><h2>Bill Summary</h2><p>Salesman ka current test bill</p></div></div><div class="cs-summary"><div class="cs-summary-row"><span>Items</span><b id="csItemCount">0</b></div><div class="cs-summary-row"><span>Subtotal</span><b id="csSubtotal">PKR 0</b></div><div class="cs-field"><label>Bill Discount</label><input class="cs-discount" id="csDiscount" type="number" min="0" value="0"></div><div class="cs-summary-row total"><span>Grand Total</span><b id="csGrand">PKR 0</b></div></div><div class="cs-read-note">Sale Rate sirf current bill ke liye editable hai. ERP ki original price change nahi hogi. Cash salesman collect nahi karega.</div><button class="cs-primary" id="csSave" type="button" disabled>Send Bill to Cashier</button><button class="cs-secondary" id="csClear" type="button">Clear Bill</button><div class="cs-status" id="csStatus">UI approval ke baad isolated cashier queue saving add hogi.</div></aside>
     </div></div>
-    <section class="cs-card cs-hidden" id="csQueueView"><div class="cs-heading"><div><h1>Cashier Queue</h1><p>Salesmen ke complete bills payment ke liye yahan ayenge</p></div><span class="cs-live">TEST PREVIEW</span></div><div class="cs-queue"><article><div><b>CS-TEST-000014</b><small>Haider · 4 items · Walk-in Customer</small></div><strong>PKR 6,450</strong><button type="button" disabled>Receive Payment</button></article><article><div><b>CS-TEST-000015</b><small>Rizwan · 2 items · Walk-in Customer</small></div><strong>PKR 2,375</strong><button type="button" disabled>Receive Payment</button></article></div><div class="cs-read-note">Cashier payment complete karega; functional stage mein isi point par receipt aur inventory posting hogi.</div></section>
   </main>
   <div class="cs-scanner-modal cs-hidden" id="csScanner"><div class="cs-scanner-box"><h3>Product Scanner</h3><p>Camera scanner next functional stage mein connect hoga.</p><div class="cs-scanner-view"><div><b>▣ Barcode Camera Area</b><br><small>UI preview only</small></div></div><div class="cs-scanner-actions"><button class="cs-secondary" id="csScannerClose" type="button">Close</button><button class="cs-primary" type="button" disabled>Start Camera</button></div></div></div>
   <script src="/cash-sale-ui.js?v=20260914-ui1"></script>
-  <script src="/cash-sale-role-ui.js?v=20260914-role1"></script>
+  <script src="/cash-sale-role-ui.js?v=20260914-role2"></script>
 </body>
 </html>
