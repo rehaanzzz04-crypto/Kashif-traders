@@ -21,14 +21,11 @@
   async function requestProducts(search) {
     const token = ++state.request,
       params = new URLSearchParams({
-        resource: "products",
-        paged: "1",
-        page: "1",
-        page_size: "25",
+        resource: "sale_products",
         search,
         status: "active",
       }),
-      r = await fetch("/api/inventory?" + params, { cache: "no-store" });
+      r = await fetch("/api/data?" + params, { cache: "no-store" });
     if (r.status === 401) {
       location.replace("/login.html");
       return [];
@@ -182,6 +179,67 @@
   };
   $("csScan").onclick = () => $("csScanner").classList.remove("cs-hidden");
   $("csScannerClose").onclick = () => $("csScanner").classList.add("cs-hidden");
+  let saleProductImage = null;
+  const productModal = $("csProductModal"), productForm = $("csProductForm"),
+    productCamera = $("csProductCamera"), productGallery = $("csProductGallery"),
+    productImageStatus = $("csProductImageStatus");
+  $("csAddProduct").onclick = () => {
+    productForm.reset();
+    productForm.elements.unit.value = "pcs";
+    productForm.elements.status.value = "active";
+    saleProductImage = null;
+    productImageStatus.textContent = "Image optional hai.";
+    productModal.classList.remove("cs-hidden");
+  };
+  $("csProductCancel").onclick = () => productModal.classList.add("cs-hidden");
+  $("csProductCameraBtn").onclick = () => productCamera.click();
+  $("csProductGalleryBtn").onclick = () => productGallery.click();
+  const pickSaleProductImage = (input) => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    saleProductImage = file;
+    productImageStatus.textContent = file.name + " selected";
+    input.value = "";
+  };
+  productCamera.onchange = () => pickSaleProductImage(productCamera);
+  productGallery.onchange = () => pickSaleProductImage(productGallery);
+  async function uploadSaleProductImage(file) {
+    productImageStatus.textContent = "Uploading image...";
+    const r = await fetch("/api/upload-document?name=" + encodeURIComponent(file.name || "sale-product.jpg"), {
+      method: "POST",
+      headers: { "Content-Type": file.type || "image/jpeg" },
+      body: file,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw Error(j.error || "Product image upload failed");
+    return j.url;
+  }
+  productForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const save = $("csProductSave");
+    save.disabled = true;
+    $("csStatus").textContent = "Sale product save ho raha hai...";
+    try {
+      const body = Object.fromEntries(new FormData(productForm).entries());
+      if (saleProductImage) body.product_image_url = await uploadSaleProductImage(saleProductImage);
+      const r = await fetch("/api/data?resource=sale_products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw Error(j.error || "Sale product save nahi ho saka");
+      productModal.classList.add("cs-hidden");
+      $("csSearch").value = j.record.name;
+      renderResults([j.record]);
+      $("csStatus").textContent = j.record.name + " Sale Products mein save ho gaya.";
+    } catch (err) {
+      $("csStatus").textContent = err.message;
+      productImageStatus.textContent = err.message;
+    } finally {
+      save.disabled = false;
+    }
+  };
   $("csSave").onclick = async () => {
     if (!state.items.length || state.sending) return;
     state.sending = true;
