@@ -58,13 +58,58 @@ const autoClientInvoiceSeed = () =>
   `AUTO-CINV-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 async function cashSales(sql, req, user) {
   await sql`CREATE TABLE IF NOT EXISTS cash_sale_queue (id BIGSERIAL PRIMARY KEY, invoice_number TEXT UNIQUE NOT NULL, created_by_id BIGINT, created_by_name TEXT NOT NULL, customer_name TEXT, sale_date DATE NOT NULL DEFAULT CURRENT_DATE, items JSONB NOT NULL DEFAULT '[]'::jsonb, subtotal NUMERIC(14,2) NOT NULL DEFAULT 0, discount NUMERIC(14,2) NOT NULL DEFAULT 0, total NUMERIC(14,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
-  if (req.method === "GET") return { status: 200, data: { records: await sql`SELECT * FROM cash_sale_queue WHERE status='pending' ORDER BY created_at DESC LIMIT 100` } };
+  await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS payment_method TEXT`;
+  await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS amount_received NUMERIC(14,2)`;
+  await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS paid_by_id BIGINT`;
+  await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS paid_by_name TEXT`;
+  await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS cancelled_by_name TEXT`;
+  await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`;
+  if (req.method === "GET") {
+    const status = cleanText(req.query?.status) || "pending", limit = Math.min(1000, Math.max(1, Number(req.query?.limit) || 200));
+    const rows = status === "all"
+      ? await sql`SELECT * FROM cash_sale_queue ORDER BY created_at DESC LIMIT ${limit}`
+      : await sql`SELECT * FROM cash_sale_queue WHERE status=${status} ORDER BY created_at DESC LIMIT ${limit}`;
+    return { status: 200, data: { records: rows } };
+  }
   if (req.method === "POST") {
     const b = bodyOf(req), items = Array.isArray(b.items) ? b.items : [];
     if (!items.length) return { status: 400, data: { error: "Kam az kam aik product add karein" } };
-    const subtotal = items.reduce((s, x) => s + (Number(x.qty) || 0) * (Number(x.rate) || 0), 0), discount = Math.min(subtotal, Math.max(0, Number(b.discount) || 0)), total = subtotal - discount, no = `CS-${Date.now()}`;
+    const subtotal = items.reduce((sum, x) => sum + Math.max(0, Number(x.qty) || 0) * Math.max(0, Number(x.rate) || 0), 0),
+      discount = Math.min(subtotal, Math.max(0, Number(b.discount) || 0)), total = subtotal - discount, no = `CS-${Date.now()}`;
     const rows = await sql`INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_name,sale_date,items,subtotal,discount,total) VALUES(${no},${user.id},${user.full_name || user.employee_code},${cleanText(b.customer_name) || "Walk-in Customer"},${cleanText(b.sale_date) || new Date().toISOString().slice(0, 10)},${JSON.stringify(items)},${subtotal},${discount},${total}) RETURNING *`;
     return { status: 201, data: { record: rows[0] } };
+  }
+  if (req.method === "PATCH") {
+    const id = asId(req.query?.id), b = bodyOf(req);
+    if (!id) return { status: 400, data: { error: "Valid bill id required" } };
+    const current = (await sql`SELECT * FROM cash_sale_queue WHERE id=${id}`)[0];
+    if (!current) return { status: 404, data: { error: "Cash sale bill not found" } };
+    const nextStatus = cleanText(b.status) || current.status;
+    if (!["pending","paid","cancelled"].includes(nextStatus)) return { status: 400, data: { error: "Invalid bill status" } };
+    if (current.status !== "pending" && nextStatus !== current.status) return { status: 409, data: { error: "Completed bill status cannot be changed" } };
+    const items = Array.isArray(b.items) ? b.items : current.items,
+      subtotal = items.reduce((sum, x) => sum + Math.max(0, Number(x.qty) || 0) * Math.max(0, Number(x.rate) || 0), 0),
+      discount = Math.min(subtotal, Math.max(0, b.discount === undefined ? Number(current.discount) : Number(b.discount) || 0)),
+      total = subtotal - discount, received = cleanAmount(b.amount_received), method = cleanText(b.payment_method);
+    if (nextStatus === "paid" && (!method || received === null || received < total))
+      return { status: 400, data: { error: "Payment method aur complete received amount required hai" } };
+    const rows = await sql`UPDATE cash_sale_queue SET items=${JSON.stringify(items)},subtotal=${subtotal},discount=${discount},total=${total},status=${nextStatus},
+      payment_method=CASE WHEN ${nextStatus}='paid' THEN ${method} ELSE payment_method END,
+      amount_received=CASE WHEN ${nextStatus}='paid' THEN ${received} ELSE amount_received END,
+      paid_by_id=CASE WHEN ${nextStatus}='paid' THEN ${user.id} ELSE paid_by_id END,
+      paid_by_name=CASE WHEN ${nextStatus}='paid' THEN ${user.full_name || user.employee_code} ELSE paid_by_name END,
+      paid_at=CASE WHEN ${nextStatus}='paid' THEN now() ELSE paid_at END,
+      cancelled_by_name=CASE WHEN ${nextStatus}='cancelled' THEN ${user.full_name || user.employee_code} ELSE cancelled_by_name END,
+      cancelled_at=CASE WHEN ${nextStatus}='cancelled' THEN now() ELSE cancelled_at END,updated_at=now()
+      WHERE id=${id} RETURNING *`;
+    return { status: 200, data: { record: rows[0] } };
+  }
+  if (req.method === "DELETE") {
+    const id = asId(req.query?.id);
+    if (!id) return { status: 400, data: { error: "Valid bill id required" } };
+    const rows = await sql`DELETE FROM cash_sale_queue WHERE id=${id} RETURNING id`;
+    return { status: 200, data: { deleted: Boolean(rows[0]) } };
   }
   return { status: 405, data: { error: "Method not allowed" } };
 }
