@@ -258,14 +258,14 @@ async function patch(sql, r, id, b) {
     const old=(await sql`SELECT amount,ocr_status,ocr_written_total,ocr_line_items FROM client_invoices WHERE id=${id}`)[0];
     const submittedItems=b.ocr_line_items!==undefined?cleanOcrItems(b.ocr_line_items):null;
     const itemTotal=submittedItems?submittedItems.reduce((s,x)=>s+Number(x.amount||0),0):null;
-    const submittedWritten=cleanAmount(b.ocr_written_total),written=Number(submittedWritten??old?.ocr_written_total??0);
+    const written=Number(old?.ocr_written_total||0);
     const reviewSubmit=old?.ocr_status==="review_required"&&submittedItems!==null;
-    if(reviewSubmit&&(!submittedItems.length||!written||Math.abs(itemTotal-written)>.009))
-      throw Error(`Corrected items total PKR ${Number(itemTotal||0).toLocaleString("en-PK")} must equal handwritten total PKR ${written.toLocaleString("en-PK")}`);
-    const corrected=reviewSubmit&&Math.abs(itemTotal-written)<.01;
+    if(reviewSubmit&&(!submittedItems.length||!Number.isFinite(itemTotal)||itemTotal<=0))
+      throw Error("Correct at least one valid OCR item amount");
+    const corrected=reviewSubmit&&submittedItems.length>0&&itemTotal>0;
     const nextAmount=corrected?itemTotal:cleanAmount(b.amount);
     const correctedBy=corrected?(cleanText(b.ocr_corrected_by)||"Admin"):null;
-    return sql`UPDATE client_invoices SET client_id=COALESCE(${asId(b.client_id)},client_id),invoice_number=COALESCE(${cleanText(b.invoice_number)},invoice_number),invoice_date=COALESCE(${cleanText(b.invoice_date)},invoice_date),due_date=COALESCE(${cleanText(b.due_date)},due_date),amount=COALESCE(${nextAmount},amount),notes=COALESCE(${cleanText(b.notes)},notes),attachment_url=COALESCE(${cleanText(b.attachment_url)},attachment_url),status=CASE WHEN ${corrected} THEN 'unpaid' ELSE COALESCE(${cleanText(b.status)},status) END,ocr_written_total=CASE WHEN ${corrected} THEN ${written} ELSE ocr_written_total END,ocr_status=CASE WHEN ${corrected} THEN 'verified_corrected' ELSE ocr_status END,ocr_line_items=CASE WHEN ${submittedItems!==null} THEN ${JSON.stringify(submittedItems||[])}::jsonb ELSE ocr_line_items END,ocr_corrected_by=CASE WHEN ${corrected} THEN ${correctedBy} ELSE ocr_corrected_by END,ocr_corrected_at=CASE WHEN ${corrected} THEN now() ELSE ocr_corrected_at END,updated_at=now() WHERE id=${id} RETURNING *`;
+    return sql`UPDATE client_invoices SET client_id=COALESCE(${asId(b.client_id)},client_id),invoice_number=COALESCE(${cleanText(b.invoice_number)},invoice_number),invoice_date=COALESCE(${cleanText(b.invoice_date)},invoice_date),due_date=COALESCE(${cleanText(b.due_date)},due_date),amount=COALESCE(${nextAmount},amount),notes=COALESCE(${cleanText(b.notes)},notes),attachment_url=COALESCE(${cleanText(b.attachment_url)},attachment_url),status=CASE WHEN ${corrected} THEN 'unpaid' ELSE COALESCE(${cleanText(b.status)},status) END,ocr_status=CASE WHEN ${corrected} THEN 'verified_corrected' ELSE ocr_status END,ocr_line_items=CASE WHEN ${submittedItems!==null} THEN ${JSON.stringify(submittedItems||[])}::jsonb ELSE ocr_line_items END,ocr_corrected_by=CASE WHEN ${corrected} THEN ${correctedBy} ELSE ocr_corrected_by END,ocr_corrected_at=CASE WHEN ${corrected} THEN now() ELSE ocr_corrected_at END,updated_at=now() WHERE id=${id} RETURNING *`;
   }
   if (r === "client_receipts")
     return sql`UPDATE client_receipts SET client_id=COALESCE(${asId(b.client_id)},client_id),receipt_date=COALESCE(${cleanText(b.receipt_date)},receipt_date),amount=COALESCE(${cleanAmount(b.amount)},amount),payment_method=COALESCE(${cleanText(b.payment_method)},payment_method),bank=COALESCE(${cleanText(b.bank)},bank),reference_number=COALESCE(${cleanText(b.reference_number)},reference_number),notes=COALESCE(${cleanText(b.notes)},notes),attachment_url=COALESCE(${cleanText(b.attachment_url)},attachment_url),updated_at=now() WHERE id=${id} RETURNING *`;
