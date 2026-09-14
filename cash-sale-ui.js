@@ -177,8 +177,46 @@
     renderItems();
     $("csStatus").textContent = "Test sale cleared.";
   };
-  $("csScan").onclick = () => $("csScanner").classList.remove("cs-hidden");
-  $("csScannerClose").onclick = () => $("csScanner").classList.add("cs-hidden");
+  let scannerStream = null, scannerFrame = 0, barcodeDetector = null;
+  function stopScanner() {
+    cancelAnimationFrame(scannerFrame);
+    if (scannerStream) scannerStream.getTracks().forEach(track => track.stop());
+    scannerStream = null;
+    $("csScannerVideo").srcObject = null;
+  }
+  async function findBarcode(value) {
+    const code = String(value || "").trim();
+    if (!code) { $("csScannerStatus").textContent = "Barcode enter karein."; return; }
+    $("csScannerStatus").textContent = "Searching " + code + "...";
+    try {
+      const rows = await requestProducts(code), product = rows.find(x => String(x.barcode || "").trim() === code);
+      if (!product) { $("csScannerStatus").textContent = "Sale Product barcode nahi mila."; return; }
+      addProduct(product); stopScanner(); $("csScanner").classList.add("cs-hidden"); $("csBarcodeInput").value = "";
+    } catch (e) { $("csScannerStatus").textContent = e.message; }
+  }
+  async function detectBarcode() {
+    if (!scannerStream || !barcodeDetector) return;
+    try {
+      const codes = await barcodeDetector.detect($("csScannerVideo"));
+      if (codes[0]?.rawValue) { $("csBarcodeInput").value = codes[0].rawValue; await findBarcode(codes[0].rawValue); return; }
+    } catch {}
+    scannerFrame = requestAnimationFrame(detectBarcode);
+  }
+  $("csScan").onclick = () => { $("csScanner").classList.remove("cs-hidden"); $("csScannerStatus").textContent = "Start Camera tap karein."; };
+  $("csScannerClose").onclick = () => { stopScanner(); $("csScanner").classList.add("cs-hidden"); };
+  $("csBarcodeFind").onclick = () => findBarcode($("csBarcodeInput").value);
+  $("csBarcodeInput").onkeydown = e => { if (e.key === "Enter") findBarcode(e.target.value); };
+  $("csScannerStart").onclick = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) { $("csScannerStatus").textContent = "Camera unavailable—barcode manually enter karein."; return; }
+    $("csScannerStart").disabled = true; $("csScannerStatus").textContent = "Opening camera...";
+    try {
+      scannerStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+      $("csScannerVideo").srcObject = scannerStream; await $("csScannerVideo").play();
+      if ("BarcodeDetector" in window) { barcodeDetector = new BarcodeDetector({formats:["ean_13","ean_8","code_128","code_39","upc_a","upc_e"]}); $("csScannerStatus").textContent = "Scanning barcode..."; detectBarcode(); }
+      else $("csScannerStatus").textContent = "Camera open hai. Is device par auto-detect unavailable ho to barcode manually enter karein.";
+    } catch (e) { $("csScannerStatus").textContent = "Camera open nahi hua—barcode manually enter karein."; }
+    finally { $("csScannerStart").disabled = false; }
+  };
   let saleProductImage = null;
   const productModal = $("csProductModal"), productForm = $("csProductForm"),
     productCamera = $("csProductCamera"), productGallery = $("csProductGallery"),
