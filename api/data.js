@@ -56,6 +56,14 @@ const cleanAmount = (v) => {
 };
 const autoClientInvoiceSeed = () =>
   `AUTO-CINV-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+async function ensureClientOcrAudit(sql) {
+  await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_status TEXT`;
+  await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_written_total NUMERIC(14,2)`;
+  await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_calculated_total NUMERIC(14,2)`;
+  await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_original_amount NUMERIC(14,2)`;
+  await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_corrected_by TEXT`;
+  await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_corrected_at TIMESTAMPTZ`;
+}
 async function cashSales(sql, req, user) {
   await sql`CREATE TABLE IF NOT EXISTS cash_sale_queue (id BIGSERIAL PRIMARY KEY, invoice_number TEXT UNIQUE NOT NULL, created_by_id BIGINT, created_by_name TEXT NOT NULL, customer_name TEXT, sale_date DATE NOT NULL DEFAULT CURRENT_DATE, items JSONB NOT NULL DEFAULT '[]'::jsonb, subtotal NUMERIC(14,2) NOT NULL DEFAULT 0, discount NUMERIC(14,2) NOT NULL DEFAULT 0, total NUMERIC(14,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS payment_method TEXT`;
@@ -212,7 +220,7 @@ async function create(sql, r, b) {
     return rows;
   }
   if (r === "client_invoices")
-    return sql`INSERT INTO client_invoices(client_id,invoice_number,invoice_date,due_date,amount,notes,attachment_url,status) VALUES(${asId(b.client_id)},${cleanText(b.invoice_number) || autoClientInvoiceSeed()},${cleanText(b.invoice_date)},${cleanText(b.due_date)},${cleanAmount(b.amount)},${cleanText(b.notes)},${cleanText(b.attachment_url)},${cleanText(b.status) ?? "unpaid"}) RETURNING *`;
+    return sql`INSERT INTO client_invoices(client_id,invoice_number,invoice_date,due_date,amount,notes,attachment_url,status,ocr_status,ocr_written_total,ocr_calculated_total,ocr_original_amount) VALUES(${asId(b.client_id)},${cleanText(b.invoice_number) || autoClientInvoiceSeed()},${cleanText(b.invoice_date)},${cleanText(b.due_date)},${cleanAmount(b.amount)},${cleanText(b.notes)},${cleanText(b.attachment_url)},${cleanText(b.ocr_status)==="review_required" ? "draft_review" : (cleanText(b.status) ?? "unpaid")},${cleanText(b.ocr_status)},${cleanAmount(b.ocr_written_total)},${cleanAmount(b.ocr_calculated_total)},${cleanAmount(b.amount)}) RETURNING *`;
   if (r === "client_receipts") {
     const clientId = asId(b.client_id), amount = cleanAmount(b.amount);
     if (!clientId || !amount || amount <= 0) throw Error("Client and valid amount are required");
@@ -233,8 +241,11 @@ async function patch(sql, r, id, b) {
     return sql`UPDATE supplier_invoices SET supplier_id=COALESCE(${asId(b.supplier_id)},supplier_id),invoice_number=COALESCE(${cleanText(b.invoice_number)},invoice_number),invoice_date=COALESCE(${cleanText(b.invoice_date)},invoice_date),due_date=COALESCE(${cleanText(b.due_date)},due_date),amount=COALESCE(${cleanAmount(b.amount)},amount),notes=COALESCE(${cleanText(b.notes)},notes),attachment_url=COALESCE(${cleanText(b.attachment_url)},attachment_url),status=COALESCE(${cleanText(b.status)},status),updated_at=now() WHERE id=${id} RETURNING *`;
   if (r === "supplier_payments")
     return sql`UPDATE supplier_payments SET supplier_id=COALESCE(${asId(b.supplier_id)},supplier_id),payment_date=COALESCE(${cleanText(b.payment_date)},payment_date),amount=COALESCE(${cleanAmount(b.amount)},amount),payment_method=COALESCE(${cleanText(b.payment_method)},payment_method),bank=COALESCE(${cleanText(b.bank)},bank),reference_number=COALESCE(${cleanText(b.reference_number)},reference_number),notes=COALESCE(${cleanText(b.notes)},notes),attachment_url=COALESCE(${cleanText(b.attachment_url)},attachment_url),updated_at=now() WHERE id=${id} RETURNING *`;
-  if (r === "client_invoices")
-    return sql`UPDATE client_invoices SET client_id=COALESCE(${asId(b.client_id)},client_id),invoice_number=COALESCE(${cleanText(b.invoice_number)},invoice_number),invoice_date=COALESCE(${cleanText(b.invoice_date)},invoice_date),due_date=COALESCE(${cleanText(b.due_date)},due_date),amount=COALESCE(${cleanAmount(b.amount)},amount),notes=COALESCE(${cleanText(b.notes)},notes),attachment_url=COALESCE(${cleanText(b.attachment_url)},attachment_url),status=COALESCE(${cleanText(b.status)},status),updated_at=now() WHERE id=${id} RETURNING *`;
+  if (r === "client_invoices") {
+    const old=(await sql`SELECT amount,ocr_status FROM client_invoices WHERE id=${id}`)[0],nextAmount=cleanAmount(b.amount),corrected=old?.ocr_status==="review_required"&&nextAmount!==null&&Math.abs(Number(old.amount||0)-nextAmount)>.009;
+    const correctedBy=corrected?(cleanText(b.ocr_corrected_by)||"Admin"):null;
+    return sql`UPDATE client_invoices SET client_id=COALESCE(${asId(b.client_id)},client_id),invoice_number=COALESCE(${cleanText(b.invoice_number)},invoice_number),invoice_date=COALESCE(${cleanText(b.invoice_date)},invoice_date),due_date=COALESCE(${cleanText(b.due_date)},due_date),amount=COALESCE(${nextAmount},amount),notes=COALESCE(${cleanText(b.notes)},notes),attachment_url=COALESCE(${cleanText(b.attachment_url)},attachment_url),status=CASE WHEN ${corrected} THEN 'unpaid' ELSE COALESCE(${cleanText(b.status)},status) END,ocr_status=CASE WHEN ${corrected} THEN 'verified_corrected' ELSE COALESCE(${cleanText(b.ocr_status)},ocr_status) END,ocr_corrected_by=CASE WHEN ${corrected} THEN ${correctedBy} ELSE ocr_corrected_by END,ocr_corrected_at=CASE WHEN ${corrected} THEN now() ELSE ocr_corrected_at END,updated_at=now() WHERE id=${id} RETURNING *`;
+  }
   if (r === "client_receipts")
     return sql`UPDATE client_receipts SET client_id=COALESCE(${asId(b.client_id)},client_id),receipt_date=COALESCE(${cleanText(b.receipt_date)},receipt_date),amount=COALESCE(${cleanAmount(b.amount)},amount),payment_method=COALESCE(${cleanText(b.payment_method)},payment_method),bank=COALESCE(${cleanText(b.bank)},bank),reference_number=COALESCE(${cleanText(b.reference_number)},reference_number),notes=COALESCE(${cleanText(b.notes)},notes),attachment_url=COALESCE(${cleanText(b.attachment_url)},attachment_url),updated_at=now() WHERE id=${id} RETURNING *`;
   if (r === "documents")
@@ -267,6 +278,7 @@ export default async function handler(req, res) {
       user = await getSessionUser(req, sql);
     if (!user)
       return res.status(401).json({ error: "Authentication required" });
+    if (resource === "client_invoices") await ensureClientOcrAudit(sql);
     if (resource === "cash_sales") {
       const out = await cashSales(sql, req, user);
       return res.status(out.status).json(out.data);
