@@ -1,4 +1,5 @@
 'use strict';
+// OCR_ITEM_REVIEW_RELEASE_2
 (()=>{
  const cameraViews=new Set(['supplier-bills','supplier-payments','client-sales','client-receipts']);
  const supplierBillDef=typeof defs!=='undefined'?defs['supplier-bills']:null;if(supplierBillDef){if(!supplierBillDef.cols.some(c=>c[0]==='entry_number'))supplierBillDef.cols.unshift(['entry_number','ERP Invoice No']);const c=supplierBillDef.cols.find(c=>c[0]==='invoice_number');if(c)c[1]='Supplier Invoice No';const f=supplierBillDef.fields.find(f=>f[0]==='invoice_number');if(f)f[1]='Supplier Invoice No';}
