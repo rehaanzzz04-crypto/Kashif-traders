@@ -10,8 +10,12 @@
     report.className = "cashier-report-link"; report.type = "button"; report.textContent = "▥ Sales Report";
     report.onclick = () => location.href = "/cashier-sales-report.html";
     head.appendChild(report);
+    const store = document.createElement("button");
+    store.className = "cashier-report-link cashier-store-link"; store.type = "button"; store.textContent = "▦ E-Commerce";
+    store.onclick = () => location.href = "/ecommerce-orders.html";
+    head.appendChild(store);
     const style = document.createElement("style");
-    style.textContent = ".cashier-report-link{margin-left:auto;border:0;border-radius:10px;background:var(--cs-green);color:#fff;padding:9px 12px;font-weight:800;cursor:pointer}@media(max-width:560px){.cashier-head{flex-wrap:wrap}.cashier-report-link{width:100%;margin-left:0;min-height:46px}}";
+    style.textContent = ".cashier-report-link{border:0;border-radius:10px;background:var(--cs-green);color:#fff;padding:9px 12px;font-weight:800;cursor:pointer}.cashier-head>div:first-child+.cashier-report-link{margin-left:auto}@media(max-width:560px){.cashier-head{flex-wrap:wrap}.cashier-report-link{width:calc(50% - 4px);margin-left:0!important;min-height:46px}}";
     document.head.appendChild(style);
   }
   const stamp = x => new Date(x).toLocaleString("en-PK", {day:"2-digit",month:"short",year:"numeric",hour:"numeric",minute:"2-digit"});
