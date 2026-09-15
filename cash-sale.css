@@ -3,6 +3,8 @@
 /* Mobile billing usability */
 body{overflow-x:hidden}.cs-back,.cs-scan,.cs-primary,.cs-secondary,.cs-result{touch-action:manipulation}
 .cs-scanner-box{max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}
+.cs-product-box{width:min(760px,100%)}.cs-image-actions{display:flex;gap:8px}.cs-image-actions button{margin-top:0}
+@media(max-width:900px){.cs-product-form-grid{grid-template-columns:1fr!important}.cs-product-image-field{width:100%}}
 @media(max-width:620px){
   .cs-wrap{padding:8px}
   .cs-topin{padding:8px 10px;gap:8px}
@@ -35,5 +37,6 @@ body{overflow-x:hidden}.cs-back,.cs-scan,.cs-primary,.cs-secondary,.cs-result{to
   .cs-primary,.cs-secondary{min-height:48px}
   .cs-scanner-modal{place-items:end center;padding:0}
   .cs-scanner-box{width:100%;max-height:92dvh;border-radius:20px 20px 0 0;padding:16px 12px calc(14px + env(safe-area-inset-bottom));overflow-y:auto}
+  .cs-product-box{width:100%}.cs-product-form-grid{gap:11px}.cs-image-actions{display:grid;grid-template-columns:1fr 1fr}.cs-product-form-grid .cs-field label{font-size:12px}.cs-product-form-grid .cs-field input,.cs-product-form-grid .cs-field select{min-height:48px}
   .cs-scanner-actions{position:sticky;bottom:0;padding-top:8px;background:var(--cs-card);z-index:2}
 }

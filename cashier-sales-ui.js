@@ -39,6 +39,20 @@
     $("cashierDiscount").value = 0; $("cashierReceived").value = 0; $("cashierDue").textContent = money(0); $("cashierChange").textContent = money(0);
     setActions();
   }
+  const paymentModal = $("cashierPaymentModal");
+  function choosePayment(method) {
+    $("cashierPaymentMethod").value = method;
+    document.querySelectorAll("#cashierPaymentOptions [data-method]").forEach(button => button.classList.toggle("active", button.dataset.method === method));
+  }
+  function closePayment() { paymentModal.classList.add("cs-hidden"); }
+  function openPayment() {
+    if (!active || status !== "pending" || busy) return;
+    const t = totals();
+    $("cashierReceived").value = t.total;
+    choosePayment(active.payment_method || "Cash");
+    total();
+    paymentModal.classList.remove("cs-hidden");
+  }
   function selectBill(x) {
     if (!x) return clearDetail();
     active = x; editing = false; renderList();
@@ -47,7 +61,7 @@
     $("cashierBillAt").textContent = stamp(x.created_at);
     $("cashierItems").innerHTML = itemArray(x).map((p,i) => '<div data-price="'+Number(p.rate)*Number(p.qty)+'" data-qty="'+Number(p.qty)+'"><span>'+esc(p.name)+' — '+esc(p.qty)+' '+esc(p.unit||"pcs")+'</span><b>'+money(Number(p.rate)*Number(p.qty))+'</b><input class="cashier-rate" data-i="'+i+'" type="number" min="0" step="0.01" value="'+Number(p.rate)+'" readonly></div>').join("") || '<div class="cs-empty">No items</div>';
     $("cashierDiscount").value = Number(x.discount || 0);
-    $("cashierPaymentMethod").value = x.payment_method || "Cash";
+    choosePayment(x.payment_method || "Cash");
     $("cashierReceived").value = Number(x.amount_received ?? x.total ?? 0);
     bindRates(); total(); setActions();
   }
@@ -73,7 +87,7 @@
   function setActions() {
     const pending=Boolean(active)&&status==="pending", paid=Boolean(active)&&status==="paid";
     $("cashierEdit").disabled=!pending||busy; $("cashierDiscount").readOnly=!pending||!editing;
-    $("cashierPaymentMethod").disabled=!pending; $("cashierReceived").readOnly=!pending;
+    $("cashierReceived").readOnly=!pending;
     $("cashierPaid").disabled=!pending||busy; $("cashierCancelBill").disabled=!pending||busy;
     $("cashierPrint").disabled=!paid; $("cashierShare").disabled=!paid;
     document.querySelector(".cs-live").textContent=active?String(active.status||status).toUpperCase():status.toUpperCase();
@@ -96,10 +110,14 @@
       const response=await fetch("/api/data?resource=cash_sales&id="+active.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:nextStatus,items:currentItems(),discount:t.discount,payment_method:$("cashierPaymentMethod").value,amount_received:t.received})});
       const j=await response.json().catch(()=>({}));if(!response.ok)throw Error(j.error||"Invoice update failed");
       $("cashierStatus").textContent=nextStatus==="paid"?j.record.invoice_number+" paid ho gaya.":j.record.invoice_number+" cancelled.";
-      active=null;await load();
+      closePayment();active=null;await load();
     }catch(e){$("cashierStatus").textContent=e.message}finally{busy=false;setActions()}
   }
-  $("cashierPaid").onclick=()=>updateBill("paid");
+  $("cashierPaid").onclick=openPayment;
+  $("cashierPaymentClose").onclick=closePayment;
+  $("cashierConfirmPaid").onclick=()=>updateBill("paid");
+  document.querySelectorAll("#cashierPaymentOptions [data-method]").forEach(button=>button.onclick=()=>choosePayment(button.dataset.method));
+  paymentModal.onclick=e=>{if(e.target===paymentModal)closePayment()};
   $("cashierCancelBill").onclick=()=>updateBill("cancelled");
   document.querySelectorAll(".cashier-tabs [data-status]").forEach(button=>button.onclick=()=>{
     status=button.dataset.status;document.querySelectorAll(".cashier-tabs button").forEach(x=>x.classList.toggle("active",x===button));active=null;load();
