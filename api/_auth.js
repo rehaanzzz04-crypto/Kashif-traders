@@ -8,8 +8,6 @@ export const ROLE_ACCESS_DEFAULTS={
   accountant:['dashboard','salary-advances','suppliers','supplier-bills','supplier-payments','clients','client-sales','client-receipts','documents','search','reports'],
   salesman:['dashboard','salary-advances','clients','client-sales','client-receipts','products','search']
 };
-const ROLE_ACCESS_CACHE_TTL=60_000;
-const roleAccessCache=new Map();
 
 export function db(){
   const url=process.env.DATABASE_URL;
@@ -41,37 +39,25 @@ export async function getSessionUser(req,sql=db()){
   const token=cookieValue(req,'kt_session');
   if(!token)return null;
   const tokenHash=hashToken(token);
-  const rows=await sql`WITH valid AS MATERIALIZED(
-      SELECT s.id session_id,e.id,e.employee_code,e.full_name,e.mobile_number,e.designation,e.status,e.last_login_at
-      FROM employee_sessions s JOIN employees e ON e.id=s.employee_id
-      WHERE s.token_hash=${tokenHash} AND s.expires_at>now() AND e.status='active' LIMIT 1
-    ),touched AS(
-      UPDATE employee_sessions s SET last_seen_at=now() FROM valid v
-      WHERE s.id=v.session_id AND (s.last_seen_at IS NULL OR s.last_seen_at<now()-INTERVAL '5 minutes')
-      RETURNING s.id
-    )
-    SELECT v.id,v.employee_code,v.full_name,v.mobile_number,v.designation,v.status,v.last_login_at
-    FROM valid v LEFT JOIN touched t ON t.id=v.session_id`;
+  const rows=await sql`SELECT e.id,e.employee_code,e.full_name,e.mobile_number,e.designation,e.status,e.last_login_at
+    FROM employee_sessions s JOIN employees e ON e.id=s.employee_id
+    WHERE s.token_hash=${tokenHash} AND s.expires_at>now() AND e.status='active' LIMIT 1`;
   if(!rows[0])return null;
+  await sql`UPDATE employee_sessions SET last_seen_at=now() WHERE token_hash=${tokenHash}`;
   return rows[0];
 }
 
 export async function getRoleAccess(sql,role){
-  const cached=roleAccessCache.get(role);
-  if(cached&&cached.expires>Date.now())return cached.access;
   try{
     const rows=await sql`SELECT menu_key FROM role_permissions WHERE designation=${role} AND allowed=true ORDER BY menu_key`;
-    if(rows.length){const access=rows.map(x=>x.menu_key);roleAccessCache.set(role,{access,expires:Date.now()+ROLE_ACCESS_CACHE_TTL});return access;}
+    if(rows.length)return rows.map(x=>x.menu_key);
   }catch(e){
     if(e?.code!=='42P01') throw e;
   }
-  const access=ROLE_ACCESS_DEFAULTS[role]||[];
-  roleAccessCache.set(role,{access,expires:Date.now()+ROLE_ACCESS_CACHE_TTL});
-  return access;
+  return ROLE_ACCESS_DEFAULTS[role]||[];
 }
 
 export async function canAccess(sql,role,view){
-  if(role==='admin')return MENU_KEYS.includes(view);
   const access=await getRoleAccess(sql,role);
   return access.includes(view);
 }
