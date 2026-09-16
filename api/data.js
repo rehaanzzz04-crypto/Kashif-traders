@@ -69,6 +69,8 @@ const cleanOcrItems = (v) => {
 };
 const autoClientInvoiceSeed = () =>
   `AUTO-CINV-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+const autoSupplierInvoiceSeed = () =>
+  `AUTO-SINV-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 // OCR review schema is migrated lazily on first client bill request.
 async function ensureClientOcrAudit(sql) {
   await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_status TEXT`;
@@ -223,8 +225,14 @@ async function create(sql, r, b) {
     return sql`INSERT INTO suppliers(business_name,contact_person,mobile_number,whatsapp_number,address,opening_balance,notes,status) VALUES(${cleanText(b.business_name)},${cleanText(b.contact_person)},${cleanText(b.mobile_number)},${cleanText(b.whatsapp_number)},${cleanText(b.address)},${cleanAmount(b.opening_balance) ?? 0},${cleanText(b.notes)},${cleanText(b.status) ?? "active"}) RETURNING *`;
   if (r === "clients")
     return sql`INSERT INTO clients(business_name,contact_person,mobile_number,whatsapp_number,address,credit_limit,opening_balance,notes,status) VALUES(${cleanText(b.business_name)},${cleanText(b.contact_person)},${cleanText(b.mobile_number)},${cleanText(b.whatsapp_number)},${cleanText(b.address)},${cleanAmount(b.credit_limit)},${cleanAmount(b.opening_balance) ?? 0},${cleanText(b.notes)},${cleanText(b.status) ?? "active"}) RETURNING *`;
-  if (r === "supplier_invoices")
-    return sql`INSERT INTO supplier_invoices(supplier_id,invoice_number,invoice_date,due_date,amount,notes,attachment_url,status) VALUES(${asId(b.supplier_id)},${cleanText(b.invoice_number)},${cleanText(b.invoice_date)},${cleanText(b.due_date)},${cleanAmount(b.amount)},${cleanText(b.notes)},${cleanText(b.attachment_url)},${cleanText(b.status) ?? "unpaid"}) RETURNING *`;
+  if (r === "supplier_invoices") {
+    const supplierId = asId(b.supplier_id), invoiceDate = cleanText(b.invoice_date), amount = cleanAmount(b.amount);
+    if (!supplierId) throw Error("Supplier is required");
+    if (!invoiceDate) throw Error("Invoice date is required");
+    if (amount === null || amount <= 0) throw Error("Valid bill amount is required");
+    const dueDate = cleanText(b.due_date) || invoiceDate;
+    return sql`INSERT INTO supplier_invoices(supplier_id,invoice_number,invoice_date,due_date,amount,notes,attachment_url,status) VALUES(${supplierId},${cleanText(b.invoice_number) || autoSupplierInvoiceSeed()},${invoiceDate},${dueDate},${amount},${cleanText(b.notes)},${cleanText(b.attachment_url)},${cleanText(b.status) ?? "unpaid"}) RETURNING *`;
+  }
   if (r === "supplier_payments") {
     const supplierId = asId(b.supplier_id),
       amount = cleanAmount(b.amount);
@@ -378,13 +386,15 @@ export default async function handler(req, res) {
       const x = await create(sql, resource, b);
       let record = (await attachEntryNumbers(sql, resource, x))[0] || null;
       if (
-        resource === "client_invoices" &&
+        ["supplier_invoices", "client_invoices"].includes(resource) &&
         record?.id &&
         record?.entry_number &&
+        (resource === "client_invoices" || !cleanText(b.invoice_number)) &&
         record.invoice_number !== record.entry_number
       ) {
-        const u =
-          await sql`UPDATE client_invoices SET invoice_number=${record.entry_number},updated_at=now() WHERE id=${record.id} RETURNING *`;
+        const u = resource === "supplier_invoices"
+          ? await sql`UPDATE supplier_invoices SET invoice_number=${record.entry_number},updated_at=now() WHERE id=${record.id} RETURNING *`
+          : await sql`UPDATE client_invoices SET invoice_number=${record.entry_number},updated_at=now() WHERE id=${record.id} RETURNING *`;
         record = { ...(u[0] || record), entry_number: record.entry_number };
       }
       return res.status(201).json({ record });
@@ -405,8 +415,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   } catch (e) {
     console.error("Kashif Traders API error", e);
+    const knownMessage = [
+      "Supplier is required",
+      "Invoice date is required",
+      "Valid bill amount is required",
+    ].includes(e?.message);
     const msg =
-      e?.message === "DATABASE_URL_NOT_CONFIGURED"
+      knownMessage
+        ? e.message
+        : e?.message === "DATABASE_URL_NOT_CONFIGURED"
         ? "DATABASE_URL is not configured"
         : e?.code === "23505"
           ? "Duplicate record"
