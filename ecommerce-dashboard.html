@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#173f35">
+  <title>E-Commerce Hub | Kashif Traders</title>
+  <link rel="stylesheet" href="/ecommerce-dashboard.css?v=20260916-hub1">
+</head>
+<body>
+  <header class="hub-head"><button id="back" aria-label="Back to ERP">‹</button><div><b>E-Commerce Hub</b><span>MULTI-STORE MANAGEMENT</span></div></header>
+  <main>
+    <section class="intro"><p>ONLINE BUSINESS</p><h1>Stores & Sales Overview</h1><span>Dono e-commerce stores ke orders aur sales ek jagha manage karein.</span></section>
+    <nav class="store-buttons" aria-label="E-commerce stores">
+      <a class="store-button hussain" href="/ecommerce-orders.html"><span>HT</span><div><small>OPEN STORE MANAGEMENT</small><strong id="hussainButtonName">Hussain Traders</strong></div><b>›</b></a>
+      <button class="store-button gulshan" id="gulshanStore" type="button"><span>GT</span><div><small>DRY FRUITS STORE</small><strong>Gulshan Traders</strong></div><b>›</b></button>
+    </nav>
+    <section class="dashboard-title"><div><p>LIVE DASHBOARD</p><h2>Store Performance</h2></div><button id="refresh">Refresh</button></section>
+    <section class="store-overviews">
+      <article class="store-overview hussain-card">
+        <div class="card-head"><div><small>LIVE STORE</small><h3 id="hussainCardName">Hussain Traders</h3></div><span class="live">LIVE</span></div>
+        <div class="metrics"><div><small>New Orders</small><strong id="hNew">—</strong></div><div><small>Active Orders</small><strong id="hActive">—</strong></div><div><small>Paid Sales</small><strong id="hSales">—</strong></div><div><small>Total Orders</small><strong id="hTotal">—</strong></div></div>
+        <div class="recent"><h4>New Coming Orders</h4><div id="hRecent">Loading orders…</div></div>
+      </article>
+      <article class="store-overview gulshan-card">
+        <div class="card-head"><div><small>DRY FRUITS STORE</small><h3>Gulshan Traders</h3></div><span class="pending">SETUP PENDING</span></div>
+        <div class="metrics"><div><small>New Orders</small><strong>0</strong></div><div><small>Active Orders</small><strong>0</strong></div><div><small>Paid Sales</small><strong>PKR 0</strong></div><div><small>Total Orders</small><strong>0</strong></div></div>
+        <div class="setup-note"><b>Black & Gold Store Setup Next</b><span>Products, settings, orders aur billing ka separate system yahan connect hoga.</span></div>
+      </article>
+    </section>
+    <p id="status" class="status">Dashboard loading…</p>
+  </main>
+  <script src="/ecommerce-dashboard.js?v=20260916-hub1"></script>
+</body>
+</html>
