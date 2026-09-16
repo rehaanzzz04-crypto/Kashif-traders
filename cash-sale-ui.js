@@ -217,18 +217,25 @@
     } catch (e) { $("csScannerStatus").textContent = "Camera open nahi hua—barcode manually enter karein."; }
     finally { $("csScannerStart").disabled = false; }
   };
-  let saleProductImage = null;
+  let saleProductImage = null, editingSaleProduct = null, managedSaleProducts = [];
   const productModal = $("csProductModal"), productForm = $("csProductForm"),
     productCamera = $("csProductCamera"), productGallery = $("csProductGallery"),
     productImageStatus = $("csProductImageStatus");
-  $("csAddProduct").onclick = () => {
+  function openSaleProductForm(product = null) {
+    editingSaleProduct = product;
     productForm.reset();
-    productForm.elements.unit.value = "pcs";
-    productForm.elements.status.value = "active";
+    for (const input of productForm.elements) if (input.name) input.value = product?.[input.name] ?? (input.name === "unit" ? "pcs" : input.name === "status" ? "active" : "");
+    $("csProductNumber").value = product?.sku || "Generated automatically after Save";
+    $("csProductFormTitle").textContent = product ? "Edit Sale Product" : "Add Sale Product";
+    $("csProductFormNote").textContent = product ? "Product ki details update karein ya Products list se delete karein." : "Yeh product sirf Sale page ke catalog mein save hoga.";
+    $("csProductSave").textContent = product ? "Update Product" : "Save Product";
     saleProductImage = null;
-    productImageStatus.textContent = "Image optional hai.";
+    productImageStatus.textContent = product?.product_image_url ? "Current image saved hai. Replace karna ho to new image select karein." : "Image optional hai.";
+    $("csProductManager").classList.add("cs-hidden");
+    productForm.classList.remove("cs-hidden");
     productModal.classList.remove("cs-hidden");
-  };
+  }
+  $("csAddProduct").onclick = () => openSaleProductForm();
   $("csProductCancel").onclick = () => productModal.classList.add("cs-hidden");
   $("csProductCameraBtn").onclick = () => productCamera.click();
   $("csProductGalleryBtn").onclick = () => productGallery.click();
@@ -241,6 +248,20 @@
   };
   productCamera.onchange = () => pickSaleProductImage(productCamera);
   productGallery.onchange = () => pickSaleProductImage(productGallery);
+  function renderManagedSaleProducts() {
+    const query = $("csManageSearch").value.trim().toLowerCase(), rows = managedSaleProducts.filter(product => !query || [product.name, product.sku, product.category, product.barcode].some(value => String(value || "").toLowerCase().includes(query)));
+    $("csManageList").innerHTML = rows.length ? rows.map(product => '<article class="cs-manage-row">' + (product.product_image_url ? '<img src="' + esc(product.product_image_url) + '" alt="">' : '<div class="cs-manage-pic">KT</div>') + '<div><b>' + esc(product.name) + '</b><small>' + esc(product.sku || "—") + ' · ' + esc(product.category || "General") + ' · ' + esc(product.status) + '<br>' + money(product.sale_price) + ' · Barcode: ' + esc(product.barcode || "—") + '</small></div><div class="cs-manage-actions"><button data-product-edit="' + product.id + '" type="button">Edit</button><button class="danger" data-product-delete="' + product.id + '" type="button">Delete</button></div></article>').join("") : '<div class="cs-empty">Koi product nahi mila.</div>';
+    $("csManageList").querySelectorAll("[data-product-edit]").forEach(button => button.onclick = () => openSaleProductForm(managedSaleProducts.find(product => String(product.id) === button.dataset.productEdit)));
+    $("csManageList").querySelectorAll("[data-product-delete]").forEach(button => button.onclick = async () => { const product = managedSaleProducts.find(item => String(item.id) === button.dataset.productDelete); if (!product || !confirm(product.name + " delete karna hai?")) return; button.disabled = true; try { const response = await fetch("/api/data?resource=sale_products&id=" + product.id, {method:"DELETE"}), json = await response.json().catch(() => ({})); if (!response.ok) throw Error(json.error || "Product delete nahi ho saka"); $("csStatus").textContent = product.name + " delete ho gaya."; await loadManagedSaleProducts(); } catch (error) { alert(error.message); button.disabled = false; } });
+  }
+  async function loadManagedSaleProducts() {
+    $("csManageList").innerHTML = '<div class="cs-empty">Products loading…</div>';
+    try { const response = await fetch("/api/data?resource=sale_products", {cache:"no-store"}), json = await response.json().catch(() => ({})); if (!response.ok) throw Error(json.error || "Products load nahi ho sakay"); managedSaleProducts = json.records || []; renderManagedSaleProducts(); } catch (error) { $("csManageList").innerHTML = '<div class="cs-empty">' + esc(error.message) + '</div>'; }
+  }
+  $("csManageProducts").onclick = () => { productForm.classList.add("cs-hidden"); $("csProductManager").classList.remove("cs-hidden"); $("csProductFormTitle").textContent = "Manage Sale Products"; $("csProductFormNote").textContent = "Product edit ya delete karein."; loadManagedSaleProducts(); };
+  $("csManageSearch").oninput = renderManagedSaleProducts;
+  $("csNewProduct").onclick = () => openSaleProductForm();
+  $("csManageClose").onclick = () => productModal.classList.add("cs-hidden");
   async function uploadSaleProductImage(file) {
     productImageStatus.textContent = "Uploading image...";
     const r = await fetch("/api/upload-document?name=" + encodeURIComponent(file.name || "sale-product.jpg"), {
@@ -260,8 +281,8 @@
     try {
       const body = Object.fromEntries(new FormData(productForm).entries());
       if (saleProductImage) body.product_image_url = await uploadSaleProductImage(saleProductImage);
-      const r = await fetch("/api/data?resource=sale_products", {
-        method: "POST",
+      const r = await fetch("/api/data?resource=sale_products" + (editingSaleProduct ? "&id=" + editingSaleProduct.id : ""), {
+        method: editingSaleProduct ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -270,7 +291,7 @@
       productModal.classList.add("cs-hidden");
       $("csSearch").value = j.record.name;
       renderResults([j.record]);
-      $("csStatus").textContent = j.record.name + " Sale Products mein save ho gaya.";
+      $("csStatus").textContent = j.record.name + (editingSaleProduct ? " update ho gaya." : " Sale Products mein save ho gaya.");
     } catch (err) {
       $("csStatus").textContent = err.message;
       productImageStatus.textContent = err.message;
