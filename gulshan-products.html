@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0d0c0a">
+  <title>Gulshan Traders Products</title>
+  <link rel="stylesheet" href="/gulshan-admin.css?v=20260916-gulshan2">
+</head>
+<body>
+  <header><button id="back" aria-label="Back">‹</button><div class="mark">GT</div><div><b>Gulshan Product Catalog</b><span>DRY FRUITS E-COMMERCE</span></div></header>
+  <main>
+    <nav class="actions"><a href="/gulshan-orders.html">Manage Orders</a><a href="/gulshan-store.html" target="_blank" rel="noopener">Open Store</a></nav>
+    <section class="title"><div><small>SEPARATE INVENTORY</small><h1>Products</h1></div><button id="add">+ Add Product</button></section>
+    <div class="search"><input id="search" placeholder="Search name, SKU or category"><button id="refresh">Refresh</button></div>
+    <section class="product-list" id="list"><div class="empty">Products loading…</div></section>
+  </main>
+  <div class="modal hidden" id="modal"><form class="modal-box" id="form"><div class="modal-head"><h2 id="formTitle">Add Product</h2><button id="close" type="button" aria-label="Close">×</button></div><div class="grid">
+    <label>Product Name<input name="name" required></label><label>SKU (optional)<input name="sku"></label>
+    <label>Category<input name="category" placeholder="Almonds, Dates, Gift Boxes"></label><label>Unit<input name="unit" value="pack" required></label>
+    <label>Sale Price<input name="sale_price" type="number" min="0" step="0.01" required></label><label>Available Stock<input name="stock_quantity" type="number" min="0" step="0.001" required></label>
+    <label>Status<select name="status"><option value="active">Active</option><option value="inactive">Inactive</option></select></label><label>Product Image<input id="image" type="file" accept="image/*"><small id="imageStatus">Optional image — large photos compress automatically</small></label>
+    <label class="wide">Description<textarea name="description" placeholder="Quality, origin, pack details…"></textarea></label>
+  </div><button class="save">Save Product</button></form></div>
+  <script src="/gulshan-products.js?v=20260916-gulshan2"></script>
+</body>
+</html>

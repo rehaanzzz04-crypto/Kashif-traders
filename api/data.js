@@ -4,6 +4,7 @@ import { queueApproval } from "./approvals.js";
 import { ensureEntryNumbers, attachEntryNumbers } from "./_entry-number.js";
 import { ensurePaymentAllocationTables, allocateSupplierPayment, allocateClientReceipt } from "./_payment-allocation.js";
 import ecommerceHandler from "../ecommerce-core.js";
+import gulshanEcommerceHandler from "../gulshan-ecommerce-core.js";
 
 const allowed = new Set([
   "suppliers",
@@ -16,6 +17,7 @@ const allowed = new Set([
   "cash_sales",
   "sale_products",
   "ecommerce",
+  "gulshan_ecommerce",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -306,6 +308,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Unknown resource" });
   try {
     if(resource==="ecommerce")return ecommerceHandler(req,res);
+    if(resource==="gulshan_ecommerce")return gulshanEcommerceHandler(req,res);
     const sql = db(),
       user = await getSessionUser(req, sql);
     if (!user)
