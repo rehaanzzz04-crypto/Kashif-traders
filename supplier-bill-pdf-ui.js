@@ -1,24 +1,99 @@
 'use strict';
 (() => {
-  const api = (resource, options = {}) => { let u = '/api/inventory?resource=' + encodeURIComponent(resource); if (options.id) u += '&id=' + encodeURIComponent(options.id); return fetch(u, { method: options.method || 'GET', headers: { 'Content-Type': 'application/json' }, body: options.body ? JSON.stringify(options.body) : undefined, cache: 'no-store' }).then(async r => { const j = await r.json().catch(() => ({})); if (!r.ok) throw Error(j.error || 'Request failed'); return j; }); };
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-  const money = v => 'PKR ' + Number(v || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 });
-  let editItems = [], products = [];
-  async function installItems(form) {
-    if (!form || form.dataset.supplierItemsFix === '1' || window.currentView !== 'supplier-bills' || !window.editId) return;
-    form.dataset.supplierItemsFix = '1';
-    const grid = form.querySelector('.grid'); if (!grid) return;
-    try { const [ir, pr] = await Promise.all([api('invoice_items', { id: window.editId }), api('products')]); editItems = (ir.records || []).map(x => ({ ...x, quantity: Number(x.quantity || 1), unit_price: Number(x.unit_price || 0) })); products = pr.records || []; } catch (e) { window.toast?.(e.message, true); return; }
-    const box = document.createElement('div'); box.className = 'field full'; box.innerHTML = '<details open><summary style="cursor:pointer;color:#173f35;font-weight:850">Invoice Products</summary><div style="margin-top:10px"><div class="grid"><select id="fixProduct"><option value="">Select product</option>' + products.map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('') + '</select><input id="fixQty" type="number" min="0.001" step="0.001" value="1"><input id="fixRate" type="number" min="0" step="0.01" placeholder="Purchase price"><button type="button" class="btn light" id="fixAdd">+ Add Product</button></div><div id="fixItems"></div></div></details>';
-    grid.appendChild(box);
-    const list = box.querySelector('#fixItems');
-    const render = () => { list.innerHTML = editItems.length ? '<table><thead><tr><th>Product</th><th>Qty</th><th>Rate</th><th>Total</th><th></th></tr></thead><tbody>' + editItems.map((x, i) => '<tr><td>' + esc(x.product_name || x.description) + '</td><td><input data-i="' + i + '" data-k="quantity" type="number" min="0.001" step="0.001" value="' + x.quantity + '"></td><td><input data-i="' + i + '" data-k="unit_price" type="number" min="0" step="0.01" value="' + x.unit_price + '"></td><td>' + money(x.quantity * x.unit_price) + '</td><td><button type="button" class="btn small danger" data-remove="' + i + '">Remove</button></td></tr>').join('') + '</tbody></table>' : '<p>No products added.</p>'; list.querySelectorAll('[data-i]').forEach(e => e.oninput = () => { editItems[Number(e.dataset.i)][e.dataset.k] = Number(e.value || 0); render(); }); list.querySelectorAll('[data-remove]').forEach(e => e.onclick = () => { editItems.splice(Number(e.dataset.remove), 1); render(); }); };
-    box.querySelector('#fixProduct').onchange = e => { const p = products.find(x => String(x.id) === e.target.value); if (p) box.querySelector('#fixRate').value = p.purchase_price || 0; };
-    box.querySelector('#fixAdd').onclick = () => { const p = products.find(x => String(x.id) === box.querySelector('#fixProduct').value); const q = Number(box.querySelector('#fixQty').value), r = Number(box.querySelector('#fixRate').value); if (!p || !(q > 0) || r < 0) return window.toast?.('Product, quantity aur rate required', true); editItems.push({ product_id: p.id, product_name: p.name, description: p.name, quantity: q, unit_price: r }); render(); };
-    render();
-    form.addEventListener('submit', () => { const snapshot = editItems.map(x => ({ product_id: x.product_id, description: x.description || x.product_name, quantity: Number(x.quantity), unit_price: Number(x.unit_price) })); setTimeout(async () => { try { const latest = await api('invoice_items', { id: window.editId }); for (const x of latest.records || []) await api('invoice_items', { id: x.id, method: 'DELETE' }); for (const x of snapshot) await api('invoice_items', { method: 'POST', body: { supplier_invoice_id: window.editId, ...x } }); } catch (e) { window.toast?.('Products update failed: ' + e.message, true); } }, 900); }, true);
+  const json = async (url, options = {}) => {
+    const response = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+    return data;
+  };
+  const inventory = (resource, options = {}) => {
+    const params = new URLSearchParams({ resource });
+    if (options.invoiceId) params.set('invoice_id', options.invoiceId);
+    if (options.id) params.set('id', options.id);
+    return json('/api/inventory?' + params, { method: options.method || 'GET', body: options.body ? JSON.stringify(options.body) : undefined });
+  };
+  const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[c]));
+  const money = value => `PKR ${Number(value || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 })}`;
+  let itemState = { invoiceId: null, items: [], products: [], installedForm: null };
+
+  async function loadItems(invoiceId) {
+    const [items, productRows] = await Promise.all([
+      inventory('invoice_items', { invoiceId }),
+      inventory('products')
+    ]);
+    itemState.invoiceId = String(invoiceId);
+    itemState.items = (items.records || []).map(item => ({
+      id: item.id,
+      product_id: item.product_id,
+      product_name: item.product_name || item.description || 'Item',
+      description: item.description || item.product_name || 'Item',
+      quantity: Number(item.quantity || 0),
+      unit_price: Number(item.unit_price || 0)
+    }));
+    itemState.products = productRows.records || [];
   }
-  const mo = new MutationObserver(() => installItems(document.querySelector('#recordForm'))); mo.observe(document.documentElement, { childList: true, subtree: true });
-  setTimeout(() => installItems(document.querySelector('#recordForm')), 300);
-  window.getSupplierBillPdfUrl = id => '/api/supplier-bill-pdf?id=' + encodeURIComponent(id);
+
+  async function saveItems() {
+    const existing = await inventory('invoice_items', { invoiceId: itemState.invoiceId });
+    for (const item of existing.records || []) await inventory('invoice_items', { id: item.id, method: 'DELETE' });
+    for (const item of itemState.items) {
+      await inventory('invoice_items', { method: 'POST', body: {
+        supplier_invoice_id: Number(itemState.invoiceId), product_id: Number(item.product_id),
+        description: item.description, quantity: Number(item.quantity), unit_price: Number(item.unit_price)
+      }});
+    }
+  }
+
+  function renderItems(container) {
+    const rows = itemState.items.map((item, index) => `<tr>
+      <td>${esc(item.product_name)}</td>
+      <td><input type="number" min="0.001" step="0.001" data-item-index="${index}" data-item-field="quantity" value="${item.quantity}"></td>
+      <td><input type="number" min="0" step="0.01" data-item-index="${index}" data-item-field="unit_price" value="${item.unit_price}"></td>
+      <td>${money(item.quantity * item.unit_price)}</td>
+      <td><button type="button" class="btn small danger" data-remove-item="${index}">Remove</button></td>
+    </tr>`).join('');
+    container.innerHTML = `<div class="tablewrap"><table><thead><tr><th>Product</th><th>Qty</th><th>Rate</th><th>Total</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan="5">No products added.</td></tr>'}</tbody></table></div>`;
+    container.querySelectorAll('[data-item-field]').forEach(input => input.addEventListener('input', () => {
+      const item = itemState.items[Number(input.dataset.itemIndex)];
+      item[input.dataset.itemField] = Number(input.value || 0);
+      renderItems(container);
+    }));
+    container.querySelectorAll('[data-remove-item]').forEach(button => button.addEventListener('click', () => {
+      itemState.items.splice(Number(button.dataset.removeItem), 1); renderItems(container);
+    }));
+  }
+
+  async function installItems(form) {
+    if (!form || form === itemState.installedForm || typeof currentView === 'undefined' || currentView !== 'supplier-bills' || typeof editId === 'undefined' || !editId) return;
+    itemState.installedForm = form;
+    const grid = form.querySelector('.grid'); if (!grid) return;
+    try { await loadItems(editId); } catch (error) { window.toast?.(error.message, true); return; }
+    const box = document.createElement('div'); box.className = 'field full';
+    box.innerHTML = `<details open><summary style="cursor:pointer;color:#173f35;font-weight:850">Invoice Products</summary>
+      <div class="grid" style="margin-top:10px"><select data-item-product><option value="">Select product</option>${itemState.products.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>
+      <input data-item-qty type="number" min="0.001" step="0.001" value="1"><input data-item-rate type="number" min="0" step="0.01" placeholder="Purchase price"><button type="button" class="btn light" data-add-item>+ Add Product</button></div>
+      <div data-items-list></div></details>`;
+    grid.appendChild(box);
+    const product = box.querySelector('[data-item-product]'), qty = box.querySelector('[data-item-qty]'), rate = box.querySelector('[data-item-rate]'), list = box.querySelector('[data-items-list]');
+    product.addEventListener('change', () => { const selected = itemState.products.find(p => String(p.id) === product.value); if (selected) rate.value = selected.purchase_price || 0; });
+    box.querySelector('[data-add-item]').addEventListener('click', () => {
+      const selected = itemState.products.find(p => String(p.id) === product.value), quantity = Number(qty.value), unitPrice = Number(rate.value);
+      if (!selected || quantity <= 0 || unitPrice < 0) return window.toast?.('Product, quantity aur rate required', true);
+      itemState.items.push({ product_id: selected.id, product_name: selected.name, description: selected.name, quantity, unit_price: unitPrice });
+      product.value = ''; qty.value = '1'; rate.value = ''; renderItems(list);
+    });
+    renderItems(list);
+    form.addEventListener('submit', () => setTimeout(async () => { try { await saveItems(); } catch (error) { window.toast?.('Products update failed: ' + error.message, true); } }, 700), true);
+  }
+
+  function enhancePdfButtons() {
+    if (typeof currentView === 'undefined' || currentView !== 'supplier-bills') return;
+    document.querySelectorAll('#tbody [data-supplier-pdf]').forEach(button => {
+      const id = button.closest('tr')?.querySelector('[data-action="edit"]')?.dataset.id || button.dataset.id;
+      if (id) button.dataset.pdfUrl = `/api/supplier-bill-pdf?id=${encodeURIComponent(id)}`;
+    });
+  }
+  const observer = new MutationObserver(() => { installItems(document.querySelector('#recordForm')); enhancePdfButtons(); });
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  setTimeout(() => { installItems(document.querySelector('#recordForm')); enhancePdfButtons(); }, 300);
 })();
