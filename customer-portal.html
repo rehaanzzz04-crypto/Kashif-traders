@@ -8,7 +8,7 @@
 <div id="materials" class="tab hidden"><div class="card"><h2>Raw Material Purchase Record</h2><div class="nav"><button class="btn mat active" data-days="15">15 Days</button><button class="btn mat" data-days="30">30 Days</button></div><div id="materialList" class="materials"></div></div></div></section></main>
 <script>
 const $=id=>document.getElementById(id),money=v=>"PKR "+Number(v||0).toLocaleString("en-PK",{maximumFractionDigits:2}),esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));let data=null,products=[];
-async function api(action,opt={}){const r=await fetch("/api/customer-portal?action="+action,opt),j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(Error(j.error||"Request failed"),{status:r.status});return j}
+async function api(action,opt={}){const r=await fetch("/api/data?resource=customer_portal&action="+action,opt),j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(Error(j.error||"Request failed"),{status:r.status});return j}
 async function boot(){try{data=await api("dashboard");showApp();render()}catch(e){$("login").classList.remove("hidden")}}
 function showApp(){$("login").classList.add("hidden");$("app").classList.remove("hidden");$("logout").classList.remove("hidden")}
 $("loginBtn").onclick=async()=>{try{$("loginMsg").textContent="Checking...";await api("login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customer_code:$("code").value,pin:$("pin").value})});data=await api("dashboard");showApp();render();$("loginMsg").textContent=""}catch(e){$("loginMsg").textContent=e.message}};
