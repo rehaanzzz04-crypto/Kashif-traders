@@ -146,6 +146,7 @@
   function setActions() {
     const has = Boolean(active), pending = has && active.status === "pending", openCredit = has && ["credit","partial"].includes(active.status), printable = has && ["paid","credit","partial"].includes(active.status);
     $("cashierEdit").disabled = !pending || busy;
+    $("cashierCorrect").disabled = !has || pending || active.status === "cancelled" || busy;
     $("cashierDiscount").readOnly = !pending || !editing;
     document.querySelectorAll(".cashier-rate").forEach(x => x.readOnly = !pending || !editing);
     $("cashierPaid").disabled = !(pending || openCredit) || busy;
@@ -168,6 +169,31 @@
     $("cashierStatus").textContent = editing ? "Cashier rate aur discount change kar sakta hai." : "Changes payment confirm karte waqt save hongi.";
   };
   $("cashierDiscount").oninput = renderFinancials;
+
+  const correctionModal = $("cashierCorrectionModal");
+  $("cashierCorrect").onclick = async () => {
+    if (!active || active.status === "pending" || active.status === "cancelled" || busy) return;
+    $("cashierCorrectStatus").textContent = "Customers loading...";
+    correctionModal.classList.remove("cs-hidden");
+    try {
+      const r=await fetch("/api/data?resource=cash_sale_customers"),j=await r.json().catch(()=>({}));
+      if(!r.ok) throw Error(j.error||"Customers load nahi huay");
+      const rows=Array.isArray(j.records)?j.records:[];
+      $("cashierCorrectCustomer").innerHTML=rows.map(v=>'<option value="'+v.id+'">'+esc(v.customer_code+" · "+v.name)+'</option>').join("");
+      if(active.customer_id) $("cashierCorrectCustomer").value=String(active.customer_id);
+      $("cashierCorrectStatus").textContent="Correct customer select karein. Save par purani payment reverse ho kar invoice Credit ban jayegi.";
+    } catch(e){ $("cashierCorrectStatus").textContent=e.message; }
+  };
+  $("cashierCorrectClose").onclick=()=>correctionModal.classList.add("cs-hidden");
+  correctionModal.onclick=e=>{if(e.target===correctionModal)correctionModal.classList.add("cs-hidden")};
+  $("cashierCorrectSave").onclick=async()=>{
+    if(!active||busy)return;
+    const customer_id=Number($("cashierCorrectCustomer").value||0);
+    if(!customer_id){$("cashierCorrectStatus").textContent="Customer select karein.";return}
+    if(!confirm("Purani payment reverse karke is invoice ko selected customer ke CREDIT account mein shift karna hai?"))return;
+    correctionModal.classList.add("cs-hidden");
+    await patchBill({action:"correct_invoice",customer_id,corrected_status:"credit"},"Invoice correct ho gayi: payment reversed aur bill Credit mein shift ho gaya.");
+  };
 
   const paymentModal = $("cashierPaymentModal");
 
