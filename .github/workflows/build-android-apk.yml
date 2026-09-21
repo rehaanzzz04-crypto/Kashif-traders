@@ -50,22 +50,22 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs android-app/app/build/outputs/apk/release/app-release.apk
 
       - name: Rename APK
-        run: cp android-app/app/build/outputs/apk/release/app-release.apk Kashif-Traders-ERP-v1.0.3.apk
+        run: cp android-app/app/build/outputs/apk/release/app-release.apk Kashif-Traders-ERP-v1.0.4.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Kashif-Traders-ERP-v1.0.3
-          path: Kashif-Traders-ERP-v1.0.3.apk
+          name: Kashif-Traders-ERP-v1.0.4
+          path: Kashif-Traders-ERP-v1.0.4.apk
 
       - name: Publish permanent APK release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view v1.0.3 >/dev/null 2>&1; then
-            gh release upload v1.0.3 Kashif-Traders-ERP-v1.0.3.apk --clobber
-            gh release edit v1.0.3 --notes "Official permanently-signed Android APK v1.0.3 for Kashif Traders ERP. Future APK versions signed with this protected key can update directly without uninstalling the app."
+          if gh release view v1.0.4 >/dev/null 2>&1; then
+            gh release upload v1.0.4 Kashif-Traders-ERP-v1.0.4.apk --clobber
+            gh release edit v1.0.4 --notes "Official permanently-signed Android APK v1.0.4 for Kashif Traders ERP. Adds native Android PDF share-sheet support while keeping the permanent signing chain for direct future updates."
           else
-            gh release create v1.0.3 Kashif-Traders-ERP-v1.0.3.apk --title "Kashif Traders ERP v1.0.3" --notes "Official permanently-signed Android APK v1.0.3 for Kashif Traders ERP. Future APK versions signed with this protected key can update directly without uninstalling the app."
+            gh release create v1.0.4 Kashif-Traders-ERP-v1.0.4.apk --title "Kashif Traders ERP v1.0.4" --notes "Official permanently-signed Android APK v1.0.4 for Kashif Traders ERP. Future APK versions signed with this protected key can update directly without uninstalling the app."
           fi
 
       - name: Remove temporary signing key
