@@ -1,7 +1,7 @@
 'use strict';
 (()=>{
-  const loadStyle=href=>{if(document.querySelector('link[href^="'+href+'"]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href=href+'?v=20260921-app103';document.head.appendChild(l)};
-  const loadScript=src=>{if(document.querySelector('script[src^="'+src+'"]'))return;const s=document.createElement('script');s.src=src+'?v=20260921-app103';s.defer=true;document.body.appendChild(s)};
+  const loadStyle=href=>{if(document.querySelector('link[href^="'+href+'"]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href=href+'?v=20260921-app104';document.head.appendChild(l)};
+  const loadScript=src=>{if(document.querySelector('script[src^="'+src+'"]'))return;const s=document.createElement('script');s.src=src+'?v=20260921-app104';s.defer=true;document.body.appendChild(s)};
   loadStyle('/mobile-upgrades.css');
   loadScript('/mobile-upgrades.js');
   loadScript('/employee-delete-ui.js');
