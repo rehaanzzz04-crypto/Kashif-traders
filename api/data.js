@@ -545,8 +545,8 @@ async function customerPortal(sql,req,res,staffUser=null){
   if(req.method==="GET"&&action==="products"){const rows=await sql`SELECT id,name,category,unit FROM cash_sale_products WHERE status='active' ORDER BY name,id LIMIT 500`;return res.status(200).json({records:rows})}
   if(req.method==="POST"&&action==="order"){
     const raw=Array.isArray(b.items)?b.items:[],ids=raw.map(x=>asId(x.product_id)).filter(Boolean);if(!ids.length)return res.status(400).json({error:"Kam az kam aik product add karein"});
-    const valid=await sql`SELECT id,name,unit FROM cash_sale_products WHERE id=ANY(${ids}) AND status='active'`,map=new Map(valid.map(x=>[Number(x.id),x]));
-    const items=raw.map(x=>({product_id:asId(x.product_id),qty:Math.max(0,Number(x.qty)||0)})).filter(x=>x.qty>0&&map.has(x.product_id)).map(x=>({...x,name:map.get(x.product_id).name,unit:map.get(x.product_id).unit}));
+    const valid=await sql`SELECT id,name,unit,sale_price FROM cash_sale_products WHERE id=ANY(${ids}) AND status='active'`,map=new Map(valid.map(x=>[Number(x.id),x]));
+    const items=raw.map(x=>({product_id:asId(x.product_id),qty:Math.max(0,Number(x.qty)||0)})).filter(x=>x.qty>0&&map.has(x.product_id)).map(x=>({...x,name:map.get(x.product_id).name,unit:map.get(x.product_id).unit,price:Number(map.get(x.product_id).sale_price)||0}));
     if(!items.length)return res.status(400).json({error:"Valid products required"});const no="CO-"+Date.now();
     const r=await sql`INSERT INTO cash_customer_orders(order_number,customer_id,items) VALUES(${no},${customer.id},${JSON.stringify(items)}) RETURNING id,order_number,status,created_at`;return res.status(201).json({record:r[0]});
   }
