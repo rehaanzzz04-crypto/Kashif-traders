@@ -49,3 +49,49 @@ body{overflow-x:hidden}.cs-back,.cs-scan,.cs-primary,.cs-secondary,.cs-result{to
 .cs-customer-row select{min-width:0}
 .cs-customer-row button{border:1px solid var(--cs-green);border-radius:9px;background:#eef6f2;color:var(--cs-green);padding:8px 10px;font-size:11px;font-weight:850;cursor:pointer;white-space:nowrap}
 @media(max-width:620px){.cs-customer-row{grid-template-columns:1fr}.cs-customer-row button{min-height:42px}}
+
+/* 2026-09-21 mobile layout + upward product search suggestions */
+.cs-results{top:auto;bottom:calc(100% + 6px);max-height:min(42vh,320px);overscroll-behavior:contain;box-shadow:0 -16px 35px #0002}
+@media(max-width:700px){
+  .cs-top{width:100%}
+  .cs-topin{width:100%;max-width:none;padding:9px 10px;gap:8px}
+  .cs-back{width:38px;height:38px;flex:0 0 38px}
+  .cs-mark{width:40px;height:40px;flex:0 0 40px;font-size:17px}
+  .cs-brand b{font-size:19px;line-height:1.1}
+  .cs-brand span{font-size:7.5px;letter-spacing:.85px}
+  .cs-wrap{width:100%;max-width:none;padding:8px}
+  .cs-layout{display:block;margin-top:8px}
+  .cs-layout>.cs-card{margin-bottom:10px}
+  .cs-card{width:100%;padding:10px;border-radius:14px}
+  .cs-rolebar{margin:8px 0}
+  .cs-page-label{font-size:13px;padding:8px 10px!important}
+  .cs-heading{gap:8px;margin-bottom:10px}
+  .cs-heading h1,.cs-heading h2{font-size:21px}
+  .cs-heading p{font-size:11px}
+  .cs-heading .cs-primary{min-height:44px}
+  .cs-fields{grid-template-columns:1fr;gap:9px;margin-bottom:12px}
+  .cs-field input,.cs-field select,.cs-search{min-height:46px;font-size:16px;padding:10px 11px}
+  .cs-customer-row{grid-template-columns:1fr!important;gap:7px}
+  .cs-customer-row button{min-height:44px;font-size:13px}
+  .cs-product-tools{grid-template-columns:minmax(0,1fr) 126px;gap:7px;margin-top:4px;z-index:30}
+  .cs-search-wrap{z-index:31}
+  .cs-results{left:0;right:0;top:auto;bottom:calc(100% + 6px);max-height:min(45vh,300px);z-index:80;border-radius:13px}
+  .cs-result{min-height:54px;padding:10px;align-items:center}
+  .cs-result b{font-size:13px}
+  .cs-result small{font-size:9px}
+  .cs-result-price{font-size:12px}
+  .cs-scan{min-height:46px;padding:8px;font-size:12px}
+  .cs-weight-help{font-size:10px;line-height:1.4;margin-bottom:8px}
+  .cs-tablewrap{width:100%;min-height:175px;-webkit-overflow-scrolling:touch}
+  .cs-table{min-width:620px}
+  .cs-table th,.cs-table td{padding:8px;font-size:11px}
+  .cs-summary-row{font-size:13px}
+  .cs-summary-row.total b{font-size:21px}
+  .cs-read-note{font-size:10px}
+  .cs-primary,.cs-secondary{min-height:46px}
+}
+@media(max-width:390px){
+  .cs-product-tools{grid-template-columns:minmax(0,1fr) 112px}
+  .cs-scan{font-size:11px}
+  .cs-table{min-width:590px}
+}
