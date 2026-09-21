@@ -535,6 +535,23 @@ async function customerPortal(sql,req,res){
     const r=await sql\`INSERT INTO cash_customer_orders(order_number,customer_id,items) VALUES(\${no},\${customer.id},\${JSON.stringify(items)}) RETURNING id,order_number,status,created_at\`;return res.status(201).json({record:r[0]});
   }
   if(req.method==="GET"&&action==="materials"){const days=Math.min(365,Math.max(1,Number(req.query?.days)||30));const rows=await sql\`SELECT x->>'name' product,COALESCE(x->>'unit','pcs') unit,SUM(COALESCE((x->>'qty')::numeric,0)) quantity FROM cash_sale_queue q CROSS JOIN LATERAL jsonb_array_elements(q.items) x WHERE q.customer_id=\${customer.id} AND q.status IN ('paid','partial','credit') AND q.sale_date>=CURRENT_DATE-\${days}::int GROUP BY x->>'name',COALESCE(x->>'unit','pcs') ORDER BY product\`;return res.status(200).json({days,records:rows})}
+  if(req.method==="GET"&&action==="admin_orders"){
+    const rows=await sql`SELECT o.*,c.customer_code,c.name customer_name,c.mobile FROM cash_customer_orders o JOIN cash_sale_customers c ON c.id=o.customer_id ORDER BY CASE WHEN o.status='pending' THEN 0 ELSE 1 END,o.created_at DESC LIMIT 200`;
+    return res.status(200).json({records:rows});
+  }
+  if(req.method==="POST"&&action==="approve_order"){
+    const orderId=asId(b.order_id),priced=Array.isArray(b.items)?b.items:[];if(!orderId)return res.status(400).json({error:"Valid order required"});
+    const o=(await sql`SELECT o.*,c.name customer_name FROM cash_customer_orders o JOIN cash_sale_customers c ON c.id=o.customer_id WHERE o.id=${orderId} FOR UPDATE`)[0];
+    if(!o)return res.status(404).json({error:"Order not found"});if(o.status!=="pending"||o.cash_sale_id)return res.status(409).json({error:"Order already converted"});
+    const base=Array.isArray(o.items)?o.items:[],pmap=new Map(priced.map(x=>[Number(x.product_id),Math.max(0,Number(x.price)||0)]));
+    const items=base.map(x=>({...x,price:pmap.get(Number(x.product_id))||0,total:(Number(x.qty)||0)*(pmap.get(Number(x.product_id))||0)}));
+    if(items.some(x=>!(Number(x.price)>0)))return res.status(400).json({error:"Har product ka rate enter karein"});
+    const subtotal=items.reduce((n,x)=>n+Number(x.total||0),0),discount=Math.max(0,Number(b.discount)||0),total=Math.max(0,subtotal-discount);
+    const inv="CS-"+Date.now();
+    const q=await sql`INSERT INTO cash_sale_queue(invoice_number,customer_name,customer_id,items,subtotal,discount,total,status,amount_received,sale_date,created_at,updated_at) VALUES(${inv},${o.customer_name},${o.customer_id},${JSON.stringify(items)},${subtotal},${discount},${total},'credit',0,CURRENT_DATE,now(),now()) RETURNING *`;
+    await sql`UPDATE cash_customer_orders SET status='approved',cash_sale_id=${q[0].id},updated_at=now() WHERE id=${orderId}`;
+    return res.status(201).json({record:q[0]});
+  }
   if(req.method==="GET"&&action==="dashboard"){const bills=await sql\`SELECT id,invoice_number,sale_date,items,total,COALESCE(amount_received,0) amount_received,GREATEST(total-COALESCE(amount_received,0),0) balance_due,status,created_at FROM cash_sale_queue WHERE customer_id=\${customer.id} AND status IN ('paid','partial','credit') ORDER BY created_at DESC,id DESC LIMIT 200\`;const orders=await sql\`SELECT id,order_number,items,status,cash_sale_id,created_at FROM cash_customer_orders WHERE customer_id=\${customer.id} ORDER BY created_at DESC,id DESC LIMIT 100\`;return res.status(200).json({customer:{customer_code:customer.customer_code,name:customer.name,mobile:customer.mobile},summary:{sales:bills.reduce((n,x)=>n+Number(x.total||0),0),received:bills.reduce((n,x)=>n+Number(x.amount_received||0),0),outstanding:bills.reduce((n,x)=>n+Number(x.balance_due||0),0)},bills,orders})}
   return res.status(405).json({error:"Method not allowed"});
 }
