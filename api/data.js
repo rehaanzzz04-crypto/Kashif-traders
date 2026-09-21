@@ -323,7 +323,7 @@ async function cashSaleCustomers(sql, req, user) {
     if(!name)return {status:400,data:{error:"Customer name required hai"}};
     const duplicate=(await sql`SELECT id,customer_code,name,mobile FROM cash_sale_customers WHERE lower(trim(name))=lower(trim(${name})) AND COALESCE(trim(mobile),'')=COALESCE(trim(${mobile}),'') AND status='active' LIMIT 1`)[0];
     if(duplicate)return {status:409,data:{error:"Ye Cash Sale customer pehle se mojood hai",record:duplicate}};
-    const code="CSC-"+Date.now()+"-"+Math.random().toString(36).slice(2,6).toUpperCase();
+    const code="KT-"+String(Date.now()).slice(-6);
     const rows=await sql`INSERT INTO cash_sale_customers(customer_code,name,mobile,notes) VALUES(${code},${name},${mobile},${notes}) RETURNING *`;
     return {status:201,data:{record:rows[0]}};
   }
