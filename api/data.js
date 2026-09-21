@@ -99,6 +99,9 @@ async function ensureCashSaleSchema(sql) {
   await sql`CREATE TABLE IF NOT EXISTS cash_sale_payments (id BIGSERIAL PRIMARY KEY, cash_sale_id BIGINT NOT NULL REFERENCES cash_sale_queue(id) ON DELETE CASCADE, amount NUMERIC(14,2) NOT NULL, payment_method TEXT NOT NULL, received_by_id BIGINT, received_by_name TEXT, received_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   await sql`CREATE INDEX IF NOT EXISTS cash_sale_payments_sale_idx ON cash_sale_payments(cash_sale_id,received_at,id)`;
   await sql`CREATE INDEX IF NOT EXISTS cash_sale_queue_customer_idx ON cash_sale_queue(customer_id,created_at,id)`;
+  await sql`ALTER TABLE cash_sale_customers ADD COLUMN IF NOT EXISTS portal_pin_salt TEXT`;
+  await sql`ALTER TABLE cash_sale_customers ADD COLUMN IF NOT EXISTS portal_pin_hash TEXT`;
+  await sql`CREATE TABLE IF NOT EXISTS cash_customer_orders(id BIGSERIAL PRIMARY KEY,order_number TEXT UNIQUE NOT NULL,customer_id BIGINT NOT NULL REFERENCES cash_sale_customers(id),items JSONB NOT NULL DEFAULT '[]'::jsonb,status TEXT NOT NULL DEFAULT 'pending',cash_sale_id BIGINT REFERENCES cash_sale_queue(id),created_at TIMESTAMPTZ NOT NULL DEFAULT now(),updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   await sql`INSERT INTO cash_sale_customers(customer_code,name)
     SELECT 'CSC-LEG-'||x.id::text, trim(x.customer_name)
     FROM (SELECT DISTINCT ON (lower(trim(customer_name))) id,customer_name FROM cash_sale_queue WHERE customer_id IS NULL AND customer_name IS NOT NULL AND lower(trim(customer_name))<>'walk-in customer' ORDER BY lower(trim(customer_name)),id) x
@@ -322,6 +325,15 @@ async function cashSaleCustomers(sql, req, user) {
     const code="CSC-"+Date.now()+"-"+Math.random().toString(36).slice(2,6).toUpperCase();
     const rows=await sql`INSERT INTO cash_sale_customers(customer_code,name,mobile,notes) VALUES(${code},${name},${mobile},${notes}) RETURNING *`;
     return {status:201,data:{record:rows[0]}};
+  }
+  if(req.method==="PATCH"&&cleanText(b.action)==="set_portal_pin"){
+    if(!id)return {status:400,data:{error:"Valid customer id required"}};
+    const pin=cleanText(b.pin);
+    if(!pin||pin.length<4||pin.length>12)return {status:400,data:{error:"Portal PIN 4 se 12 characters ka hona chahiye"}};
+    const crypto=(await import("node:crypto")).default;
+    const salt=crypto.randomBytes(16).toString("hex"),pinHash=crypto.scryptSync(String(pin),salt,64).toString("hex");
+    const rows=await sql`UPDATE cash_sale_customers SET portal_pin_salt=${salt},portal_pin_hash=${pinHash},updated_at=now() WHERE id=${id} RETURNING id,customer_code,name`;
+    return rows[0]?{status:200,data:{record:rows[0]}}:{status:404,data:{error:"Cash Sale customer not found"}};
   }
   if(req.method==="PATCH"){
     if(!id)return {status:400,data:{error:"Valid customer id required"}};
