@@ -4,7 +4,7 @@
   if(!nav||!module)return;
   const loadingViews={'stock-transfer':['Stock Transfer','Move stock between warehouses'],'stock-adjustment':['Stock Adjustment','Increase or decrease warehouse stock with reason']};
   nav.addEventListener('click',e=>{const b=e.target.closest('[data-view]'),view=b?.dataset.view;const meta=loadingViews[view];if(!meta)return;dashboard?.classList.add('hidden');module.classList.remove('hidden');module.innerHTML='<div class="kt-route-loading-head"><div><h2>'+meta[0]+'</h2><p>'+meta[1]+'</p></div></div><div class="empty">Loading…</div>';},true);
-  const pdfReady=new Map();
+  const pdfReady=new Map();window.addEventListener('supplier-bill-saved',()=>pdfReady.clear());
   async function getSupplierPdf(id){const r=await fetch('/api/payment-whatsapp?type=supplier_bill_pdf&id='+encodeURIComponent(id),{cache:'no-store'});if(!r.ok){const j=await r.json().catch(()=>({}));throw new Error(j.error||'Supplier bill PDF failed')}return r.blob()}
   function supplierPdfName(row){return ((row.invoice_number||('supplier-bill-'+row.id)).replace(/[^a-z0-9_-]+/gi,'-')||'supplier-bill')+'.pdf'}
   async function generateSupplierPdf(row,button){button.disabled=true;button.textContent='Generating…';try{const blob=await getSupplierPdf(row.id);pdfReady.set(Number(row.id),blob);button.dataset.supplierPdf='share';button.className='btn small';button.textContent='Share PDF';if(typeof window.toast==='function')window.toast('Supplier bill PDF ready to share')}catch(err){button.textContent='Generate PDF';if(typeof window.toast==='function')window.toast(err.message||'Supplier bill PDF failed',true)}finally{button.disabled=false}}
@@ -14,4 +14,5 @@
   nav.addEventListener('click',e=>{if(e.target.closest('[data-view="supplier-bills"]'))setTimeout(ensureSupplierPdfButtons,80)});
   setTimeout(ensureSupplierPdfButtons,100);
 })();
-</script><script src="/cash-sale-menu.js?v=20260916-ecommercehub1"></script><script src="/boot.js?v=20260915-inventory-speed1"></script></body></html>
+</script><script src="/cash-sale-menu.js?v=20260916-ecommercehub1"></script><script src="/boot.js?v=20260921-billproducts1"></script></body></html>
+

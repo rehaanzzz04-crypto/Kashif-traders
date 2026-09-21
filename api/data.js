@@ -1,3 +1,4 @@
+import { saveSupplierBillItems } from './_supplier-bill-items.js';
 import { neon } from "@neondatabase/serverless";
 import { getSessionUser, canAccess } from "./_auth.js";
 import { queueApproval } from "./approvals.js";
@@ -346,6 +347,13 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: "Access denied" });
     const id = asId(req.query?.id);
     if (req.method === "GET") {
+      if(resource==='supplier_invoices' && req.query?.bill_products==='1'){
+        const [items,products]=await Promise.all([
+          id?sql`SELECT i.*,p.name product_name,COALESCE((SELECT SUM(g.received_qty) FROM goods_receipt_items g WHERE g.supplier_invoice_item_id=i.id),0) received_qty FROM supplier_invoice_items i LEFT JOIN products p ON p.id=i.product_id WHERE i.supplier_invoice_id=${id} ORDER BY i.id`:Promise.resolve([]),
+          sql`SELECT id,name,sku,purchase_price FROM products ORDER BY name`
+        ]);
+        return res.status(200).json({items,products});
+      }
       const rows = await list(sql, resource, id);
       return res
         .status(200)
@@ -386,7 +394,7 @@ export default async function handler(req, res) {
         });
     }
     if (req.method === "POST") {
-      const x = await create(sql, resource, b);
+      const x = resource==='supplier_invoices' && Object.hasOwn(b,'items') ? await saveSupplierBillItems(sql,null,b) : await create(sql, resource, b);
       let record = (await attachEntryNumbers(sql, resource, x))[0] || null;
       if (
         ["supplier_invoices", "client_invoices"].includes(resource) &&
@@ -404,7 +412,7 @@ export default async function handler(req, res) {
     }
     if (req.method === "PATCH") {
       if (!id) return res.status(400).json({ error: "Valid id is required" });
-      const x = await patch(sql, resource, id, b),
+      const x = resource==='supplier_invoices' && Object.hasOwn(b,'items') ? await saveSupplierBillItems(sql,id,b) : await patch(sql, resource, id, b),
         record = (await attachEntryNumbers(sql, resource, x))[0] || null;
       return res.status(200).json({ record });
     }
@@ -418,6 +426,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   } catch (e) {
     console.error("Kashif Traders API error", e);
+    if(e.statusCode===400)return res.status(400).json({error:e.message});
     const knownMessage = [
       "Supplier is required",
       "Invoice date is required",
@@ -438,3 +447,4 @@ export default async function handler(req, res) {
       .json({ error: msg });
   }
 }
+
