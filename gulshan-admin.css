@@ -4,6 +4,7 @@
 :root{--black:#111513;--panel:#ffffff;--gold:#0f6b50;--gold2:#0b4f3c;--cream:#111513;--line:#d6e2dc;--muted:#69756f}
 body{background:#f5f8f6;color:#111513}
 header{border-bottom-color:#0f6b50;background:#0d1110;color:#fff}
+@media(max-width:760px){header{padding-top:calc(14px + max(env(safe-area-inset-top,0px),24px))}}
 header>button{border-color:#2a7c62;background:#111513;color:#fff}
 .mark{border-color:#1fa47c;background:#0f6b50;color:#fff}
 header b{color:#fff}header span{color:#8fe0c1}
