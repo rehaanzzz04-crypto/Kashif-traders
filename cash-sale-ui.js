@@ -18,6 +18,40 @@
   const state = { items: [], timer: null, request: 0, sending: false };
   $("csDate").value = new Date().toISOString().slice(0, 10);
   $("csBack").onclick = () => (location.href = "/");
+
+  let saleCustomers = [];
+  function renderCustomers(selectedId = "") {
+    const select = $("csCustomer"), current = String(selectedId || select.value || "");
+    select.innerHTML = '<option value="">Walk-in Customer</option>' + saleCustomers.map(c =>
+      '<option value="' + c.id + '">' + esc(c.name) + (c.mobile ? " · " + esc(c.mobile) : "") + '</option>'
+    ).join("");
+    if ([...select.options].some(o => o.value === current)) select.value = current;
+  }
+  async function loadCustomers(selectedId = "") {
+    try {
+      const r = await fetch("/api/data?resource=cash_sale_customers",{cache:"no-store"}), data = await r.json().catch(() => ({}));
+      if (!r.ok) throw Error(data.error || "Customers load nahi ho sakay");
+      saleCustomers = data.records || [];
+      renderCustomers(selectedId);
+    } catch (e) { $("csStatus").textContent = e.message; }
+  }
+  const customerModal = $("csCustomerModal"), customerForm = $("csCustomerForm");
+  $("csAddCustomer").onclick = () => { customerForm.reset(); $("csCustomerStatus").textContent = ""; customerModal.classList.remove("cs-hidden"); };
+  $("csCustomerCancel").onclick = () => customerModal.classList.add("cs-hidden");
+  customerModal.onclick = e => { if (e.target === customerModal) customerModal.classList.add("cs-hidden"); };
+  customerForm.onsubmit = async e => {
+    e.preventDefault();
+    const save = $("csCustomerSave"); save.disabled = true; $("csCustomerStatus").textContent = "Customer save ho raha hai...";
+    try {
+      const body = Object.fromEntries(new FormData(customerForm).entries());
+      const r = await fetch("/api/data?resource=cash_sale_customers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}), data = await r.json().catch(() => ({}));
+      if (!r.ok) throw Error(data.error || "Customer save nahi ho saka");
+      customerModal.classList.add("cs-hidden");
+      await loadCustomers(data.record.id);
+      $("csStatus").textContent = data.record.name + " Cash Sale customer account mein save ho gaya.";
+    } catch (e2) { $("csCustomerStatus").textContent = e2.message; }
+    finally { save.disabled = false; }
+  };
   async function requestProducts(search) {
     const token = ++state.request,
       params = new URLSearchParams({
@@ -321,7 +355,7 @@
         j.record.invoice_number + " cashier ko bhej diya gaya.";
       state.items = [];
       $("csDiscount").value = "0";
-      $("csCustomer").value = "Walk-in Customer";
+      $("csCustomer").value = "";
       renderItems();
     } catch (e) {
       $("csStatus").textContent = e.message;
@@ -341,5 +375,6 @@
     .catch(() => {
       $("csStatus").textContent = "Connection check failed.";
     });
+  loadCustomers();
   renderItems();
 })();
