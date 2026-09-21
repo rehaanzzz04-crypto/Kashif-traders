@@ -14,28 +14,60 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
-      - name: Build APK
+
+      - name: Prepare permanent signing key
+        shell: bash
+        env:
+          KT_SIGNING_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KT_SIGNING_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          test -n "$KT_SIGNING_B64"
+          test -n "$KT_SIGNING_PASS"
+          printf '%s' "$KT_SIGNING_B64" | base64 --decode > android-app/kashif-traders-release.jks
+          chmod 600 android-app/kashif-traders-release.jks
+
+      - name: Build permanently signed APK
         working-directory: android-app
-        run: gradle assembleDebug --no-daemon
+        shell: bash
+        env:
+          KT_SIGNING_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          gradle assembleRelease --no-daemon             -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/android-app/kashif-traders-release.jks"             -Pandroid.injected.signing.store.password="$KT_SIGNING_PASS"             -Pandroid.injected.signing.key.alias="kashiftraders"             -Pandroid.injected.signing.key.password="$KT_SIGNING_PASS"
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)"
+          "$APKSIGNER" verify --verbose --print-certs android-app/app/build/outputs/apk/release/app-release.apk
+
       - name: Rename APK
-        run: cp android-app/app/build/outputs/apk/debug/app-debug.apk Kashif-Traders-ERP-v1.0.3.apk
+        run: cp android-app/app/build/outputs/apk/release/app-release.apk Kashif-Traders-ERP-v1.0.3.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: Kashif-Traders-ERP-v1.0.3
           path: Kashif-Traders-ERP-v1.0.3.apk
+
       - name: Publish permanent APK release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view v1.0.3 >/dev/null 2>&1; then
             gh release upload v1.0.3 Kashif-Traders-ERP-v1.0.3.apk --clobber
+            gh release edit v1.0.3 --notes "Official permanently-signed Android APK v1.0.3 for Kashif Traders ERP. Future APK versions signed with this protected key can update directly without uninstalling the app."
           else
-            gh release create v1.0.3 Kashif-Traders-ERP-v1.0.3.apk --title "Kashif Traders ERP v1.0.3" --notes "Official Android APK v1.0.3 for Kashif Traders ERP. Uses the permanent production URL and includes native camera permission/file capture support plus PDF/download handling for the Android WebView."
+            gh release create v1.0.3 Kashif-Traders-ERP-v1.0.3.apk --title "Kashif Traders ERP v1.0.3" --notes "Official permanently-signed Android APK v1.0.3 for Kashif Traders ERP. Future APK versions signed with this protected key can update directly without uninstalling the app."
           fi
+
+      - name: Remove temporary signing key
+        if: always()
+        run: rm -f android-app/kashif-traders-release.jks
