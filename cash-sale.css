@@ -44,3 +44,8 @@ body{overflow-x:hidden}.cs-back,.cs-scan,.cs-primary,.cs-secondary,.cs-result{to
 }
 
 .cs-field-note{display:block;margin-top:2px;color:var(--cs-muted);font-size:9.5px;line-height:1.35}
+
+.cs-customer-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}
+.cs-customer-row select{min-width:0}
+.cs-customer-row button{border:1px solid var(--cs-green);border-radius:9px;background:#eef6f2;color:var(--cs-green);padding:8px 10px;font-size:11px;font-weight:850;cursor:pointer;white-space:nowrap}
+@media(max-width:620px){.cs-customer-row{grid-template-columns:1fr}.cs-customer-row button{min-height:42px}}
