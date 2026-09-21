@@ -510,7 +510,7 @@ async function remove(sql, r, id) {
 }
 
 function customerCookie(req,name){const raw=String(req.headers?.cookie||"");const hit=raw.split(";").map(x=>x.trim()).find(x=>x.startsWith(name+"="));return hit?decodeURIComponent(hit.slice(name.length+1)):null}
-async function customerPortal(sql,req,res){
+async function customerPortal(sql,req,res,staffUser=null){
   const crypto=(await import("node:crypto")).default;
   await ensureCashSaleSchema(sql);
   await sql`CREATE TABLE IF NOT EXISTS cash_customer_sessions(id BIGSERIAL PRIMARY KEY,customer_id BIGINT NOT NULL REFERENCES cash_sale_customers(id) ON DELETE CASCADE,token_hash TEXT UNIQUE NOT NULL,expires_at TIMESTAMPTZ NOT NULL,last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
@@ -524,6 +524,22 @@ async function customerPortal(sql,req,res){
     res.setHeader("Set-Cookie",`kt_customer=${encodeURIComponent(t)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=2592000`);return res.status(200).json({ok:true,name:c.name});
   }
   if(req.method==="POST"&&action==="logout"){if(sessionToken)await sql`DELETE FROM cash_customer_sessions WHERE token_hash=${digest(sessionToken)}`;res.setHeader("Set-Cookie","kt_customer=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0");return res.status(200).json({ok:true})}
+  if(staffUser&&req.method==="GET"&&action==="admin_orders"){
+    const rows=await sql`SELECT o.*,c.customer_code,c.name customer_name,c.mobile FROM cash_customer_orders o JOIN cash_sale_customers c ON c.id=o.customer_id ORDER BY CASE WHEN o.status='pending' THEN 0 ELSE 1 END,o.created_at DESC LIMIT 200`;
+    return res.status(200).json({records:rows});
+  }
+  if(staffUser&&req.method==="POST"&&action==="approve_order"){
+    const orderId=asId(b.order_id),priced=Array.isArray(b.items)?b.items:[];if(!orderId)return res.status(400).json({error:"Valid order required"});
+    const o=(await sql`SELECT o.*,c.name customer_name FROM cash_customer_orders o JOIN cash_sale_customers c ON c.id=o.customer_id WHERE o.id=${orderId}`)[0];
+    if(!o)return res.status(404).json({error:"Order not found"});if(o.status!=="pending"||o.cash_sale_id)return res.status(409).json({error:"Order already converted"});
+    const base=Array.isArray(o.items)?o.items:[],pmap=new Map(priced.map(x=>[Number(x.product_id),Math.max(0,Number(x.price)||0)]));
+    const items=base.map(x=>({...x,rate:pmap.get(Number(x.product_id))||0,total:(Number(x.qty)||0)*(pmap.get(Number(x.product_id))||0)}));
+    if(items.some(x=>!(Number(x.rate)>0)))return res.status(400).json({error:"Har product ka rate enter karein"});
+    const subtotal=items.reduce((n,x)=>n+Number(x.total||0),0),discount=Math.min(subtotal,Math.max(0,Number(b.discount)||0)),total=subtotal-discount,inv="CS-"+Date.now();
+    const q=await sql`INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_name,customer_id,items,subtotal,discount,total,status,amount_received,sale_date,created_at,updated_at) VALUES(${inv},${staffUser.id},${staffUser.full_name||staffUser.employee_code},${o.customer_name},${o.customer_id},${JSON.stringify(items)},${subtotal},${discount},${total},'pending',0,CURRENT_DATE,now(),now()) RETURNING *`;
+    await sql`UPDATE cash_customer_orders SET status='converted',cash_sale_id=${q[0].id},updated_at=now() WHERE id=${orderId} AND status='pending'`;
+    return res.status(201).json({record:q[0]});
+  }
   const customer=sessionToken?(await sql`SELECT c.* FROM cash_customer_sessions s JOIN cash_sale_customers c ON c.id=s.customer_id WHERE s.token_hash=${digest(sessionToken)} AND s.expires_at>now() AND c.status='active' LIMIT 1`)[0]:null;
   if(!customer)return res.status(401).json({error:"Customer login required"});
   if(req.method==="GET"&&action==="products"){const rows=await sql`SELECT id,name,category,unit FROM cash_sale_products WHERE status='active' ORDER BY name,id LIMIT 500`;return res.status(200).json({records:rows})}
@@ -535,23 +551,6 @@ async function customerPortal(sql,req,res){
     const r=await sql`INSERT INTO cash_customer_orders(order_number,customer_id,items) VALUES(${no},${customer.id},${JSON.stringify(items)}) RETURNING id,order_number,status,created_at`;return res.status(201).json({record:r[0]});
   }
   if(req.method==="GET"&&action==="materials"){const days=Math.min(365,Math.max(1,Number(req.query?.days)||30));const rows=await sql`SELECT x->>'name' product,COALESCE(x->>'unit','pcs') unit,SUM(COALESCE((x->>'qty')::numeric,0)) quantity FROM cash_sale_queue q CROSS JOIN LATERAL jsonb_array_elements(q.items) x WHERE q.customer_id=${customer.id} AND q.status IN ('paid','partial','credit') AND q.sale_date>=CURRENT_DATE-${days}::int GROUP BY x->>'name',COALESCE(x->>'unit','pcs') ORDER BY product`;return res.status(200).json({days,records:rows})}
-  if(req.method==="GET"&&action==="admin_orders"){
-    const rows=await sql`SELECT o.*,c.customer_code,c.name customer_name,c.mobile FROM cash_customer_orders o JOIN cash_sale_customers c ON c.id=o.customer_id ORDER BY CASE WHEN o.status='pending' THEN 0 ELSE 1 END,o.created_at DESC LIMIT 200`;
-    return res.status(200).json({records:rows});
-  }
-  if(req.method==="POST"&&action==="approve_order"){
-    const orderId=asId(b.order_id),priced=Array.isArray(b.items)?b.items:[];if(!orderId)return res.status(400).json({error:"Valid order required"});
-    const o=(await sql`SELECT o.*,c.name customer_name FROM cash_customer_orders o JOIN cash_sale_customers c ON c.id=o.customer_id WHERE o.id=${orderId} FOR UPDATE`)[0];
-    if(!o)return res.status(404).json({error:"Order not found"});if(o.status!=="pending"||o.cash_sale_id)return res.status(409).json({error:"Order already converted"});
-    const base=Array.isArray(o.items)?o.items:[],pmap=new Map(priced.map(x=>[Number(x.product_id),Math.max(0,Number(x.price)||0)]));
-    const items=base.map(x=>({...x,price:pmap.get(Number(x.product_id))||0,total:(Number(x.qty)||0)*(pmap.get(Number(x.product_id))||0)}));
-    if(items.some(x=>!(Number(x.price)>0)))return res.status(400).json({error:"Har product ka rate enter karein"});
-    const subtotal=items.reduce((n,x)=>n+Number(x.total||0),0),discount=Math.max(0,Number(b.discount)||0),total=Math.max(0,subtotal-discount);
-    const inv="CS-"+Date.now();
-    const q=await sql`INSERT INTO cash_sale_queue(invoice_number,customer_name,customer_id,items,subtotal,discount,total,status,amount_received,sale_date,created_at,updated_at) VALUES(${inv},${o.customer_name},${o.customer_id},${JSON.stringify(items)},${subtotal},${discount},${total},'credit',0,CURRENT_DATE,now(),now()) RETURNING *`;
-    await sql`UPDATE cash_customer_orders SET status='approved',cash_sale_id=${q[0].id},updated_at=now() WHERE id=${orderId}`;
-    return res.status(201).json({record:q[0]});
-  }
   if(req.method==="GET"&&action==="dashboard"){const bills=await sql`SELECT id,invoice_number,sale_date,items,total,COALESCE(amount_received,0) amount_received,GREATEST(total-COALESCE(amount_received,0),0) balance_due,status,created_at FROM cash_sale_queue WHERE customer_id=${customer.id} AND status IN ('paid','partial','credit') ORDER BY created_at DESC,id DESC LIMIT 200`;const orders=await sql`SELECT id,order_number,items,status,cash_sale_id,created_at FROM cash_customer_orders WHERE customer_id=${customer.id} ORDER BY created_at DESC,id DESC LIMIT 100`;return res.status(200).json({customer:{customer_code:customer.customer_code,name:customer.name,mobile:customer.mobile},summary:{sales:bills.reduce((n,x)=>n+Number(x.total||0),0),received:bills.reduce((n,x)=>n+Number(x.amount_received||0),0),outstanding:bills.reduce((n,x)=>n+Number(x.balance_due||0),0)},bills,orders})}
   return res.status(405).json({error:"Method not allowed"});
 }
@@ -562,7 +561,15 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Unknown resource" });
   try {
     if(resource==="ecommerce")return ecommerceHandler(req,res);
-    if(resource==="customer_portal"){const sql=db();return customerPortal(sql,req,res);}
+    if(resource==="customer_portal"){
+      const sql=db(), action=cleanText(req.query?.action);
+      if(action==="admin_orders"||action==="approve_order"){
+        const user=await getSessionUser(req,sql);
+        if(!user)return res.status(401).json({error:"Authentication required"});
+        return customerPortal(sql,req,res,user);
+      }
+      return customerPortal(sql,req,res);
+    }
     if(resource==="gulshan_ecommerce")return gulshanEcommerceHandler(req,res);
     const sql = db(),
       user = await getSessionUser(req, sql);
