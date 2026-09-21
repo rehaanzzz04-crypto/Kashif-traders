@@ -16,6 +16,7 @@ const allowed = new Set([
   "client_receipts",
   "documents",
   "cash_sales",
+  "cash_sale_customers",
   "sale_products",
   "ecommerce",
   "gulshan_ecommerce",
@@ -84,8 +85,10 @@ async function ensureClientOcrAudit(sql) {
   await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_corrected_at TIMESTAMPTZ`;
   await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_line_items JSONB NOT NULL DEFAULT \'[]\'::jsonb`;
 }
-async function cashSales(sql, req, user) {
+async function ensureCashSaleSchema(sql) {
   await sql`CREATE TABLE IF NOT EXISTS cash_sale_queue (id BIGSERIAL PRIMARY KEY, invoice_number TEXT UNIQUE NOT NULL, created_by_id BIGINT, created_by_name TEXT NOT NULL, customer_name TEXT, sale_date DATE NOT NULL DEFAULT CURRENT_DATE, items JSONB NOT NULL DEFAULT '[]'::jsonb, subtotal NUMERIC(14,2) NOT NULL DEFAULT 0, discount NUMERIC(14,2) NOT NULL DEFAULT 0, total NUMERIC(14,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
+  await sql`CREATE TABLE IF NOT EXISTS cash_sale_customers (id BIGSERIAL PRIMARY KEY, customer_code TEXT UNIQUE NOT NULL, name TEXT NOT NULL, mobile TEXT, notes TEXT, status TEXT NOT NULL DEFAULT 'active', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
+  await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS customer_id BIGINT`;
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS payment_method TEXT`;
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS amount_received NUMERIC(14,2)`;
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS paid_by_id BIGINT`;
@@ -93,17 +96,17 @@ async function cashSales(sql, req, user) {
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`;
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS cancelled_by_name TEXT`;
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`;
-  await sql`CREATE TABLE IF NOT EXISTS cash_sale_payments (
-    id BIGSERIAL PRIMARY KEY,
-    cash_sale_id BIGINT NOT NULL REFERENCES cash_sale_queue(id) ON DELETE CASCADE,
-    amount NUMERIC(14,2) NOT NULL,
-    payment_method TEXT NOT NULL,
-    received_by_id BIGINT,
-    received_by_name TEXT,
-    received_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  )`;
+  await sql`CREATE TABLE IF NOT EXISTS cash_sale_payments (id BIGSERIAL PRIMARY KEY, cash_sale_id BIGINT NOT NULL REFERENCES cash_sale_queue(id) ON DELETE CASCADE, amount NUMERIC(14,2) NOT NULL, payment_method TEXT NOT NULL, received_by_id BIGINT, received_by_name TEXT, received_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   await sql`CREATE INDEX IF NOT EXISTS cash_sale_payments_sale_idx ON cash_sale_payments(cash_sale_id,received_at,id)`;
-
+  await sql`CREATE INDEX IF NOT EXISTS cash_sale_queue_customer_idx ON cash_sale_queue(customer_id,created_at,id)`;
+  await sql`INSERT INTO cash_sale_customers(customer_code,name)
+    SELECT 'CSC-LEG-'||x.id::text, trim(x.customer_name)
+    FROM (SELECT DISTINCT ON (lower(trim(customer_name))) id,customer_name FROM cash_sale_queue WHERE customer_id IS NULL AND customer_name IS NOT NULL AND lower(trim(customer_name))<>'walk-in customer' ORDER BY lower(trim(customer_name)),id) x
+    WHERE NOT EXISTS (SELECT 1 FROM cash_sale_customers c WHERE lower(trim(c.name))=lower(trim(x.customer_name)))`;
+  await sql`UPDATE cash_sale_queue q SET customer_id=c.id FROM cash_sale_customers c WHERE q.customer_id IS NULL AND q.customer_name IS NOT NULL AND lower(trim(q.customer_name))=lower(trim(c.name)) AND lower(trim(q.customer_name))<>'walk-in customer'`;
+}
+async function cashSales(sql, req, user) {
+  await ensureCashSaleSchema(sql);
   if (req.method === "GET") {
     const status = cleanText(req.query?.status) || "pending",
       limit = Math.min(1000, Math.max(1, Number(req.query?.limit) || 200));
@@ -136,10 +139,17 @@ async function cashSales(sql, req, user) {
   if (req.method === "POST") {
     const b = bodyOf(req), items = Array.isArray(b.items) ? b.items : [];
     if (!items.length) return { status: 400, data: { error: "Kam az kam aik product add karein" } };
-    const subtotal = items.reduce((sum, x) => sum + Math.max(0, Number(x.qty) || 0) * Math.max(0, Number(x.rate) || 0), 0),
-      discount = Math.min(subtotal, Math.max(0, Number(b.discount) || 0)), total = subtotal - discount, no = `CS-${Date.now()}`;
-    const rows = await sql`INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_name,sale_date,items,subtotal,discount,total) VALUES(${no},${user.id},${user.full_name || user.employee_code},${cleanText(b.customer_name) || "Walk-in Customer"},${cleanText(b.sale_date) || new Date().toISOString().slice(0, 10)},${JSON.stringify(items)},${subtotal},${discount},${total}) RETURNING *`;
-    return { status: 201, data: { record: rows[0] } };
+    const customerId=asId(b.customer_id);
+    let customer=null;
+    if(customerId){
+      customer=(await sql`SELECT id,name,status FROM cash_sale_customers WHERE id=${customerId}`)[0];
+      if(!customer||customer.status!=="active") return {status:400,data:{error:"Valid Cash Sale customer select karein"}};
+    }
+    const subtotal=items.reduce((sum,x)=>sum+Math.max(0,Number(x.qty)||0)*Math.max(0,Number(x.rate)||0),0),
+      discount=Math.min(subtotal,Math.max(0,Number(b.discount)||0)), total=subtotal-discount, no="CS-"+Date.now();
+    const rows=await sql`INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_id,customer_name,sale_date,items,subtotal,discount,total)
+      VALUES(${no},${user.id},${user.full_name||user.employee_code},${customer?.id||null},${customer?.name||"Walk-in Customer"},${cleanText(b.sale_date)||new Date().toISOString().slice(0,10)},${JSON.stringify(items)},${subtotal},${discount},${total}) RETURNING *`;
+    return {status:201,data:{record:rows[0]}};
   }
   if (req.method === "PATCH") {
     const id = asId(req.query?.id), b = bodyOf(req);
@@ -196,8 +206,7 @@ async function cashSales(sql, req, user) {
       discount = Math.min(subtotal, Math.max(0, b.discount === undefined ? Number(current.discount) : Number(b.discount) || 0)),
       total = subtotal - discount,
       requested = Math.max(0, cleanAmount(b.amount_received) ?? 0),
-      customerName = cleanText(current.customer_name) || "Walk-in Customer",
-      namedCustomer = customerName.toLowerCase() !== "walk-in customer",
+      customerId = asId(current.customer_id),
       processor = user.full_name || user.employee_code;
 
     let applied = 0, method = cleanText(b.payment_method);
@@ -207,15 +216,15 @@ async function cashSales(sql, req, user) {
       applied = total;
     }
     if (nextStatus === "partial") {
-      if (!namedCustomer)
-        return { status: 400, data: { error: "Partial payment ke liye customer name required hai" } };
+      if (!customerId)
+        return { status: 400, data: { error: "Partial payment ke liye Cash Sale customer account required hai" } };
       if (!method || method === "Credit" || requested <= 0 || requested + 0.005 >= total)
         return { status: 400, data: { error: "Partial payment amount total se kam aur zero se zyada hona chahiye" } };
       applied = requested;
     }
     if (nextStatus === "credit") {
-      if (!namedCustomer)
-        return { status: 400, data: { error: "Credit bill ke liye customer name required hai" } };
+      if (!customerId)
+        return { status: 400, data: { error: "Credit bill ke liye Cash Sale customer account required hai" } };
       applied = 0;
       method = "Credit";
     }
@@ -256,6 +265,74 @@ async function cashSales(sql, req, user) {
   }
   return { status: 405, data: { error: "Method not allowed" } };
 }
+
+async function cashSaleCustomers(sql, req, user) {
+  await ensureCashSaleSchema(sql);
+  const id=asId(req.query?.id), b=bodyOf(req);
+  const summary=async customerId=>(await sql`SELECT c.*,COUNT(q.id) FILTER (WHERE q.status IN ('paid','partial','credit'))::int bill_count,
+    COALESCE(SUM(q.total) FILTER (WHERE q.status IN ('paid','partial','credit')),0) total_sales,
+    COALESCE(SUM(COALESCE(q.amount_received,0)) FILTER (WHERE q.status IN ('paid','partial','credit')),0) total_received,
+    COALESCE(SUM(GREATEST(q.total-COALESCE(q.amount_received,0),0)) FILTER (WHERE q.status IN ('partial','credit')),0) outstanding
+    FROM cash_sale_customers c LEFT JOIN cash_sale_queue q ON q.customer_id=c.id WHERE c.id=${customerId} GROUP BY c.id`)[0]||null;
+  if(req.method==="GET"){
+    if(id){
+      const record=await summary(id); if(!record)return {status:404,data:{error:"Cash Sale customer not found"}};
+      const bills=await sql`SELECT q.*,GREATEST(q.total-COALESCE(q.amount_received,0),0) balance_due,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('id',p.id,'amount',p.amount,'payment_method',p.payment_method,'received_by_name',p.received_by_name,'received_at',p.received_at) ORDER BY p.received_at,p.id) FROM cash_sale_payments p WHERE p.cash_sale_id=q.id),'[]'::jsonb) payments
+        FROM cash_sale_queue q WHERE q.customer_id=${id} ORDER BY q.created_at DESC,q.id DESC`;
+      return {status:200,data:{record,bills}};
+    }
+    const search=cleanText(req.query?.search)||"", like="%"+search+"%";
+    const records=await sql`SELECT c.*,COUNT(q.id) FILTER (WHERE q.status IN ('paid','partial','credit'))::int bill_count,
+      COALESCE(SUM(q.total) FILTER (WHERE q.status IN ('paid','partial','credit')),0) total_sales,
+      COALESCE(SUM(COALESCE(q.amount_received,0)) FILTER (WHERE q.status IN ('paid','partial','credit')),0) total_received,
+      COALESCE(SUM(GREATEST(q.total-COALESCE(q.amount_received,0),0)) FILTER (WHERE q.status IN ('partial','credit')),0) outstanding
+      FROM cash_sale_customers c LEFT JOIN cash_sale_queue q ON q.customer_id=c.id
+      WHERE (${search}='' OR c.name ILIKE ${like} OR COALESCE(c.mobile,'') ILIKE ${like} OR c.customer_code ILIKE ${like}) AND c.status='active'
+      GROUP BY c.id ORDER BY outstanding DESC,c.name,c.id LIMIT 300`;
+    return {status:200,data:{records}};
+  }
+  if(req.method==="POST"){
+    if(cleanText(b.action)==="receive_payment"){
+      const customerId=asId(b.customer_id),amount=cleanAmount(b.amount),method=cleanText(b.payment_method),processor=user.full_name||user.employee_code;
+      if(!customerId)return {status:400,data:{error:"Customer required hai"}};
+      if(amount===null||amount<=0)return {status:400,data:{error:"Valid payment amount required hai"}};
+      if(!method||method==="Credit")return {status:400,data:{error:"Payment method select karein"}};
+      const c=await summary(customerId); if(!c)return {status:404,data:{error:"Cash Sale customer not found"}};
+      const outstanding=Number(c.outstanding||0); if(outstanding<=0)return {status:409,data:{error:"Customer ka koi outstanding balance nahi hai"}};
+      if(amount>outstanding+0.005)return {status:400,data:{error:"Payment outstanding balance se zyada nahi ho sakti"}};
+      const applied=await sql`WITH open_bills AS (
+        SELECT q.id,q.total,COALESCE(q.amount_received,0) received,GREATEST(q.total-COALESCE(q.amount_received,0),0) due,
+        COALESCE(SUM(GREATEST(q.total-COALESCE(q.amount_received,0),0)) OVER (ORDER BY q.created_at,q.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING),0) prior_due
+        FROM cash_sale_queue q WHERE q.customer_id=${customerId} AND q.status IN ('credit','partial') AND GREATEST(q.total-COALESCE(q.amount_received,0),0)>0
+      ), alloc AS (SELECT id,due,LEAST(due,GREATEST(0,${amount}-prior_due)) applied FROM open_bills),
+      updated AS (UPDATE cash_sale_queue q SET amount_received=LEAST(q.total,COALESCE(q.amount_received,0)+a.applied),
+        status=CASE WHEN COALESCE(q.amount_received,0)+a.applied+0.005>=q.total THEN 'paid' ELSE 'partial' END,payment_method=${method},
+        paid_by_id=${user.id},paid_by_name=${processor},paid_at=CASE WHEN COALESCE(q.amount_received,0)+a.applied+0.005>=q.total THEN now() ELSE q.paid_at END,updated_at=now()
+        FROM alloc a WHERE q.id=a.id AND a.applied>0 RETURNING q.id),
+      logged AS (INSERT INTO cash_sale_payments(cash_sale_id,amount,payment_method,received_by_id,received_by_name)
+        SELECT u.id,a.applied,${method},${user.id},${processor} FROM updated u JOIN alloc a ON a.id=u.id RETURNING amount)
+      SELECT COALESCE(SUM(amount),0) applied FROM logged`;
+      return {status:200,data:{applied:Number(applied[0]?.applied||0),record:await summary(customerId)}};
+    }
+    const name=cleanText(b.name),mobile=cleanText(b.mobile),notes=cleanText(b.notes);
+    if(!name)return {status:400,data:{error:"Customer name required hai"}};
+    const duplicate=(await sql`SELECT id,customer_code,name,mobile FROM cash_sale_customers WHERE lower(trim(name))=lower(trim(${name})) AND COALESCE(trim(mobile),'')=COALESCE(trim(${mobile}),'') AND status='active' LIMIT 1`)[0];
+    if(duplicate)return {status:409,data:{error:"Ye Cash Sale customer pehle se mojood hai",record:duplicate}};
+    const code="CSC-"+Date.now()+"-"+Math.random().toString(36).slice(2,6).toUpperCase();
+    const rows=await sql`INSERT INTO cash_sale_customers(customer_code,name,mobile,notes) VALUES(${code},${name},${mobile},${notes}) RETURNING *`;
+    return {status:201,data:{record:rows[0]}};
+  }
+  if(req.method==="PATCH"){
+    if(!id)return {status:400,data:{error:"Valid customer id required"}};
+    const rows=await sql`UPDATE cash_sale_customers SET name=COALESCE(${cleanText(b.name)},name),mobile=CASE WHEN ${b.mobile!==undefined} THEN ${cleanText(b.mobile)} ELSE mobile END,notes=CASE WHEN ${b.notes!==undefined} THEN ${cleanText(b.notes)} ELSE notes END,status=COALESCE(${cleanText(b.status)},status),updated_at=now() WHERE id=${id} RETURNING *`;
+    if(!rows[0])return {status:404,data:{error:"Cash Sale customer not found"}};
+    await sql`UPDATE cash_sale_queue SET customer_name=${rows[0].name},updated_at=now() WHERE customer_id=${id}`;
+    return {status:200,data:{record:rows[0]}};
+  }
+  return {status:405,data:{error:"Method not allowed"}};
+}
+
 async function saleProducts(sql, req) {
   await sql`CREATE TABLE IF NOT EXISTS cash_sale_products (
     id BIGSERIAL PRIMARY KEY,
@@ -432,6 +509,10 @@ export default async function handler(req, res) {
     if (resource === "client_invoices") await ensureClientOcrAudit(sql);
     if (resource === "cash_sales") {
       const out = await cashSales(sql, req, user);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "cash_sale_customers") {
+      const out = await cashSaleCustomers(sql, req, user);
       return res.status(out.status).json(out.data);
     }
     if (resource === "sale_products") {
