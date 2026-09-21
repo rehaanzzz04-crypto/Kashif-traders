@@ -191,8 +191,18 @@
     const customer_id=Number($("cashierCorrectCustomer").value||0);
     if(!customer_id){$("cashierCorrectStatus").textContent="Customer select karein.";return}
     if(!confirm("Purani payment reverse karke is invoice ko selected customer ke CREDIT account mein shift karna hai?"))return;
-    correctionModal.classList.add("cs-hidden");
-    await patchBill({action:"correct_invoice",customer_id,corrected_status:"credit"},"Invoice correct ho gayi: payment reversed aur bill Credit mein shift ho gaya.");
+    $("cashierCorrectStatus").textContent="Correction save ho rahi hai...";
+    try {
+      const response=await fetch("/api/data?resource=cash_sales&id="+active.id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"correct_invoice",customer_id,corrected_status:"credit"})});
+      const j=await response.json().catch(()=>({}));
+      if(!response.ok) throw Error(j.error||"Invoice correction failed");
+      $("cashierCorrectStatus").textContent="Done: payment reversed aur invoice Credit mein shift ho gayi.";
+      correctionModal.classList.add("cs-hidden");
+      active=null;
+      await load();
+    } catch(e) {
+      $("cashierCorrectStatus").textContent="Error: "+e.message;
+    }
   };
 
   const paymentModal = $("cashierPaymentModal");
