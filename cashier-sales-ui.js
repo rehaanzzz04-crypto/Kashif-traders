@@ -13,7 +13,7 @@
   const paymentArray = x => safeArray(x?.payments);
   const receivedOf = x => Math.max(0, Number(x?.amount_received) || 0);
   const balanceOf = x => Math.max(0, Number(x?.total || 0) - receivedOf(x));
-  const namedCustomer = x => String(x?.customer_name || "Walk-in Customer").trim().toLowerCase() !== "walk-in customer";
+  const hasCustomerAccount = x => Number(x?.customer_id || 0) > 0;
 
   let bills = [], active = null, editing = false, status = "pending", busy = false, settlement = "full";
   $("cashierBack").onclick = () => location.href = "/";
@@ -26,6 +26,12 @@
     report.textContent = "▥ Sales Report";
     report.onclick = () => location.href = "/cashier-sales-report.html";
     head.appendChild(report);
+    const accounts = document.createElement("button");
+    accounts.className = "cashier-report-link";
+    accounts.type = "button";
+    accounts.textContent = "👥 Customer Accounts";
+    accounts.onclick = () => location.href = "/cash-sale-customers.html";
+    head.appendChild(accounts);
     const style = document.createElement("style");
     style.textContent = ".cashier-report-link{border:0;border-radius:10px;background:var(--cs-green);color:#fff;padding:9px 12px;font-weight:800;cursor:pointer}.cashier-head>div:first-child+.cashier-report-link{margin-left:auto}@media(max-width:560px){.cashier-head{flex-wrap:wrap}.cashier-report-link{width:100%;margin-left:0!important;min-height:46px}}";
     document.head.appendChild(style);
@@ -298,12 +304,12 @@
     }
 
     const t = totals();
-    if (settlement === "partial" && !namedCustomer(active)) {
-      $("cashierStatus").textContent = "Partial payment ke liye customer name required hai.";
+    if (settlement === "partial" && !hasCustomerAccount(active)) {
+      $("cashierStatus").textContent = "Partial payment ke liye Cash Sale customer account required hai.";
       return;
     }
-    if (settlement === "credit" && !namedCustomer(active)) {
-      $("cashierStatus").textContent = "Credit bill ke liye customer name required hai.";
+    if (settlement === "credit" && !hasCustomerAccount(active)) {
+      $("cashierStatus").textContent = "Credit bill ke liye Cash Sale customer account required hai.";
       return;
     }
     if (settlement === "full" && raw + 0.005 < t.total) {
