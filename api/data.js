@@ -558,6 +558,12 @@ async function customerPortal(sql,req,res,staffUser=null){
     const rows=await sql`SELECT o.*,c.customer_code,c.name customer_name,c.mobile FROM cash_customer_orders o JOIN cash_sale_customers c ON c.id=o.customer_id ORDER BY CASE WHEN o.status='pending' THEN 0 ELSE 1 END,o.created_at DESC LIMIT 200`;
     return res.status(200).json({records:rows});
   }
+  if(staffUser&&req.method==="POST"&&action==="reject_order"){
+    const orderId=asId(b.order_id);if(!orderId)return res.status(400).json({error:"Valid order required"});
+    const rows=await sql`UPDATE cash_customer_orders SET status='rejected',updated_at=now() WHERE id=${orderId} AND status='pending' AND cash_sale_id IS NULL RETURNING *`;
+    if(!rows.length)return res.status(409).json({error:"Order pending nahi hai ya pehle process ho chuka hai"});
+    return res.status(200).json({record:rows[0]});
+  }
   if(staffUser&&req.method==="POST"&&action==="approve_order"){
     const orderId=asId(b.order_id),priced=Array.isArray(b.items)?b.items:[];if(!orderId)return res.status(400).json({error:"Valid order required"});
     const o=(await sql`SELECT o.*,c.name customer_name FROM cash_customer_orders o JOIN cash_sale_customers c ON c.id=o.customer_id WHERE o.id=${orderId}`)[0];
