@@ -599,7 +599,7 @@ export default async function handler(req, res) {
     if(resource==="ecommerce")return ecommerceHandler(req,res);
     if(resource==="customer_portal"){
       const sql=db(), action=cleanText(req.query?.action);
-      if(action==="admin_orders"||action==="approve_order"){
+      if(action==="admin_orders"||action==="approve_order"||action==="reject_order"){
         const user=await getSessionUser(req,sql);
         if(!user)return res.status(401).json({error:"Authentication required"});
         return customerPortal(sql,req,res,user);
