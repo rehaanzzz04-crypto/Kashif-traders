@@ -513,28 +513,28 @@ function customerCookie(req,name){const raw=String(req.headers?.cookie||"");cons
 async function customerPortal(sql,req,res){
   const crypto=(await import("node:crypto")).default;
   await ensureCashSaleSchema(sql);
-  await sql\`CREATE TABLE IF NOT EXISTS cash_customer_sessions(id BIGSERIAL PRIMARY KEY,customer_id BIGINT NOT NULL REFERENCES cash_sale_customers(id) ON DELETE CASCADE,token_hash TEXT UNIQUE NOT NULL,expires_at TIMESTAMPTZ NOT NULL,last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),created_at TIMESTAMPTZ NOT NULL DEFAULT now())\`;
+  await sql`CREATE TABLE IF NOT EXISTS cash_customer_sessions(id BIGSERIAL PRIMARY KEY,customer_id BIGINT NOT NULL REFERENCES cash_sale_customers(id) ON DELETE CASCADE,token_hash TEXT UNIQUE NOT NULL,expires_at TIMESTAMPTZ NOT NULL,last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   const action=cleanText(req.query?.action)||"dashboard",b=bodyOf(req),digest=v=>crypto.createHash("sha256").update(String(v)).digest("hex");
   const sessionToken=customerCookie(req,"kt_customer");
   if(req.method==="POST"&&action==="login"){
     const code=cleanText(b.customer_code),pin=cleanText(b.pin);
-    const c=(await sql\`SELECT * FROM cash_sale_customers WHERE upper(customer_code)=upper(\${code}) AND status='active' LIMIT 1\`)[0];
+    const c=(await sql`SELECT * FROM cash_sale_customers WHERE upper(customer_code)=upper(${code}) AND status='active' LIMIT 1`)[0];
     if(!c||!c.portal_pin_hash||crypto.scryptSync(String(pin||""),c.portal_pin_salt,64).toString("hex")!==c.portal_pin_hash)return res.status(401).json({error:"Customer code ya PIN ghalat hai"});
-    const t=crypto.randomBytes(32).toString("hex");await sql\`INSERT INTO cash_customer_sessions(customer_id,token_hash,expires_at) VALUES(\${c.id},\${digest(t)},now()+interval '30 days')\`;
-    res.setHeader("Set-Cookie",\`kt_customer=\${encodeURIComponent(t)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=2592000\`);return res.status(200).json({ok:true,name:c.name});
+    const t=crypto.randomBytes(32).toString("hex");await sql`INSERT INTO cash_customer_sessions(customer_id,token_hash,expires_at) VALUES(${c.id},${digest(t)},now()+interval '30 days')`;
+    res.setHeader("Set-Cookie",`kt_customer=${encodeURIComponent(t)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=2592000`);return res.status(200).json({ok:true,name:c.name});
   }
-  if(req.method==="POST"&&action==="logout"){if(sessionToken)await sql\`DELETE FROM cash_customer_sessions WHERE token_hash=\${digest(sessionToken)}\`;res.setHeader("Set-Cookie","kt_customer=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0");return res.status(200).json({ok:true})}
-  const customer=sessionToken?(await sql\`SELECT c.* FROM cash_customer_sessions s JOIN cash_sale_customers c ON c.id=s.customer_id WHERE s.token_hash=\${digest(sessionToken)} AND s.expires_at>now() AND c.status='active' LIMIT 1\`)[0]:null;
+  if(req.method==="POST"&&action==="logout"){if(sessionToken)await sql`DELETE FROM cash_customer_sessions WHERE token_hash=${digest(sessionToken)}`;res.setHeader("Set-Cookie","kt_customer=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0");return res.status(200).json({ok:true})}
+  const customer=sessionToken?(await sql`SELECT c.* FROM cash_customer_sessions s JOIN cash_sale_customers c ON c.id=s.customer_id WHERE s.token_hash=${digest(sessionToken)} AND s.expires_at>now() AND c.status='active' LIMIT 1`)[0]:null;
   if(!customer)return res.status(401).json({error:"Customer login required"});
-  if(req.method==="GET"&&action==="products"){const rows=await sql\`SELECT id,name,category,unit FROM cash_sale_products WHERE status='active' ORDER BY name,id LIMIT 500\`;return res.status(200).json({records:rows})}
+  if(req.method==="GET"&&action==="products"){const rows=await sql`SELECT id,name,category,unit FROM cash_sale_products WHERE status='active' ORDER BY name,id LIMIT 500`;return res.status(200).json({records:rows})}
   if(req.method==="POST"&&action==="order"){
     const raw=Array.isArray(b.items)?b.items:[],ids=raw.map(x=>asId(x.product_id)).filter(Boolean);if(!ids.length)return res.status(400).json({error:"Kam az kam aik product add karein"});
-    const valid=await sql\`SELECT id,name,unit FROM cash_sale_products WHERE id=ANY(\${ids}) AND status='active'\`,map=new Map(valid.map(x=>[Number(x.id),x]));
+    const valid=await sql`SELECT id,name,unit FROM cash_sale_products WHERE id=ANY(${ids}) AND status='active'`,map=new Map(valid.map(x=>[Number(x.id),x]));
     const items=raw.map(x=>({product_id:asId(x.product_id),qty:Math.max(0,Number(x.qty)||0)})).filter(x=>x.qty>0&&map.has(x.product_id)).map(x=>({...x,name:map.get(x.product_id).name,unit:map.get(x.product_id).unit}));
     if(!items.length)return res.status(400).json({error:"Valid products required"});const no="CO-"+Date.now();
-    const r=await sql\`INSERT INTO cash_customer_orders(order_number,customer_id,items) VALUES(\${no},\${customer.id},\${JSON.stringify(items)}) RETURNING id,order_number,status,created_at\`;return res.status(201).json({record:r[0]});
+    const r=await sql`INSERT INTO cash_customer_orders(order_number,customer_id,items) VALUES(${no},${customer.id},${JSON.stringify(items)}) RETURNING id,order_number,status,created_at`;return res.status(201).json({record:r[0]});
   }
-  if(req.method==="GET"&&action==="materials"){const days=Math.min(365,Math.max(1,Number(req.query?.days)||30));const rows=await sql\`SELECT x->>'name' product,COALESCE(x->>'unit','pcs') unit,SUM(COALESCE((x->>'qty')::numeric,0)) quantity FROM cash_sale_queue q CROSS JOIN LATERAL jsonb_array_elements(q.items) x WHERE q.customer_id=\${customer.id} AND q.status IN ('paid','partial','credit') AND q.sale_date>=CURRENT_DATE-\${days}::int GROUP BY x->>'name',COALESCE(x->>'unit','pcs') ORDER BY product\`;return res.status(200).json({days,records:rows})}
+  if(req.method==="GET"&&action==="materials"){const days=Math.min(365,Math.max(1,Number(req.query?.days)||30));const rows=await sql`SELECT x->>'name' product,COALESCE(x->>'unit','pcs') unit,SUM(COALESCE((x->>'qty')::numeric,0)) quantity FROM cash_sale_queue q CROSS JOIN LATERAL jsonb_array_elements(q.items) x WHERE q.customer_id=${customer.id} AND q.status IN ('paid','partial','credit') AND q.sale_date>=CURRENT_DATE-${days}::int GROUP BY x->>'name',COALESCE(x->>'unit','pcs') ORDER BY product`;return res.status(200).json({days,records:rows})}
   if(req.method==="GET"&&action==="admin_orders"){
     const rows=await sql`SELECT o.*,c.customer_code,c.name customer_name,c.mobile FROM cash_customer_orders o JOIN cash_sale_customers c ON c.id=o.customer_id ORDER BY CASE WHEN o.status='pending' THEN 0 ELSE 1 END,o.created_at DESC LIMIT 200`;
     return res.status(200).json({records:rows});
@@ -552,7 +552,7 @@ async function customerPortal(sql,req,res){
     await sql`UPDATE cash_customer_orders SET status='approved',cash_sale_id=${q[0].id},updated_at=now() WHERE id=${orderId}`;
     return res.status(201).json({record:q[0]});
   }
-  if(req.method==="GET"&&action==="dashboard"){const bills=await sql\`SELECT id,invoice_number,sale_date,items,total,COALESCE(amount_received,0) amount_received,GREATEST(total-COALESCE(amount_received,0),0) balance_due,status,created_at FROM cash_sale_queue WHERE customer_id=\${customer.id} AND status IN ('paid','partial','credit') ORDER BY created_at DESC,id DESC LIMIT 200\`;const orders=await sql\`SELECT id,order_number,items,status,cash_sale_id,created_at FROM cash_customer_orders WHERE customer_id=\${customer.id} ORDER BY created_at DESC,id DESC LIMIT 100\`;return res.status(200).json({customer:{customer_code:customer.customer_code,name:customer.name,mobile:customer.mobile},summary:{sales:bills.reduce((n,x)=>n+Number(x.total||0),0),received:bills.reduce((n,x)=>n+Number(x.amount_received||0),0),outstanding:bills.reduce((n,x)=>n+Number(x.balance_due||0),0)},bills,orders})}
+  if(req.method==="GET"&&action==="dashboard"){const bills=await sql`SELECT id,invoice_number,sale_date,items,total,COALESCE(amount_received,0) amount_received,GREATEST(total-COALESCE(amount_received,0),0) balance_due,status,created_at FROM cash_sale_queue WHERE customer_id=${customer.id} AND status IN ('paid','partial','credit') ORDER BY created_at DESC,id DESC LIMIT 200`;const orders=await sql`SELECT id,order_number,items,status,cash_sale_id,created_at FROM cash_customer_orders WHERE customer_id=${customer.id} ORDER BY created_at DESC,id DESC LIMIT 100`;return res.status(200).json({customer:{customer_code:customer.customer_code,name:customer.name,mobile:customer.mobile},summary:{sales:bills.reduce((n,x)=>n+Number(x.total||0),0),received:bills.reduce((n,x)=>n+Number(x.amount_received||0),0),outstanding:bills.reduce((n,x)=>n+Number(x.balance_due||0),0)},bills,orders})}
   return res.status(405).json({error:"Method not allowed"});
 }
 
