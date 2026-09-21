@@ -162,6 +162,36 @@ async function cashSales(sql, req, user) {
     if (!current) return { status: 404, data: { error: "Cash sale bill not found" } };
 
     const action = cleanText(b.action);
+    if (action === "correct_invoice") {
+      if (!["paid","partial","credit"].includes(current.status))
+        return { status: 409, data: { error: "Sirf finalized invoice correct ki ja sakti hai" } };
+      const customerId=asId(b.customer_id);
+      if(!customerId) return {status:400,data:{error:"Correct Cash Sale customer select karein"}};
+      const customer=(await sql`SELECT id,name,status FROM cash_sale_customers WHERE id=${customerId}`)[0];
+      if(!customer||customer.status!=="active") return {status:400,data:{error:"Valid active customer select karein"}};
+      const correctionStatus=cleanText(b.corrected_status)||"credit";
+      if(!["credit","partial"].includes(correctionStatus)) return {status:400,data:{error:"Correction status Credit ya Partial hona chahiye"}};
+      const correctedReceived=correctionStatus==="partial"?Math.max(0,Math.min(Number(current.total),cleanAmount(b.amount_received)??0)):0;
+      if(correctionStatus==="partial"&&(correctedReceived<=0||correctedReceived>=Number(current.total)))
+        return {status:400,data:{error:"Partial correction amount valid hona chahiye"}};
+      const processor=user.full_name||user.employee_code;
+      const rows=await sql`WITH reversed AS (
+          DELETE FROM cash_sale_payments WHERE cash_sale_id=${id} RETURNING id
+        )
+        UPDATE cash_sale_queue SET
+          customer_id=${customer.id},
+          customer_name=${customer.name},
+          status=${correctionStatus},
+          amount_received=${correctedReceived},
+          payment_method=${correctionStatus==="credit"?"Credit":cleanText(b.payment_method)||"Cash"},
+          paid_by_id=CASE WHEN ${correctedReceived}>0 THEN ${user.id} ELSE NULL END,
+          paid_by_name=CASE WHEN ${correctedReceived}>0 THEN ${processor} ELSE NULL END,
+          paid_at=CASE WHEN ${correctedReceived}>0 THEN now() ELSE NULL END,
+          updated_at=now()
+        WHERE id=${id} RETURNING *`;
+      if(correctedReceived>0) await sql`INSERT INTO cash_sale_payments(cash_sale_id,amount,payment_method,received_by_id,received_by_name) VALUES(${id},${correctedReceived},${cleanText(b.payment_method)||"Cash"},${user.id},${processor})`;
+      return {status:200,data:{record:rows[0]}};
+    }
     if (action === "receive_payment") {
       if (!["credit","partial"].includes(current.status))
         return { status: 409, data: { error: "Sirf Credit / Partial bill par further payment receive ho sakti hai" } };
