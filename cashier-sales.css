@@ -40,3 +40,10 @@
 .cashier-history-row strong{white-space:nowrap;color:var(--cs-green)}
 .cashier-history-empty{padding:10px 11px;color:var(--cs-muted);font-size:10px}
 @media(max-width:620px){.cashier-settlement-options{grid-template-columns:1fr}.cashier-financials{padding:10px}.cashier-history-row{align-items:flex-start}}
+
+/* Desktop/tablet: keep all five cashier tabs inside the left card. Mobile rules below stay unchanged. */
+@media(min-width:621px){
+  .cashier-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;overflow:visible;margin-bottom:10px}
+  .cashier-tabs button{min-width:0;width:100%;min-height:52px;padding:8px 5px;font-size:11px;line-height:1.2;white-space:normal;overflow-wrap:anywhere}
+  .cashier-layout{grid-template-columns:minmax(430px,.9fr) minmax(390px,1.1fr)}
+}
