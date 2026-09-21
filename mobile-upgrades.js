@@ -1,6 +1,6 @@
 'use strict';
 (function(){
-  const VERSION='1.0.3'; // Android camera + native PDF/download support
+  const VERSION='1.0.4'; // Android camera + native PDF sharing support
   const q=s=>document.querySelector(s);
   const notify=(m,b=false)=>typeof window.toast==='function'?window.toast(m,b):console[b?'error':'log'](m);
 
@@ -36,9 +36,9 @@
     const panel=document.createElement('div');panel.className='panel kt-app-updates';panel.dataset.ktAppUpdates='1';
     panel.innerHTML='<h2>App & Updates</h2><p class="kt-app-sub">Install or update Kashif Traders on your phone.</p><div class="kt-app-list"><button class="kt-app-option" data-app-action="android"><span class="kt-app-icon">A</span><span><strong>Download Android App</strong><small>Latest Android APK: v'+VERSION+'</small></span><span class="kt-app-arrow">›</span></button><button class="kt-app-option" data-app-action="ios"><span class="kt-app-icon">i</span><span><strong>Install on iPhone / iPad</strong><small>Latest production app · Safari → Add to Home Screen</small></span><span class="kt-app-arrow">›</span></button><button class="kt-app-option" data-app-action="check"><span class="kt-app-icon">↻</span><span><strong>Check for App Update</strong><small>Latest version: '+VERSION+'</small></span><span class="kt-app-arrow">›</span></button></div><div class="kt-update-note">Production: kashif-traders.vercel.app · Android v'+VERSION+' includes camera capture and native PDF/download support.</div>';
     module.appendChild(panel);
-    panel.querySelector('[data-app-action="android"]').onclick=()=>download(window.KT_ANDROID_APK_URL||'https://github.com/rehaanzzz04-crypto/Kashif-traders/releases/download/v1.0.3/Kashif-Traders-ERP-v1.0.3.apk','Android app');
+    panel.querySelector('[data-app-action="android"]').onclick=()=>download(window.KT_ANDROID_APK_URL||'https://github.com/rehaanzzz04-crypto/Kashif-traders/releases/download/v1.0.4/Kashif-Traders-ERP-v1.0.4.apk','Android app');
     panel.querySelector('[data-app-action="ios"]').onclick=()=>download(window.KT_IOS_PRODUCTION_URL||'https://kashif-traders.vercel.app/','iPhone app');
-    panel.querySelector('[data-app-action="check"]').onclick=()=>{const current=String(window.KT_NATIVE_APP_VERSION||VERSION);if(current===VERSION)notify('Kashif Traders Android app is up to date: v'+VERSION+'.');else if(window.KT_NATIVE_APP_VERSION){notify('Update available: v'+current+' → v'+VERSION+'.');setTimeout(()=>download(window.KT_ANDROID_APK_URL||'https://github.com/rehaanzzz04-crypto/Kashif-traders/releases/download/v1.0.3/Kashif-Traders-ERP-v1.0.3.apk','Android update'),450);}else notify('Latest Kashif Traders app version is v'+VERSION+'.');};
+    panel.querySelector('[data-app-action="check"]').onclick=()=>{const current=String(window.KT_NATIVE_APP_VERSION||VERSION);if(current===VERSION)notify('Kashif Traders Android app is up to date: v'+VERSION+'.');else if(window.KT_NATIVE_APP_VERSION){notify('Update available: v'+current+' → v'+VERSION+'.');setTimeout(()=>download(window.KT_ANDROID_APK_URL||'https://github.com/rehaanzzz04-crypto/Kashif-traders/releases/download/v1.0.4/Kashif-Traders-ERP-v1.0.4.apk','Android update'),450);}else notify('Latest Kashif Traders app version is v'+VERSION+'.');};
   }
 
   async function shareReportsPdf(button){
