@@ -257,6 +257,20 @@ public class MainActivity extends Activity {
         String js = "(function(){" +
                 "if(window.__KT_NATIVE_HELPERS__)return;window.__KT_NATIVE_HELPERS__=true;" +
                 "try{window.KT_NATIVE_APP_VERSION=AndroidBridge.getAppVersion();}catch(e){}" +
+                "function nativeShare(data){" +
+                "return new Promise(function(resolve,reject){" +
+                "try{" +
+                "var files=data&&data.files?Array.from(data.files):[];" +
+                "if(!files.length){AndroidBridge.shareText((data&&data.title)||'Share',(data&&data.text)||'');resolve();return;}" +
+                "var file=files[0],fr=new FileReader();" +
+                "fr.onloadend=function(){try{AndroidBridge.shareDataUrl(fr.result,file.name||'Kashif-Traders.pdf',file.type||'application/pdf',(data&&data.title)||'Share',(data&&data.text)||'');resolve();}catch(err){reject(err);}};" +
+                "fr.onerror=function(){reject(fr.error||new Error('Share failed'));};" +
+                "fr.readAsDataURL(file);" +
+                "}catch(err){reject(err);}" +
+                "});" +
+                "}" +
+                "try{Object.defineProperty(navigator,'share',{configurable:true,value:nativeShare});}catch(e){try{navigator.share=nativeShare;}catch(ignore){}}" +
+                "try{Object.defineProperty(navigator,'canShare',{configurable:true,value:function(data){return !!(data&&data.files&&data.files.length);}});}catch(e){try{navigator.canShare=function(data){return !!(data&&data.files&&data.files.length);};}catch(ignore){}}" +
                 "document.addEventListener('click',function(ev){" +
                 "const a=ev.target&&ev.target.closest?ev.target.closest('a[download]'):null;" +
                 "if(!a||!a.href||!a.href.startsWith('blob:'))return;" +
@@ -284,6 +298,12 @@ public class MainActivity extends Activity {
             value += ".pdf";
         }
         return value;
+    }
+
+    private byte[] decodeDataUrl(String dataUrl) {
+        int comma = dataUrl.indexOf(',');
+        String encoded = comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl;
+        return Base64.decode(encoded, Base64.DEFAULT);
     }
 
     private void saveBytesToDownloads(byte[] bytes, String fileName, String mimeType) throws Exception {
@@ -319,13 +339,42 @@ public class MainActivity extends Activity {
         }
     }
 
+    private File writeShareFile(byte[] bytes, String fileName, String mimeType) throws Exception {
+        File folder = new File(getCacheDir(), "share");
+        if (!folder.exists() && !folder.mkdirs()) {
+            throw new IllegalStateException("Could not create share cache");
+        }
+        File[] old = folder.listFiles();
+        if (old != null) {
+            for (File f : old) {
+                if (f.isFile()) f.delete();
+            }
+        }
+        File target = new File(folder, safeFileName(fileName, mimeType));
+        try (FileOutputStream output = new FileOutputStream(target)) {
+            output.write(bytes);
+        }
+        return target;
+    }
+
+    private void openShareSheet(File file, String mimeType, String title, String text) {
+        Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
+        Intent share = new Intent(Intent.ACTION_SEND);
+        share.setType((mimeType == null || mimeType.isEmpty()) ? "application/octet-stream" : mimeType);
+        share.putExtra(Intent.EXTRA_STREAM, uri);
+        if (text != null && !text.isEmpty()) share.putExtra(Intent.EXTRA_TEXT, text);
+        share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        share.setClipData(ClipData.newRawUri("Kashif Traders PDF", uri));
+        startActivity(Intent.createChooser(share, (title == null || title.isEmpty()) ? "Share PDF" : title));
+    }
+
     public class AndroidBridge {
         @JavascriptInterface
         public String getAppVersion() {
             try {
                 return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
             } catch (Exception e) {
-                return "1.0.3";
+                return "1.0.4";
             }
         }
 
@@ -334,9 +383,7 @@ public class MainActivity extends Activity {
             if (dataUrl == null || dataUrl.isEmpty()) return;
             new Thread(() -> {
                 try {
-                    int comma = dataUrl.indexOf(',');
-                    String encoded = comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl;
-                    byte[] bytes = Base64.decode(encoded, Base64.DEFAULT);
+                    byte[] bytes = decodeDataUrl(dataUrl);
                     saveBytesToDownloads(bytes, fileName, mimeType);
                     runOnUiThread(() -> Toast.makeText(
                             MainActivity.this,
@@ -351,6 +398,47 @@ public class MainActivity extends Activity {
                     ).show());
                 }
             }).start();
+        }
+
+        @JavascriptInterface
+        public void shareDataUrl(String dataUrl, String fileName, String mimeType, String title, String text) {
+            if (dataUrl == null || dataUrl.isEmpty()) return;
+            new Thread(() -> {
+                try {
+                    byte[] bytes = decodeDataUrl(dataUrl);
+                    File file = writeShareFile(bytes, fileName, mimeType);
+                    runOnUiThread(() -> {
+                        try {
+                            openShareSheet(file, mimeType, title, text);
+                        } catch (Exception e) {
+                            Toast.makeText(MainActivity.this, "Share options could not open", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> Toast.makeText(
+                            MainActivity.this,
+                            "Share failed",
+                            Toast.LENGTH_SHORT
+                    ).show());
+                }
+            }).start();
+        }
+
+        @JavascriptInterface
+        public void shareText(String title, String text) {
+            runOnUiThread(() -> {
+                try {
+                    Intent share = new Intent(Intent.ACTION_SEND);
+                    share.setType("text/plain");
+                    share.putExtra(Intent.EXTRA_TEXT, text == null ? "" : text);
+                    startActivity(Intent.createChooser(
+                            share,
+                            (title == null || title.isEmpty()) ? "Share" : title
+                    ));
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "Share options could not open", Toast.LENGTH_SHORT).show();
+                }
+            });
         }
     }
 
