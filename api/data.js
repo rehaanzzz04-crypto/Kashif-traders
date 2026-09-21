@@ -184,9 +184,9 @@ async function cashSales(sql, req, user) {
           status=${correctionStatus},
           amount_received=${correctedReceived},
           payment_method=${correctionStatus==="credit"?"Credit":cleanText(b.payment_method)||"Cash"},
-          paid_by_id=CASE WHEN ${correctedReceived}>0 THEN ${user.id} ELSE NULL END,
-          paid_by_name=CASE WHEN ${correctedReceived}>0 THEN ${processor} ELSE NULL END,
-          paid_at=CASE WHEN ${correctedReceived}>0 THEN now() ELSE NULL END,
+          paid_by_id=${correctedReceived>0?asId(user.id):null},
+          paid_by_name=${correctedReceived>0?processor:null},
+          paid_at=${correctedReceived>0?new Date().toISOString():null},
           updated_at=now()
         WHERE id=${id} RETURNING *`;
       if(correctedReceived>0) await sql`INSERT INTO cash_sale_payments(cash_sale_id,amount,payment_method,received_by_id,received_by_name) VALUES(${id},${correctedReceived},${cleanText(b.payment_method)||"Cash"},${user.id},${processor})`;
