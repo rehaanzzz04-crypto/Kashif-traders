@@ -343,7 +343,8 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            customer_name: $("csCustomer").value.trim() || "Walk-in Customer",
+            customer_id: Number($("csCustomer").value) || null,
+            customer_name: $("csCustomer").selectedOptions[0]?.textContent || "Walk-in Customer",
             sale_date: $("csDate").value,
             discount: $("csDiscount").value,
             items: state.items,
