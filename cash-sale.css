@@ -42,3 +42,5 @@ body{overflow-x:hidden}.cs-back,.cs-scan,.cs-primary,.cs-secondary,.cs-result{to
   .cs-product-modal-head{align-items:stretch;flex-direction:column}.cs-manage-products{width:100%;min-height:44px}.cs-product-manager-tools{grid-template-columns:1fr}.cs-product-manager-tools button{width:100%}.cs-manage-row{grid-template-columns:46px minmax(0,1fr)}.cs-manage-row img,.cs-manage-pic{width:46px;height:46px}.cs-manage-actions{grid-column:1/-1}.cs-manage-actions button{flex:1;min-height:42px}
   .cs-scanner-actions{position:sticky;bottom:0;padding-top:8px;background:var(--cs-card);z-index:2}
 }
+
+.cs-field-note{display:block;margin-top:2px;color:var(--cs-muted);font-size:9.5px;line-height:1.35}

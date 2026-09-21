@@ -93,11 +93,44 @@ async function cashSales(sql, req, user) {
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`;
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS cancelled_by_name TEXT`;
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`;
+  await sql`CREATE TABLE IF NOT EXISTS cash_sale_payments (
+    id BIGSERIAL PRIMARY KEY,
+    cash_sale_id BIGINT NOT NULL REFERENCES cash_sale_queue(id) ON DELETE CASCADE,
+    amount NUMERIC(14,2) NOT NULL,
+    payment_method TEXT NOT NULL,
+    received_by_id BIGINT,
+    received_by_name TEXT,
+    received_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS cash_sale_payments_sale_idx ON cash_sale_payments(cash_sale_id,received_at,id)`;
+
   if (req.method === "GET") {
-    const status = cleanText(req.query?.status) || "pending", limit = Math.min(1000, Math.max(1, Number(req.query?.limit) || 200));
+    const status = cleanText(req.query?.status) || "pending",
+      limit = Math.min(1000, Math.max(1, Number(req.query?.limit) || 200));
+    const selectOpen = status === "credit_open";
     const rows = status === "all"
-      ? await sql`SELECT * FROM cash_sale_queue ORDER BY created_at DESC LIMIT ${limit}`
-      : await sql`SELECT * FROM cash_sale_queue WHERE status=${status} ORDER BY created_at DESC LIMIT ${limit}`;
+      ? await sql`SELECT q.*,
+          GREATEST(q.total-COALESCE(q.amount_received,0),0) balance_due,
+          COALESCE((SELECT jsonb_agg(jsonb_build_object(
+            'id',p.id,'amount',p.amount,'payment_method',p.payment_method,
+            'received_by_name',p.received_by_name,'received_at',p.received_at
+          ) ORDER BY p.received_at,p.id) FROM cash_sale_payments p WHERE p.cash_sale_id=q.id),'[]'::jsonb) payments
+        FROM cash_sale_queue q ORDER BY q.created_at DESC LIMIT ${limit}`
+      : selectOpen
+        ? await sql`SELECT q.*,
+            GREATEST(q.total-COALESCE(q.amount_received,0),0) balance_due,
+            COALESCE((SELECT jsonb_agg(jsonb_build_object(
+              'id',p.id,'amount',p.amount,'payment_method',p.payment_method,
+              'received_by_name',p.received_by_name,'received_at',p.received_at
+            ) ORDER BY p.received_at,p.id) FROM cash_sale_payments p WHERE p.cash_sale_id=q.id),'[]'::jsonb) payments
+          FROM cash_sale_queue q WHERE q.status IN ('credit','partial') ORDER BY q.updated_at DESC,q.id DESC LIMIT ${limit}`
+        : await sql`SELECT q.*,
+            GREATEST(q.total-COALESCE(q.amount_received,0),0) balance_due,
+            COALESCE((SELECT jsonb_agg(jsonb_build_object(
+              'id',p.id,'amount',p.amount,'payment_method',p.payment_method,
+              'received_by_name',p.received_by_name,'received_at',p.received_at
+            ) ORDER BY p.received_at,p.id) FROM cash_sale_payments p WHERE p.cash_sale_id=q.id),'[]'::jsonb) payments
+          FROM cash_sale_queue q WHERE q.status=${status} ORDER BY q.created_at DESC LIMIT ${limit}`;
     return { status: 200, data: { records: rows } };
   }
   if (req.method === "POST") {
@@ -113,24 +146,106 @@ async function cashSales(sql, req, user) {
     if (!id) return { status: 400, data: { error: "Valid bill id required" } };
     const current = (await sql`SELECT * FROM cash_sale_queue WHERE id=${id}`)[0];
     if (!current) return { status: 404, data: { error: "Cash sale bill not found" } };
+
+    const action = cleanText(b.action);
+    if (action === "receive_payment") {
+      if (!["credit","partial"].includes(current.status))
+        return { status: 409, data: { error: "Sirf Credit / Partial bill par further payment receive ho sakti hai" } };
+      const method = cleanText(b.payment_method),
+        requested = cleanAmount(b.amount_received),
+        already = Math.max(0, Number(current.amount_received) || 0),
+        due = Math.max(0, Number(current.total) - already);
+      if (!method || method === "Credit")
+        return { status: 400, data: { error: "Payment method select karein" } };
+      if (requested === null || requested <= 0)
+        return { status: 400, data: { error: "Valid received amount required hai" } };
+      if (due <= 0)
+        return { status: 409, data: { error: "Is bill ka koi balance due nahi hai" } };
+      const applied = Math.min(requested, due),
+        nextReceived = Math.min(Number(current.total), already + applied),
+        nextStatus = nextReceived + 0.005 >= Number(current.total) ? "paid" : "partial",
+        processor = user.full_name || user.employee_code;
+      const rows = await sql`WITH updated AS (
+          UPDATE cash_sale_queue SET
+            amount_received=${nextReceived},
+            payment_method=${method},
+            status=${nextStatus},
+            paid_by_id=${user.id},
+            paid_by_name=${processor},
+            paid_at=CASE WHEN ${nextStatus}='paid' THEN now() ELSE paid_at END,
+            updated_at=now()
+          WHERE id=${id}
+          RETURNING *
+        ), logged AS (
+          INSERT INTO cash_sale_payments(cash_sale_id,amount,payment_method,received_by_id,received_by_name)
+          SELECT id,${applied},${method},${user.id},${processor} FROM updated
+          RETURNING id
+        )
+        SELECT * FROM updated`;
+      return { status: 200, data: { record: rows[0] } };
+    }
+
     const nextStatus = cleanText(b.status) || current.status;
-    if (!["pending","paid","cancelled"].includes(nextStatus)) return { status: 400, data: { error: "Invalid bill status" } };
-    if (current.status !== "pending" && nextStatus !== current.status) return { status: 409, data: { error: "Completed bill status cannot be changed" } };
-    const items = Array.isArray(b.items) ? b.items : current.items,
+    if (!["pending","paid","partial","credit","cancelled"].includes(nextStatus))
+      return { status: 400, data: { error: "Invalid bill status" } };
+    if (current.status !== "pending" && nextStatus !== current.status)
+      return { status: 409, data: { error: "Finalized bill ko sirf Credit Payment flow se update karein" } };
+
+    const items = Array.isArray(b.items) ? b.items : (Array.isArray(current.items) ? current.items : []),
       subtotal = items.reduce((sum, x) => sum + Math.max(0, Number(x.qty) || 0) * Math.max(0, Number(x.rate) || 0), 0),
       discount = Math.min(subtotal, Math.max(0, b.discount === undefined ? Number(current.discount) : Number(b.discount) || 0)),
-      total = subtotal - discount, received = cleanAmount(b.amount_received), method = cleanText(b.payment_method);
-    if (nextStatus === "paid" && (!method || received === null || received < total))
-      return { status: 400, data: { error: "Payment method aur complete received amount required hai" } };
-    const rows = await sql`UPDATE cash_sale_queue SET items=${JSON.stringify(items)},subtotal=${subtotal},discount=${discount},total=${total},status=${nextStatus},
-      payment_method=CASE WHEN ${nextStatus}='paid' THEN ${method} ELSE payment_method END,
-      amount_received=CASE WHEN ${nextStatus}='paid' THEN ${received} ELSE amount_received END,
-      paid_by_id=CASE WHEN ${nextStatus}='paid' THEN ${user.id} ELSE paid_by_id END,
-      paid_by_name=CASE WHEN ${nextStatus}='paid' THEN ${user.full_name || user.employee_code} ELSE paid_by_name END,
-      paid_at=CASE WHEN ${nextStatus}='paid' THEN now() ELSE paid_at END,
-      cancelled_by_name=CASE WHEN ${nextStatus}='cancelled' THEN ${user.full_name || user.employee_code} ELSE cancelled_by_name END,
-      cancelled_at=CASE WHEN ${nextStatus}='cancelled' THEN now() ELSE cancelled_at END,updated_at=now()
-      WHERE id=${id} RETURNING *`;
+      total = subtotal - discount,
+      requested = Math.max(0, cleanAmount(b.amount_received) ?? 0),
+      customerName = cleanText(current.customer_name) || "Walk-in Customer",
+      namedCustomer = customerName.toLowerCase() !== "walk-in customer",
+      processor = user.full_name || user.employee_code;
+
+    let applied = 0, method = cleanText(b.payment_method);
+    if (nextStatus === "paid") {
+      if (!method || method === "Credit" || requested + 0.005 < total)
+        return { status: 400, data: { error: "Full payment ke liye payment method aur complete amount required hai" } };
+      applied = total;
+    }
+    if (nextStatus === "partial") {
+      if (!namedCustomer)
+        return { status: 400, data: { error: "Partial payment ke liye customer name required hai" } };
+      if (!method || method === "Credit" || requested <= 0 || requested + 0.005 >= total)
+        return { status: 400, data: { error: "Partial payment amount total se kam aur zero se zyada hona chahiye" } };
+      applied = requested;
+    }
+    if (nextStatus === "credit") {
+      if (!namedCustomer)
+        return { status: 400, data: { error: "Credit bill ke liye customer name required hai" } };
+      applied = 0;
+      method = "Credit";
+    }
+
+    const finalized = ["paid","partial","credit"].includes(nextStatus);
+    const rows = await sql`WITH updated AS (
+        UPDATE cash_sale_queue SET
+          items=${JSON.stringify(items)},
+          subtotal=${subtotal},
+          discount=${discount},
+          total=${total},
+          status=${nextStatus},
+          payment_method=CASE WHEN ${finalized} THEN ${method} ELSE payment_method END,
+          amount_received=CASE WHEN ${finalized} THEN ${applied} ELSE COALESCE(amount_received,0) END,
+          paid_by_id=CASE WHEN ${finalized} THEN ${user.id} ELSE paid_by_id END,
+          paid_by_name=CASE WHEN ${finalized} THEN ${processor} ELSE paid_by_name END,
+          paid_at=CASE WHEN ${finalized} THEN now() ELSE paid_at END,
+          cancelled_by_name=CASE WHEN ${nextStatus}='cancelled' THEN ${processor} ELSE cancelled_by_name END,
+          cancelled_at=CASE WHEN ${nextStatus}='cancelled' THEN now() ELSE cancelled_at END,
+          updated_at=now()
+        WHERE id=${id}
+        RETURNING *
+      ), logged AS (
+        INSERT INTO cash_sale_payments(cash_sale_id,amount,payment_method,received_by_id,received_by_name)
+        SELECT id,${applied},${method},${user.id},${processor}
+        FROM updated
+        WHERE ${applied}>0 AND ${nextStatus} IN ('paid','partial')
+        RETURNING id
+      )
+      SELECT * FROM updated`;
     return { status: 200, data: { record: rows[0] } };
   }
   if (req.method === "DELETE") {

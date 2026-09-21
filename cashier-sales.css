@@ -26,3 +26,17 @@
   .cashier-search{grid-template-columns:1fr}.cashier-search button{width:100%}
   .cashier-edit-tools{grid-template-columns:1fr}
 }
+
+.cashier-financials{display:grid;gap:8px;margin:12px 0 14px;padding:12px;border:1px solid var(--cs-line);border-radius:12px;background:#fff}
+.cashier-settlement-options{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 14px}
+.cashier-settlement-options button{min-height:48px;border:1px solid var(--cs-line);border-radius:11px;background:#fff;color:var(--cs-green);font-weight:850;cursor:pointer}
+.cashier-settlement-options button.active{border-color:var(--cs-gold);background:var(--cs-green);color:#fff;box-shadow:0 0 0 2px #b8924633}
+.cashier-credit-badge{display:inline-block;margin-top:6px;padding:3px 7px;border-radius:999px;background:#fff1cf;color:#77520a;font-size:9px;font-style:normal;font-weight:900}
+.cashier-credit-badge.partial{background:#e7f2ff;color:#245a86}
+.cashier-payment-history{margin:8px 0 14px;border:1px solid var(--cs-line);border-radius:12px;background:#fff;overflow:hidden}
+.cashier-history-title{padding:9px 11px;background:#f3eee3;color:var(--cs-green);font-size:11px;font-weight:900}
+.cashier-history-row{display:flex;justify-content:space-between;gap:10px;padding:9px 11px;border-top:1px solid #eee8dc;font-size:11px}
+.cashier-history-row b,.cashier-history-row small{display:block}.cashier-history-row small{margin-top:2px;color:var(--cs-muted);font-size:9px}
+.cashier-history-row strong{white-space:nowrap;color:var(--cs-green)}
+.cashier-history-empty{padding:10px 11px;color:var(--cs-muted);font-size:10px}
+@media(max-width:620px){.cashier-settlement-options{grid-template-columns:1fr}.cashier-financials{padding:10px}.cashier-history-row{align-items:flex-start}}

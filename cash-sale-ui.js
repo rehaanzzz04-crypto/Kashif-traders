@@ -37,7 +37,7 @@
   function renderResults(rows) {
     const box = $("csResults");
     if (!rows.length) {
-      box.innerHTML = '<div class="cs-empty">No ERP product found</div>';
+      box.innerHTML = '<div class="cs-empty">No Sale Product found</div>';
       box.classList.remove("cs-hidden");
       return;
     }
@@ -309,7 +309,7 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            customer_name: $("csCustomer").value,
+            customer_name: $("csCustomer").value.trim() || "Walk-in Customer",
             sale_date: $("csDate").value,
             discount: $("csDiscount").value,
             items: state.items,
@@ -321,6 +321,7 @@
         j.record.invoice_number + " cashier ko bhej diya gaya.";
       state.items = [];
       $("csDiscount").value = "0";
+      $("csCustomer").value = "Walk-in Customer";
       renderItems();
     } catch (e) {
       $("csStatus").textContent = e.message;
