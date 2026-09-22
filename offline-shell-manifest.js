@@ -88,6 +88,7 @@ self.KT_SHELL_ASSETS = [
   "/offline-register.js",
   "/offline-register.js?v=20260922-pages1",
   "/offline-register.js?v=20260922-pages2",
+  "/offline-register.js?v=20260922-pages3",
   "/offline-sync.js",
   "/offline-sync.js?v=20260922-sync1",
   "/offline-sync.js?v=20260922-sync2",
