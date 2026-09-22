@@ -305,7 +305,7 @@
       });
       const j = await response.json().catch(() => ({}));
       if (!response.ok) throw Error(j.error || "Invoice update failed");
-      $("cashierStatus").textContent = successMessage || "Invoice updated.";
+      $("cashierStatus").textContent = j.pending_sync ? "Entry phone par save hai. Payment ki server tasdeeq sync ke baad hogi." : successMessage || "Invoice updated.";
       closePayment();
       active = null;
       await load();

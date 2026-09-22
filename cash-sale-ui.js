@@ -353,7 +353,7 @@
         j = await r.json().catch(() => ({}));
       if (!r.ok) throw Error(j.error || "Bill send nahi ho saka");
       $("csStatus").textContent =
-        j.record.invoice_number + " cashier ko bhej diya gaya.";
+        j.pending_sync ? "Bill phone par mehfooz hai. Internet aane par cashier ko bheja jayega." : j.record.invoice_number + " cashier ko bhej diya gaya.";
       state.items = [];
       $("csDiscount").value = "0";
       $("csCustomer").value = "";
