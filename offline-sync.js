@@ -5,12 +5,15 @@
   const DB = 'kt_offline_v3', VERSION = 1;
   const mutations = new Set(['POST','PATCH','DELETE']);
   const dataResources = new Set(['suppliers','supplier_invoices','supplier_payments','clients','client_invoices','client_receipts','documents','cash_sales','cash_sale_customers','sale_products']);
+  const hostName = String(location.hostname || '');
+  const localOrigin = hostName === 'localhost' || hostName === '127.0.0.1' || hostName.endsWith('.local') || /^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(hostName);
+  const networkAvailable = () => navigator.onLine || localOrigin;
   let dbPromise, running = false, identityCheck;
-  const uid = () => crypto.randomUUID();
+  const uid = () => crypto.randomUUID ? crypto.randomUUID() : 'kt-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)+'-'+Math.random().toString(36).slice(2);
   function session() { try { return JSON.parse(localStorage.getItem(AUTH) || 'null'); } catch { return null; } }
   function owner() { return session()?.user?.id == null ? null : String(session().user.id); }
   async function ensureIdentity() {
-    if(!navigator.onLine){const saved=session();return Boolean(saved?.user&&Date.now()-Date.parse(saved.saved_at)<12*60*60*1000);}
+    if(!networkAvailable()){const saved=session();return Boolean(saved?.user&&Date.now()-Date.parse(saved.saved_at)<12*60*60*1000);}
     if(!identityCheck)identityCheck=(async()=>{
       try {const r=await nativeFetch('/api/auth?action=me',{cache:'no-store'});
         if([401,403].includes(r.status)){localStorage.removeItem(AUTH);return false;}
@@ -117,7 +120,7 @@
     return res;
   }
   async function syncUnlocked() {
-    if(running||!navigator.onLine||!owner())return;running=true;
+    if(running||!networkAvailable()||!owner())return;running=true;
     try {
       const r=await nativeFetch('/api/auth?action=me',{cache:'no-store'});if(!r.ok)return;
       const auth=await r.json();if(String(auth.user?.id)!==owner())return;
@@ -148,7 +151,7 @@
     }
     if(!await ensureIdentity())return response({error:'Login required'},401);
     if(method==='GET') {
-      if(navigator.onLine) {
+      if(networkAvailable()) {
         try {const id=owner(),res=await nativeFetch(input,init);if(res.ok)await saveSnapshot(url,res,id).catch(()=>{});return res;} catch {}
       }
       return await cached(url)||response({error:'Yeh data phone par save nahi hai. Online khol kar Offline Data Tayyar karein.'},503);
@@ -163,7 +166,7 @@
       // Never tell the form it saved until the IndexedDB transaction commits.
       try{await put('operations',item);}catch{return response({error:'Phone storage mein entry save nahi hui. Form clear na karein.'},507);}
       await badge();
-      if(navigator.onLine) {
+      if(networkAvailable()) {
         // Serialize all requests across tabs and flush dependencies in creation order.
         await sync();const latest=await get('operations',key);
         if(latest.state==='done')return response(latest.result,200);
@@ -171,7 +174,7 @@
       }
       await badge();return pending(item);
     }
-    if(!navigator.onLine)return response({error:'Is action ke liye internet zaroori hai. Koi tabdeeli server par nahi hui.'},503);
+    if(!networkAvailable())return response({error:'Is action ke liye internet zaroori hai. Koi tabdeeli server par nahi hui.'},503);
     return nativeFetch(input,init);
   };
   async function prepare(onProgress) {
@@ -193,7 +196,7 @@
   }
   async function runFullSync() {
     const button=document.getElementById('ktOfflineBadge');if(!button||button.dataset.running==='1')return;
-    if(!navigator.onLine){showSyncStatus('Internet connect karke dobara sync karein.',100);return;}
+    if(!networkAvailable()){showSyncStatus('Internet connect karke dobara sync karein.',100);return;}
     button.dataset.running='1';button.disabled=true;showSyncStatus('Entries sync ho rahi hain…',8,true);
     try {
       await sync();showSyncStatus('Latest data load ho raha hai…',18,true);
@@ -209,7 +212,7 @@
   async function badge() {
     if(!document.body||!owner())return;
     syncUi();let el=document.getElementById('ktOfflineBadge');if(!el){el=document.createElement('button');el.id='ktOfflineBadge';el.type='button';el.setAttribute('aria-label','Data sync karein');el.title='Data sync';el.innerHTML='<span aria-hidden="true">↻</span><b id="ktOfflineBadgeDot" hidden></b>';el.onclick=()=>runFullSync();document.body.append(el);}
-    const q=await items(),legacy=await legacyCount(),dot=document.getElementById('ktOfflineBadgeDot'),count=legacy||q.length;dot.hidden=!count;dot.textContent=count>9?'9+':String(count||'');el.style.filter=navigator.onLine?'none':'grayscale(.45)';
+    const q=await items(),legacy=await legacyCount(),dot=document.getElementById('ktOfflineBadgeDot'),count=legacy||q.length;dot.hidden=!count;dot.textContent=count>9?'9+':String(count||'');el.style.filter=networkAvailable()?'none':'grayscale(.45)';
   }
   window.KT_OFFLINE={sync,items,count:async()=>(await items()).length,prepare};
   window.addEventListener('online',()=>{identityCheck=null;sync();});window.addEventListener('offline',()=>badge());

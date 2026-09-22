@@ -92,6 +92,7 @@ self.KT_SHELL_ASSETS = [
   "/offline-sync.js",
   "/offline-sync.js?v=20260922-sync1",
   "/offline-sync.js?v=20260922-sync2",
+  "/offline-sync.js?v=20260922-localserver1",
   "/party-statement-pdf.js",
   "/product-display.css",
   "/product-display.js",

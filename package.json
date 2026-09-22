@@ -18,6 +18,8 @@
   },
   "scripts": {
     "test:offline": "node --test tests/offline-shell.test.mjs tests/offline-replay.test.mjs tests/offline-storage.test.mjs",
-    "build:offline": "python3 scripts/build-offline-manifest.py"
+    "build:offline": "python3 scripts/build-offline-manifest.py",
+    "local:start": "node local-server/server.mjs",
+    "test:local-server": "node --test tests/local-server.test.mjs"
   }
 }
