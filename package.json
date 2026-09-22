@@ -12,5 +12,12 @@
     "exceljs": "^4.4.0",
     "pdf-lib": "^1.17.1",
     "sharp": "^0.33.5"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.4"
+  },
+  "scripts": {
+    "test:offline": "node --test tests/offline-shell.test.mjs tests/offline-replay.test.mjs tests/offline-storage.test.mjs",
+    "build:offline": "python3 scripts/build-offline-manifest.py"
   }
 }

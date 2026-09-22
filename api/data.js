@@ -1,3 +1,4 @@
+import { withOfflineReplay } from './_offline-replay.js';
 import { saveSupplierBillItems } from './_supplier-bill-items.js';
 import { neon } from "@neondatabase/serverless";
 import { getSessionUser, canAccess } from "./_auth.js";
@@ -591,7 +592,7 @@ async function customerPortal(sql,req,res,staffUser=null){
   return res.status(405).json({error:"Method not allowed"});
 }
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   const resource = String(req.query?.resource || "").trim();
   if (!allowed.has(resource))
     return res.status(400).json({ error: "Unknown resource" });
@@ -749,3 +750,5 @@ export default async function handler(req, res) {
   }
 }
 
+
+export default withOfflineReplay(handler);

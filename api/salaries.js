@@ -1,3 +1,4 @@
+import { withOfflineReplay } from './_offline-replay.js';
 import { requireUser, bodyOf, cleanText, canAccess } from './_auth.js';
 import { ensureEntryNumbers,attachEntryNumbers } from './_entry-number.js';
 const id=v=>{const n=Number(v);return Number.isInteger(n)&&n>0?n:null};
@@ -15,7 +16,7 @@ async function committed(sql,employeeId,month,excludeId=null){
  return Number(r[0]?.total||0);
 }
 const autoPaymentRef=row=>{const ym=(monthKey(row.salary_month||row.requested_at)||'0000-00').replace('-','');return `SALPAY-${ym}-${String(row.id).padStart(6,'0')}`};
-export default async function handler(req,res){
+async function handler(req,res){
  try{
   const auth=await requireUser(req,res);if(!auth)return;const{sql,user}=auth;await ensureEntryNumbers(sql);await ensureSalaryProfile(sql);
   if(req.method==='GET'){
@@ -72,3 +73,5 @@ export default async function handler(req,res){
   return res.status(405).json({error:'Method not allowed'});
  }catch(e){console.error('Salaries API error',e);return res.status(500).json({error:e?.message||'Salary request failed'});}
 }
+
+export default withOfflineReplay(handler);

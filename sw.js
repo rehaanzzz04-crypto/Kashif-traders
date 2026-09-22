@@ -1,8 +1,51 @@
 'use strict';
-const CACHE='kt-shell-20260921-app105';
-const SHELL=['/','/index.html','/login.html','/app.css?v=20260911-overview3','/tables-consistent.css?v=20260910-tables1','/approval-feedback.js?v=20260911-approval1','/employee-salary-ui.js?v=20260912-salary1','/salary-monthly-autofill.js?v=20260912-monthly1','/employee-dashboard-salary.js?v=20260912-dashsalary1','/pwa-register.js?v=20260921-app105','/boot.js?v=20260915-inventory-speed1','/app.js?v=20260916-payment2','/inventory-ui.js?v=20260915-inventory-speed1','/product-status-fix.js?v=20260910-status1','/products-scalable.js?v=20260911-barcode1','/employees-ui.js?v=20260911-rbac3','/salary-ui.js?v=20260912-polish2','/role-dashboard.js?v=20260911-rbac6','/admin-dashboard-fix.js?v=20260913-admin9','/document-scan.js?v=20260913-clientbill1','/supplier-bill-pdf-ui.js?v=20260913-supplierpdf1','/supplier-payment-pdf-ui.js?v=20260913-supplierpaymentpdf1','/supplier-payment-invoice.js?v=20260916-payment2','/salary-statement-enhance.js?v=20260912-pdf1','/offline-sync.js?v=20260913-offline4','/mobile-upgrades.js?v=20260921-app105','/mobile-upgrades.css?v=20260921-app105'];
-self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(async c=>{for(const u of SHELL){try{const r=await fetch(u,{cache:'reload'});if(r.ok)await c.put(u,r)}catch{}}}).then(()=>self.skipWaiting()))});
-self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('kt-shell-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
-self.addEventListener('fetch',e=>{const r=e.request;if(r.method!=='GET')return;const u=new URL(r.url);if(u.origin!==location.origin)return;if(u.pathname.startsWith('/api/'))return;
- if(r.mode==='navigate'){e.respondWith(fetch(r).then(res=>{if(res.ok)caches.open(CACHE).then(c=>c.put(u.pathname==='/login.html'?'/login.html':'/index.html',res.clone())).catch(()=>{});return res}).catch(()=>caches.match(u.pathname==='/login.html'?'/login.html':'/index.html').then(x=>x||caches.match('/'))));return}
- e.respondWith(caches.match(r).then(hit=>hit||fetch(r).then(res=>{if(res.ok&&['script','style','image','font'].includes(r.destination))caches.open(CACHE).then(c=>c.put(r,res.clone())).catch(()=>{});return res}).catch(()=>hit)))});
+importScripts('/offline-shell-manifest.js');
+const CACHE = 'kt-shell-20260922-offline-sync2';
+self.addEventListener('install', event => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await cache.addAll(self.KT_SHELL_ASSETS);
+    await self.skipWaiting();
+  })());
+});
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    for (const key of await caches.keys()) {
+      if (key.startsWith('kt-shell-') && key !== CACHE) await caches.delete(key);
+    }
+    await self.clients.claim();
+  })());
+});
+self.addEventListener('fetch', event => {
+  const request = event.request, url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
+  if (request.mode === 'navigate') {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const response = await fetch(request);
+        // A login redirect must never replace a module's saved HTML.
+        if (response.ok && !response.redirected) await cache.put(pathname, response.clone());
+        return response;
+      } catch {
+        return await cache.match(pathname) || new Response(
+          '<!doctype html><meta name="viewport" content="width=device-width"><h1>Offline</h1><p>Yeh page abhi phone par save nahi hai. Internet connect karke dobara kholein.</p>',
+          { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+        );
+      }
+    })());
+    return;
+  }
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE), hit = await cache.match(request);
+    if (hit) return hit;
+    try {
+      const response = await fetch(request);
+      if (response.ok && !response.redirected && ['script', 'style', 'image', 'font'].includes(request.destination)) await cache.put(request, response.clone());
+      return response;
+    } catch {
+      return await cache.match(pathname) || new Response('Offline asset unavailable', { status: 503 });
+    }
+  })());
+});

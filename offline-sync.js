@@ -1,33 +1,202 @@
 'use strict';
-(()=>{
- const DB_NAME='kt_offline_v2',STORE='queue',AUTH_KEY='kt_offline_user_v1',CACHE_PREFIX='kt_offline_cache:',OLD_KEY='kt_offline_queue_v1';
- const allowed=new Set(['suppliers','supplier_invoices','supplier_payments','clients','client_invoices','client_receipts','documents']);
- const nativeFetch=window.fetch.bind(window);let dbPromise=null;
- const uid=()=>globalThis.crypto?.randomUUID?.()||('kt-'+Date.now()+'-'+Math.random().toString(36).slice(2));
- const cacheKey=url=>CACHE_PREFIX+url;
- function notify(msg,bad=false){try{if(typeof toast==='function')toast(msg,bad)}catch{}}
- function openDb(){if(dbPromise)return dbPromise;dbPromise=new Promise((resolve,reject)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains(STORE))d.createObjectStore(STORE,{keyPath:'qid'})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});return dbPromise}
- async function all(){try{const d=await openDb();return await new Promise((resolve,reject)=>{const r=d.transaction(STORE,'readonly').objectStore(STORE).getAll();r.onsuccess=()=>resolve((r.result||[]).sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at))));r.onerror=()=>reject(r.error)})}catch{return[]}}
- async function put(item){const d=await openDb();return new Promise((resolve,reject)=>{const r=d.transaction(STORE,'readwrite').objectStore(STORE).put(item);r.onsuccess=()=>resolve(item);r.onerror=()=>reject(r.error)})}
- async function del(qid){const d=await openDb();return new Promise((resolve,reject)=>{const r=d.transaction(STORE,'readwrite').objectStore(STORE).delete(qid);r.onsuccess=()=>resolve(true);r.onerror=()=>reject(r.error)})}
- async function migrate(){try{const raw=JSON.parse(localStorage.getItem(OLD_KEY)||'[]');for(const x of raw){if(x?.qid)await put({...x,method:x.method||'POST'})}if(raw.length)localStorage.removeItem(OLD_KEY)}catch{}}
- function resourceInfo(url){try{const u=new URL(url,location.origin);if(u.pathname!=='/api/data')return null;const resource=u.searchParams.get('resource'),id=Number(u.searchParams.get('id'));return {resource,id:Number.isInteger(id)&&id!==0?id:null,listUrl:u.pathname+'?resource='+encodeURIComponent(resource)}}catch{return null}}
- function cachedResponse(url){try{const raw=localStorage.getItem(cacheKey(url));if(!raw)return null;return new Response(raw,{status:200,headers:{'Content-Type':'application/json','X-KT-Offline-Cache':'1'}})}catch{return null}}
- async function remember(url,response){try{if(!response.ok)return;const type=response.headers.get('content-type')||'';if(!type.includes('application/json'))return;const text=await response.clone().text();if(text.length<1500000)localStorage.setItem(cacheKey(url),text)}catch{}}
- function mutateCache(info,method,body,tempId){try{const key=cacheKey(info.listUrl),raw=localStorage.getItem(key);if(!raw)return;const data=JSON.parse(raw),rows=Array.isArray(data.records)?data.records:[];if(method==='POST')rows.unshift({...body,id:tempId,_offline_pending:true});else if(method==='PATCH'){const i=rows.findIndex(x=>Number(x.id)===Number(info.id));if(i>=0)rows[i]={...rows[i],...body,_offline_pending:true}}else if(method==='DELETE')data.records=rows.filter(x=>Number(x.id)!==Number(info.id));if(method!=='DELETE')data.records=rows;localStorage.setItem(key,JSON.stringify(data))}catch{}}
- async function refreshBadge(extra=''){const q=await all(),n=q.length,failed=q.filter(x=>x.sync_error).length;let el=document.getElementById('ktOfflineBadge');if(!el){el=document.createElement('button');el.type='button';el.id='ktOfflineBadge';el.style.cssText='position:fixed;right:12px;bottom:12px;z-index:9998;padding:8px 11px;border:0;border-radius:999px;background:#f0e4c5;color:#513f1c;font:700 11px system-ui;box-shadow:0 3px 12px #0003;display:none';el.addEventListener('click',()=>sync(true));document.body.appendChild(el)}el.textContent=failed?(failed+' Sync Failed • Tap Retry'):(n?(n+' Pending Sync'):(extra||''));el.style.display=(n||extra)?'block':'none';if(!n&&extra)setTimeout(()=>{if(el.textContent===extra)el.style.display='none'},1800)}
- async function queueRequest(info,method,body){if(!allowed.has(info.resource)||!['POST','PATCH','DELETE'].includes(method))return null;let q=await all();if(info.id&&info.id<0){const parent=q.find(x=>x.method==='POST'&&Number(x.temp_id)===Number(info.id));if(parent){if(method==='PATCH'){parent.body={...(parent.body||{}),...(body||{})};parent.sync_error=null;await put(parent);mutateCache(info,'PATCH',body);await refreshBadge();notify('Offline entry update Pending Sync mein save ho gai.');return {offline_queued:true,pending_sync:true,queue_id:parent.qid}}if(method==='DELETE'){await del(parent.qid);mutateCache(info,'DELETE',{});await refreshBadge();notify('Offline pending entry remove ho gai.');return {offline_queued:true,pending_sync:false,cancelled:true}}}}
- const tempId=method==='POST'?-(Date.now()*1000+Math.floor(Math.random()*999)):null,item={qid:uid(),resource:info.resource,method,id:info.id,body:body||{},temp_id:tempId,created_at:new Date().toISOString(),sync_error:null};await put(item);mutateCache(info,method,item.body,tempId);await refreshBadge();notify(method==='DELETE'?'Delete Pending Sync mein save ho gaya.':method==='PATCH'?'Update Pending Sync mein save ho gai.':'Entry Pending Sync mein save ho gai.');return {offline_queued:true,pending_sync:true,queue_id:item.qid,temp_id:tempId}}
- function parseBody(init){try{return typeof init?.body==='string'?JSON.parse(init.body):init?.body||{}}catch{return{}}}
- function isApiCacheable(url){return /\/api\/data\?/.test(url)||/\/api\/(dashboard|approvals|salaries)/.test(url)}
- window.fetch=async function(input,init={}){
-  const url=typeof input==='string'?input:input?.url||'',method=String(init?.method||input?.method||'GET').toUpperCase(),info=resourceInfo(url);const h=init?.headers,syncCall=Boolean(h&&((h['X-KT-Offline-ID'])||(h instanceof Headers&&h.get('X-KT-Offline-ID'))));
-  if(info&&['POST','PATCH','DELETE'].includes(method)&&!syncCall&&!navigator.onLine){const x=await queueRequest(info,method,parseBody(init));if(x)return new Response(JSON.stringify(x),{status:method==='POST'?201:200,headers:{'Content-Type':'application/json','X-KT-Offline-Queued':'1'}})}
-  if(method==='GET'&&!navigator.onLine&&isApiCacheable(url)){const c=cachedResponse(url);if(c)return c;return new Response(JSON.stringify({error:'Offline: no cached records available'}),{status:503,headers:{'Content-Type':'application/json'}})}
-  try{const r=await nativeFetch(input,init);if(method==='GET'&&r.ok&&isApiCacheable(url))await remember(url,r);if(method==='POST'&&/\/api\/auth\?action=logout/.test(url)&&r.ok){localStorage.removeItem(AUTH_KEY);try{const d=await openDb();d.close();indexedDB.deleteDatabase(DB_NAME)}catch{}}return r}catch(e){if(info&&['POST','PATCH','DELETE'].includes(method)&&!syncCall){const x=await queueRequest(info,method,parseBody(init));if(x)return new Response(JSON.stringify(x),{status:method==='POST'?201:200,headers:{'Content-Type':'application/json','X-KT-Offline-Queued':'1'}})}if(method==='GET'){const c=cachedResponse(url);if(c)return c}throw e}
- };
- async function sync(force=false){if(!navigator.onLine||window.KT_OFFLINE_SYNCING)return;let q=await all();if(!q.length){await refreshBadge(force?'All synced':'');return}window.KT_OFFLINE_SYNCING=true;let done=0,blocked=false;try{for(const item of q){try{const suffix=item.id?'&id='+encodeURIComponent(item.id):'',r=await nativeFetch('/api/data?resource='+encodeURIComponent(item.resource)+suffix,{method:item.method,cache:'no-store',headers:{'Content-Type':'application/json','X-KT-Offline-ID':item.qid},body:item.method==='DELETE'?undefined:JSON.stringify(item.body||{})});if(r.status===401||r.status===403){blocked=true;break}if(!r.ok){let msg='HTTP '+r.status;try{msg=(await r.json()).error||msg}catch{}await put({...item,sync_error:msg,last_attempt_at:new Date().toISOString()});continue}await del(item.qid);done++}catch(e){await put({...item,sync_error:e?.message||'Network error',last_attempt_at:new Date().toISOString()});break}}}finally{window.KT_OFFLINE_SYNCING=false;await refreshBadge()}if(done){notify(done+' offline entr'+(done===1?'y':'ies')+' sync ho '+(done===1?'gai':'gain')+'.');try{Object.keys(window.cache||{}).forEach(k=>delete window.cache[k]);if(typeof loadModule==='function'&&typeof currentView==='string'&&currentView!=='dashboard')loadModule(currentView);else if(typeof loadDashboard==='function'&&currentView==='dashboard')loadDashboard()}catch{}}if(blocked)notify('Pending Sync ke liye dobara login zaroori hai.',true)}
- window.KT_OFFLINE={sync,count:async()=>(await all()).length,items:all};
- window.addEventListener('online',()=>{refreshBadge('Online');setTimeout(()=>sync(),700)});window.addEventListener('offline',()=>refreshBadge('Offline Mode'));document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
- migrate().then(()=>refreshBadge(navigator.onLine?'':'Offline Mode'));if(navigator.onLine)setTimeout(()=>sync(),1800);
+(() => {
+  if (window.KT_OFFLINE) return;
+  const nativeFetch = window.fetch.bind(window), AUTH = 'kt_offline_user_v1';
+  const DB = 'kt_offline_v3', VERSION = 1;
+  const mutations = new Set(['POST','PATCH','DELETE']);
+  const dataResources = new Set(['suppliers','supplier_invoices','supplier_payments','clients','client_invoices','client_receipts','documents','cash_sales','cash_sale_customers','sale_products']);
+  let dbPromise, running = false, identityCheck;
+  const uid = () => crypto.randomUUID();
+  function session() { try { return JSON.parse(localStorage.getItem(AUTH) || 'null'); } catch { return null; } }
+  function owner() { return session()?.user?.id == null ? null : String(session().user.id); }
+  async function ensureIdentity() {
+    if(!navigator.onLine){const saved=session();return Boolean(saved?.user&&Date.now()-Date.parse(saved.saved_at)<12*60*60*1000);}
+    if(!identityCheck)identityCheck=(async()=>{
+      try {const r=await nativeFetch('/api/auth?action=me',{cache:'no-store'});
+        if([401,403].includes(r.status)){localStorage.removeItem(AUTH);return false;}
+        if(!r.ok)throw Error('Authentication unavailable');
+        const data=await r.json();if(!data.user)return false;
+        localStorage.setItem(AUTH,JSON.stringify({user:data.user,saved_at:new Date().toISOString()}));return true;
+      } catch {identityCheck=null;const saved=session();return Boolean(saved?.user&&Date.now()-Date.parse(saved.saved_at)<12*60*60*1000);}
+    })();
+    return identityCheck;
+  }
+  function urlOf(input) { return new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.origin); }
+  function canonical(input) { const u=urlOf(input); u.searchParams.sort(); return u.pathname+u.search; }
+  function supported(u) { return u.pathname === '/api/data' && dataResources.has(u.searchParams.get('resource')) || u.pathname === '/api/inventory' || u.pathname === '/api/salaries'; }
+  function db() {
+    if (!dbPromise) dbPromise = new Promise((resolve,reject) => {
+      const r=indexedDB.open(DB,VERSION);
+      r.onupgradeneeded=()=>{for(const name of ['operations','snapshots','mappings']) if(!r.result.objectStoreNames.contains(name)) r.result.createObjectStore(name,{keyPath:'key'});};
+      r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);
+    });
+    return dbPromise;
+  }
+  async function transaction(store, mode, action) {
+    const d=await db();
+    return new Promise((resolve,reject)=>{
+      const tx=d.transaction(store,mode);let result;
+      const req=action(tx.objectStore(store));req.onsuccess=()=>{result=req.result;};
+      tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('Phone storage failed'));
+    });
+  }
+  const put=(store,value)=>transaction(store,'readwrite',s=>s.put(value));
+  const get=(store,key)=>transaction(store,'readonly',s=>s.get(key));
+  const all=store=>transaction(store,'readonly',s=>s.getAll());
+  async function legacyCount() {
+    if(!indexedDB.databases)return 0;
+    if(!(await indexedDB.databases()).some(d=>d.name==='kt_offline_v2'))return 0;
+    return new Promise(resolve=>{const r=indexedDB.open('kt_offline_v2');r.onerror=()=>resolve(0);r.onsuccess=()=>{const d=r.result;if(!d.objectStoreNames.contains('queue')){d.close();resolve(0);return;}const tx=d.transaction('queue','readonly'),q=tx.objectStore('queue').count();q.onsuccess=()=>resolve(q.result);q.onerror=()=>resolve(0);tx.oncomplete=()=>d.close();};});
+  }
+  async function items() { const id=owner();return (await all('operations')).filter(x=>x.owner===id&&x.state!=='done').sort((a,b)=>a.created.localeCompare(b.created)||a.key.localeCompare(b.key)); }
+  function response(data,status=200) { return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}}); }
+  function pending(item) { return response({offline_queued:true,pending_sync:true,record:{...item.body,id:item.tempId||Number(new URL(item.url,location.origin).searchParams.get('id')),invoice_number:'OFFLINE-'+item.key.slice(0,8),_offline_pending:true},queue_id:item.key,temp_id:item.tempId,message:'Phone par save hai; server sync baqi hai.'},202); }
+  async function saveSnapshot(url,res,id) {
+    if(!id||id!==owner()||!res.ok)return;
+    const blob=await res.clone().blob();if(blob.size>10*1024*1024)return;
+    await put('snapshots',{key:id+':'+url,owner:id,url,blob,type:res.headers.get('content-type')||'',at:new Date().toISOString()});
+  }
+  async function cached(url) {
+    const id=owner();if(!id)return null;
+    let snap=await get('snapshots',id+':'+url),u=new URL(url,location.origin),derived=false;
+    if(!snap && u.pathname==='/api/data' && ['sale_products','cash_sale_customers'].includes(u.searchParams.get('resource'))) {
+      const allowed=new Set(['resource','search','status','barcode']);
+      if([...u.searchParams.keys()].every(k=>allowed.has(k))) { snap=await get('snapshots',id+':/api/data?resource='+u.searchParams.get('resource'));derived=Boolean(snap); }
+    }
+    if(!snap)return null;
+    const headers={'Content-Type':snap.type,'X-KT-Offline-Cache':'1','X-KT-Snapshot-Time':snap.at};
+    if(!snap.type.includes('json'))return new Response(snap.blob,{headers});
+    let data=JSON.parse(await snap.blob.text());
+    if(Array.isArray(data.records)) {
+      let rows=data.records;
+      for(const item of await items()) {
+        const target=new URL(item.url,location.origin);
+        if(target.pathname!==u.pathname||target.searchParams.get('resource')!==u.searchParams.get('resource'))continue;
+        // Only simple list queries can include local provisional entries.
+        if([...u.searchParams.keys()].some(k=>!['resource','search','status','barcode','id'].includes(k)))continue;
+        if(item.method==='POST' && !item.body.action) rows=[{...item.body,id:item.tempId,_offline_pending:true,invoice_number:'OFFLINE-'+item.key.slice(0,8)},...rows];
+        // Do not change paid balances or stock based on an unverified offline action.
+      }
+      if(derived) {
+        const search=(u.searchParams.get('search')||'').toLowerCase(),status=u.searchParams.get('status'),barcode=u.searchParams.get('barcode');
+        rows=rows.filter(r=>(!status||r.status===status)&&(!barcode||String(r.barcode)===barcode)&&(!search||[r.name,r.barcode,r.product_number,r.sku].some(v=>String(v||'').toLowerCase().includes(search))));
+      }
+      const requestedId=u.searchParams.get('id');if(requestedId)rows=rows.filter(r=>String(r.id)===requestedId);
+      data={...data,records:rows};
+    }
+    return new Response(JSON.stringify({...data,_offline_snapshot_at:snap.at}),{headers});
+  }
+  async function resolveValue(value,id,field="") {
+    if(typeof value==='number'&&value<0&&(field==='id'||field.endsWith('_id'))) {const m=await get('mappings',id+':'+value);if(!m)throw Error('Pehli linked entry ka sync baqi hai.');return m.id;}
+    if(Array.isArray(value))return Promise.all(value.map(v=>resolveValue(v,id,field)));
+    if(value&&typeof value==='object'){const out={};for(const [k,v]of Object.entries(value))out[k]=await resolveValue(v,id,k);return out;}
+    return value;
+  }
+  async function transmit(item) {
+    let body,url;
+    try {
+      // Persist the exact resolved payload before sending; retries must match.
+      if(item.wire)({body,url}=item.wire);
+      else {
+        body=await resolveValue(item.body,item.owner);const u=new URL(item.url,location.origin),id=Number(u.searchParams.get('id'));
+        if(id<0)u.searchParams.set('id',await resolveValue(id,item.owner,"id"));url=u.pathname+u.search;
+        item={...item,wire:{body,url}};await put('operations',item);
+      }
+    } catch(e) {await put('operations',{...item,error:e.message});return null;}
+    let res;
+    try {res=await nativeFetch(url,{method:item.method,signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json','X-KT-Offline-ID':item.key,'X-KT-Offline-Owner':item.owner},body:item.method==='DELETE'?undefined:JSON.stringify(body)});}
+    catch {await put('operations',{...item,error:'Connection nahi mila; entry phone par mehfooz hai.'});return null;}
+    const data=await res.clone().json().catch(()=>({}));
+    if(!res.ok) {
+      await put('operations',{...item,state:[401,403].includes(res.status)?'pending':'review',error:data.error||'Server review required',httpStatus:res.status});return res;
+    }
+    // Write mapping before completing operation so dependent records survive restart.
+    if(item.tempId&&data.record?.id)await put('mappings',{key:item.owner+':'+item.tempId,id:data.record.id});
+    await put('operations',{...item,state:'done',result:data,completed:new Date().toISOString()});
+    window.dispatchEvent(new CustomEvent('kt-offline-synced',{detail:{key:item.key,result:data}}));
+    return res;
+  }
+  async function syncUnlocked() {
+    if(running||!navigator.onLine||!owner())return;running=true;
+    try {
+      const r=await nativeFetch('/api/auth?action=me',{cache:'no-store'});if(!r.ok)return;
+      const auth=await r.json();if(String(auth.user?.id)!==owner())return;
+      for(const item of await items()) {
+        if(item.state==='review')break;
+        const result=await transmit(item);if(!result||!result.ok)break;
+      }
+    } catch(e) {console.warn('Offline sync paused',e);} finally {running=false;await badge();}
+  }
+  async function sync() {return navigator.locks ? navigator.locks.request('kt-offline-sync',syncUnlocked) : syncUnlocked();}
+  window.fetch=async (input,init={})=>{
+    const u=urlOf(input);if(u.origin!==location.origin||!u.pathname.startsWith('/api/'))return nativeFetch(input,init);
+    const url=canonical(u),method=String(init.method||input?.method||'GET').toUpperCase();
+    if(u.pathname==='/api/auth') {
+      try {
+        const res=await nativeFetch(input,init);
+        if(method==='GET'&&u.searchParams.get('action')==='me') {
+          if(res.ok){const j=await res.clone().json();if(j.user)localStorage.setItem(AUTH,JSON.stringify({user:j.user,saved_at:new Date().toISOString()}));}
+          else if([401,403].includes(res.status))localStorage.removeItem(AUTH);
+        }
+        if(method==='POST'&&u.searchParams.get('action')==='logout'&&res.ok){localStorage.removeItem(AUTH);identityCheck=null;}
+        return res;
+      } catch(e) {
+        const saved=session();
+        if(method==='GET'&&u.searchParams.get('action')==='me'&&saved?.user&&Date.now()-Date.parse(saved.saved_at)<12*60*60*1000)return response({user:saved.user,offline_session:true});
+        throw e;
+      }
+    }
+    if(!await ensureIdentity())return response({error:'Login required'},401);
+    if(method==='GET') {
+      if(navigator.onLine) {
+        try {const id=owner(),res=await nativeFetch(input,init);if(res.ok)await saveSnapshot(url,res,id).catch(()=>{});return res;} catch {}
+      }
+      return await cached(url)||response({error:'Yeh data phone par save nahi hai. Online khol kar Offline Data Tayyar karein.'},503);
+    }
+    if(mutations.has(method)&&supported(u)&&owner()) {
+      let raw=init.body;
+      if(raw===undefined&&input instanceof Request)raw=await input.clone().text();
+      let body={};try{if(raw)body=JSON.parse(raw);}catch{return response({error:'Is attachment ko save karne ke liye internet chahiye.'},503);}
+      const prior=(await items()).find(x=>x.url===url&&x.method===method&&JSON.stringify(x.body)===JSON.stringify(body));
+      if(prior){await sync();const latest=await get('operations',prior.key);if(latest.state==='done')return response(latest.result);if(latest.state==='review')return response({error:latest.error,pending_sync:true,queue_id:latest.key},409);return pending(latest);}
+      const key=uid(),item={key,owner:owner(),url,method,body,tempId:method==='POST'?-(Date.now()*1000+Math.floor(Math.random()*1000)):null,created:new Date().toISOString(),state:'pending'};
+      // Never tell the form it saved until the IndexedDB transaction commits.
+      try{await put('operations',item);}catch{return response({error:'Phone storage mein entry save nahi hui. Form clear na karein.'},507);}
+      await badge();
+      if(navigator.onLine) {
+        // Serialize all requests across tabs and flush dependencies in creation order.
+        await sync();const latest=await get('operations',key);
+        if(latest.state==='done')return response(latest.result,200);
+        if(latest.state==='review')return response({error:latest.error,pending_sync:true,queue_id:key},latest.httpStatus||409);
+      }
+      await badge();return pending(item);
+    }
+    if(!navigator.onLine)return response({error:'Is action ke liye internet zaroori hai. Koi tabdeeli server par nahi hui.'},503);
+    return nativeFetch(input,init);
+  };
+  async function prepare() {
+    const urls=['/api/dashboard','/api/data?resource=sale_products','/api/data?resource=cash_sale_customers','/api/data?resource=cash_sales&status=all',...['suppliers','supplier_invoices','supplier_payments','clients','client_invoices','client_receipts','documents'].map(r=>'/api/data?resource='+r),...['products','warehouses','stock','movements'].map(r=>'/api/inventory?resource='+r),'/api/salaries'];
+    let done=0,failed=0;
+    for(const url of urls){try{const r=await window.fetch(url,{cache:'no-store'});if(r.ok&&await get('snapshots',owner()+':'+canonical(url)))done++;else if(r.status!==403)failed++;}catch{failed++;}}
+    alert(done+' data lists phone par save hui hain.'+(failed?' '+failed+' lists load nahi ho sakin.':'')+' Reports aakhri saved data ke mutabiq hongi.');
+  }
+  async function panel() {
+    const old=document.getElementById('ktOfflinePanel');if(old){old.remove();return;}
+    const el=document.createElement('dialog');el.id='ktOfflinePanel';el.style.cssText='max-width:90vw;width:520px;max-height:80vh;overflow:auto;border:1px solid #cbbf9b;border-radius:14px;padding:18px;color:#173f35';
+    const legacy=await legacyCount();if(legacy){const warning=document.createElement('p');warning.textContent=legacy+' purani Pending Sync entries bhi mehfooz hain. Original employee ki tasdeeq ke baghair unhein dobara post nahi kiya gaya. Admin review zaroori hai.';el.append(warning);}
+    const h=document.createElement('h2');h.textContent='Offline Entries';el.append(h);
+    const note=document.createElement('p');note.textContent='Pending entries sirf is phone par hain. Cashier aur server balances sync ke baad update honge. Review wali entry dobara create na karein.';el.append(note);
+    for(const item of await items()){const p=document.createElement('p');p.textContent=item.method+' '+(new URL(item.url,location.origin).searchParams.get('resource')||item.url)+' • '+item.created+' • '+(item.error||'Pending Sync');el.append(p);}
+    for(const [label,action]of [['Sync karein',sync],['Offline Data Tayyar',prepare],['Band karein',()=>el.remove()]]){const b=document.createElement('button');b.textContent=label;b.style.cssText='padding:10px;margin:4px;background:#173f35;color:white;border:0;border-radius:7px';b.onclick=async()=>{b.disabled=true;try{await action();}finally{b.disabled=false;}};el.append(b);}
+    document.body.append(el);el.showModal();
+  }
+  async function badge() {
+    if(!document.body||!owner())return;
+    let el=document.getElementById('ktOfflineBadge');if(!el){el=document.createElement('button');el.id='ktOfflineBadge';el.type='button';el.style.cssText='position:fixed;right:12px;bottom:12px;z-index:9998;padding:10px;border:1px solid #c4ad72;border-radius:12px;background:#f0e4c5;color:#173f35;font:700 12px system-ui';el.onclick=()=>panel().catch(console.error);document.body.append(el);}
+    const q=await items(),legacy=await legacyCount();el.textContent=legacy?'Purani entries • Review':q.length?q.length+' Pending Sync'+(q.some(x=>x.state==='review')?' • Review':''):navigator.onLine?'Offline Data':'Offline • Saved Data';
+  }
+  window.KT_OFFLINE={sync,items,count:async()=>(await items()).length,prepare};
+  window.addEventListener('online',()=>{identityCheck=null;sync();});window.addEventListener('offline',()=>badge());
+  window.addEventListener('load',()=>{badge().catch(console.error);sync();});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync();});
 })();
