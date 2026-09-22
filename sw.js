@@ -1,6 +1,6 @@
 'use strict';
 importScripts('/offline-shell-manifest.js');
-const CACHE = 'kt-shell-20260922-offline-sync2';
+const CACHE = 'kt-shell-20260922-ecommerce-mobile1';
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
