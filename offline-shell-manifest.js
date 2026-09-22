@@ -82,7 +82,7 @@ self.KT_SHELL_ASSETS = [
   "/inventory-ui.js",
   "/login.html",
   "/media-compress.js",
-  "/media-compress.js?v=20260922-media1",
+  "/media-compress.js?v=20260922-media2",
   "/mobile-upgrades.css",
   "/mobile-upgrades.js",
   "/offline-register.js",
