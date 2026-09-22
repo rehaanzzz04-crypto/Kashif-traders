@@ -54,3 +54,10 @@ test('all manifest assets exist and every HTML page is included', () => {
   for(const asset of assets) assert.ok(fs.existsSync(new URL('..'+asset.split('?')[0],import.meta.url)),asset);
   for(const file of fs.readdirSync(new URL('../',import.meta.url)).filter(f=>f.endsWith('.html'))) assert.ok(assets.includes('/'+file),file);
 });
+test('HTML pages do not render text after the closing document tag', () => {
+  const root=new URL('../',import.meta.url);
+  for(const file of fs.readdirSync(root).filter(f=>f.endsWith('.html'))) {
+    const html=fs.readFileSync(new URL(file,root),'utf8');
+    assert.match(html,/<\/html>\s*$/i,file);
+  }
+});

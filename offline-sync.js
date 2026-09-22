@@ -174,26 +174,42 @@
     if(!navigator.onLine)return response({error:'Is action ke liye internet zaroori hai. Koi tabdeeli server par nahi hui.'},503);
     return nativeFetch(input,init);
   };
-  async function prepare() {
+  async function prepare(onProgress) {
     const urls=['/api/dashboard','/api/data?resource=sale_products','/api/data?resource=cash_sale_customers','/api/data?resource=cash_sales&status=all',...['suppliers','supplier_invoices','supplier_payments','clients','client_invoices','client_receipts','documents'].map(r=>'/api/data?resource='+r),...['products','warehouses','stock','movements'].map(r=>'/api/inventory?resource='+r),'/api/salaries'];
     let done=0,failed=0;
-    for(const url of urls){try{const r=await window.fetch(url,{cache:'no-store'});if(r.ok&&await get('snapshots',owner()+':'+canonical(url)))done++;else if(r.status!==403)failed++;}catch{failed++;}}
-    alert(done+' data lists phone par save hui hain.'+(failed?' '+failed+' lists load nahi ho sakin.':'')+' Reports aakhri saved data ke mutabiq hongi.');
+    for(const url of urls){try{const r=await window.fetch(url,{cache:'no-store'});if(r.ok&&await get('snapshots',owner()+':'+canonical(url)))done++;else if(r.status!==403)failed++;}catch{failed++;}if(onProgress)onProgress((done+failed)/urls.length);}
+    return {done,failed,total:urls.length};
   }
-  async function panel() {
-    const old=document.getElementById('ktOfflinePanel');if(old){old.remove();return;}
-    const el=document.createElement('dialog');el.id='ktOfflinePanel';el.style.cssText='max-width:90vw;width:520px;max-height:80vh;overflow:auto;border:1px solid #cbbf9b;border-radius:14px;padding:18px;color:#173f35';
-    const legacy=await legacyCount();if(legacy){const warning=document.createElement('p');warning.textContent=legacy+' purani Pending Sync entries bhi mehfooz hain. Original employee ki tasdeeq ke baghair unhein dobara post nahi kiya gaya. Admin review zaroori hai.';el.append(warning);}
-    const h=document.createElement('h2');h.textContent='Offline Entries';el.append(h);
-    const note=document.createElement('p');note.textContent='Pending entries sirf is phone par hain. Cashier aur server balances sync ke baad update honge. Review wali entry dobara create na karein.';el.append(note);
-    for(const item of await items()){const p=document.createElement('p');p.textContent=item.method+' '+(new URL(item.url,location.origin).searchParams.get('resource')||item.url)+' • '+item.created+' • '+(item.error||'Pending Sync');el.append(p);}
-    for(const [label,action]of [['Sync karein',sync],['Offline Data Tayyar',prepare],['Band karein',()=>el.remove()]]){const b=document.createElement('button');b.textContent=label;b.style.cssText='padding:10px;margin:4px;background:#173f35;color:white;border:0;border-radius:7px';b.onclick=async()=>{b.disabled=true;try{await action();}finally{b.disabled=false;}};el.append(b);}
-    document.body.append(el);el.showModal();
+  function syncUi() {
+    let style=document.getElementById('ktOfflineSyncStyle');
+    if(!style){style=document.createElement('style');style.id='ktOfflineSyncStyle';style.textContent='@keyframes ktSyncSpin{to{transform:rotate(360deg)}}@keyframes ktSyncShine{0%{background-position:200% 0}100%{background-position:-200% 0}}#ktOfflineBadge{position:fixed;right:14px;bottom:14px;z-index:9998;width:44px;height:44px;padding:0;border:1px solid rgba(199,164,83,.9);border-radius:50%;background:linear-gradient(145deg,#174c40,#0d3029);color:#f5d985;box-shadow:0 5px 18px rgba(11,48,40,.28);font:700 24px/1 system-ui;display:grid;place-items:center}#ktOfflineBadge[data-running="1"] span{animation:ktSyncSpin .8s linear infinite}#ktOfflineBadgeDot{position:absolute;right:-2px;top:-2px;min-width:15px;height:15px;padding:0 3px;border:2px solid white;border-radius:9px;background:#d39a27;color:#fff;font:700 9px/11px system-ui;box-sizing:border-box}#ktSyncTrack{position:fixed;left:14px;right:70px;bottom:31px;z-index:9997;height:4px;border-radius:4px;overflow:hidden;background:rgba(23,76,64,.14);opacity:0;transition:opacity .2s}#ktSyncTrack[data-show="1"]{opacity:1}#ktSyncBar{height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,#0f594b,#d7b75b,#fff3a7,#20a77e,#0f594b);background-size:250% 100%;box-shadow:0 0 9px #d7b75b;animation:ktSyncShine 1.15s linear infinite;transition:width .22s ease}#ktSyncMessage{position:fixed;right:14px;bottom:66px;z-index:9998;max-width:240px;padding:7px 10px;border-radius:9px;background:#173f35;color:white;box-shadow:0 4px 14px rgba(0,0,0,.18);font:600 12px/1.35 system-ui;opacity:0;transform:translateY(5px);pointer-events:none;transition:.2s}#ktSyncMessage[data-show="1"]{opacity:1;transform:none}';document.head.append(style);}
+    let track=document.getElementById('ktSyncTrack');if(!track){track=document.createElement('div');track.id='ktSyncTrack';track.innerHTML='<div id="ktSyncBar"></div>';document.body.append(track);}
+    let message=document.getElementById('ktSyncMessage');if(!message){message=document.createElement('div');message.id='ktSyncMessage';message.setAttribute('role','status');message.setAttribute('aria-live','polite');document.body.append(message);}
+    return {track,bar:track.firstElementChild,message};
+  }
+  function showSyncStatus(text,progress,hold=false) {
+    const ui=syncUi();ui.track.dataset.show='1';ui.bar.style.width=Math.max(2,Math.min(100,progress))+'%';ui.message.textContent=text;ui.message.dataset.show='1';
+    clearTimeout(showSyncStatus.timer);if(!hold)showSyncStatus.timer=setTimeout(()=>{ui.track.dataset.show='0';ui.message.dataset.show='0';},2200);
+  }
+  async function runFullSync() {
+    const button=document.getElementById('ktOfflineBadge');if(!button||button.dataset.running==='1')return;
+    if(!navigator.onLine){showSyncStatus('Internet connect karke dobara sync karein.',100);return;}
+    button.dataset.running='1';button.disabled=true;showSyncStatus('Entries sync ho rahi hain…',8,true);
+    try {
+      await sync();showSyncStatus('Latest data load ho raha hai…',18,true);
+      const result=await prepare(p=>showSyncStatus('Latest data load ho raha hai…',18+p*78,true));
+      const pending=await items();
+      if(pending.some(x=>x.state==='review'))showSyncStatus('Kuch entries ko review chahiye.',100);
+      else if(pending.length)showSyncStatus(pending.length+' entries abhi pending hain.',100);
+      else if(result.failed)showSyncStatus(result.done+' lists update, '+result.failed+' load nahi huin.',100);
+      else showSyncStatus('Data sync aur update ho gaya.',100);
+    } catch(e) {console.error('Manual offline sync failed',e);showSyncStatus('Sync complete nahi hua. Dobara try karein.',100);}
+    finally {button.dataset.running='0';button.disabled=false;await badge();}
   }
   async function badge() {
     if(!document.body||!owner())return;
-    let el=document.getElementById('ktOfflineBadge');if(!el){el=document.createElement('button');el.id='ktOfflineBadge';el.type='button';el.style.cssText='position:fixed;right:12px;bottom:12px;z-index:9998;padding:10px;border:1px solid #c4ad72;border-radius:12px;background:#f0e4c5;color:#173f35;font:700 12px system-ui';el.onclick=()=>panel().catch(console.error);document.body.append(el);}
-    const q=await items(),legacy=await legacyCount();el.textContent=legacy?'Purani entries • Review':q.length?q.length+' Pending Sync'+(q.some(x=>x.state==='review')?' • Review':''):navigator.onLine?'Offline Data':'Offline • Saved Data';
+    syncUi();let el=document.getElementById('ktOfflineBadge');if(!el){el=document.createElement('button');el.id='ktOfflineBadge';el.type='button';el.setAttribute('aria-label','Data sync karein');el.title='Data sync';el.innerHTML='<span aria-hidden="true">↻</span><b id="ktOfflineBadgeDot" hidden></b>';el.onclick=()=>runFullSync();document.body.append(el);}
+    const q=await items(),legacy=await legacyCount(),dot=document.getElementById('ktOfflineBadgeDot'),count=legacy||q.length;dot.hidden=!count;dot.textContent=count>9?'9+':String(count||'');el.style.filter=navigator.onLine?'none':'grayscale(.45)';
   }
   window.KT_OFFLINE={sync,items,count:async()=>(await items()).length,prepare};
   window.addEventListener('online',()=>{identityCheck=null;sync();});window.addEventListener('offline',()=>badge());
