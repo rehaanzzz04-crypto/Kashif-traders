@@ -86,20 +86,19 @@ async function ensureClientOcrAudit(sql) {
   await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_line_items JSONB NOT NULL DEFAULT \'[]\'::jsonb`;
 }
 async function ensureCoreAuditColumns(sql) {
-  for (const table of ["supplier_invoices","supplier_payments","client_invoices","client_receipts"]) {
-    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS created_by_id BIGINT`);
-    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS created_by_name TEXT`);
-    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS created_by_designation TEXT`);
-    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS updated_by_id BIGINT`);
-    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS updated_by_name TEXT`);
-    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS updated_by_designation TEXT`);
-  }
+  await sql`ALTER TABLE supplier_invoices ADD COLUMN IF NOT EXISTS created_by_id BIGINT, ADD COLUMN IF NOT EXISTS created_by_name TEXT, ADD COLUMN IF NOT EXISTS created_by_designation TEXT, ADD COLUMN IF NOT EXISTS updated_by_id BIGINT, ADD COLUMN IF NOT EXISTS updated_by_name TEXT, ADD COLUMN IF NOT EXISTS updated_by_designation TEXT`;
+  await sql`ALTER TABLE supplier_payments ADD COLUMN IF NOT EXISTS created_by_id BIGINT, ADD COLUMN IF NOT EXISTS created_by_name TEXT, ADD COLUMN IF NOT EXISTS created_by_designation TEXT, ADD COLUMN IF NOT EXISTS updated_by_id BIGINT, ADD COLUMN IF NOT EXISTS updated_by_name TEXT, ADD COLUMN IF NOT EXISTS updated_by_designation TEXT`;
+  await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS created_by_id BIGINT, ADD COLUMN IF NOT EXISTS created_by_name TEXT, ADD COLUMN IF NOT EXISTS created_by_designation TEXT, ADD COLUMN IF NOT EXISTS updated_by_id BIGINT, ADD COLUMN IF NOT EXISTS updated_by_name TEXT, ADD COLUMN IF NOT EXISTS updated_by_designation TEXT`;
+  await sql`ALTER TABLE client_receipts ADD COLUMN IF NOT EXISTS created_by_id BIGINT, ADD COLUMN IF NOT EXISTS created_by_name TEXT, ADD COLUMN IF NOT EXISTS created_by_designation TEXT, ADD COLUMN IF NOT EXISTS updated_by_id BIGINT, ADD COLUMN IF NOT EXISTS updated_by_name TEXT, ADD COLUMN IF NOT EXISTS updated_by_designation TEXT`;
 }
 async function stampCoreAudit(sql, resource, id, user, mode) {
-  if (!["supplier_invoices","supplier_payments","client_invoices","client_receipts"].includes(resource) || !id) return;
+  if (!id) return;
   const name=user.full_name||user.employee_code||"Admin", designation=user.designation||null;
-  if(mode==="create") await sql.unsafe(`UPDATE ${resource} SET created_by_id=$1,created_by_name=$2,created_by_designation=$3 WHERE id=$4`,[user.id,name,designation,id]);
-  else await sql.unsafe(`UPDATE ${resource} SET updated_by_id=$1,updated_by_name=$2,updated_by_designation=$3 WHERE id=$4`,[user.id,name,designation,id]);
+  const create=mode==="create";
+  if(resource==="supplier_invoices") return create?sql`UPDATE supplier_invoices SET created_by_id=${user.id},created_by_name=${name},created_by_designation=${designation} WHERE id=${id}`:sql`UPDATE supplier_invoices SET updated_by_id=${user.id},updated_by_name=${name},updated_by_designation=${designation} WHERE id=${id}`;
+  if(resource==="supplier_payments") return create?sql`UPDATE supplier_payments SET created_by_id=${user.id},created_by_name=${name},created_by_designation=${designation} WHERE id=${id}`:sql`UPDATE supplier_payments SET updated_by_id=${user.id},updated_by_name=${name},updated_by_designation=${designation} WHERE id=${id}`;
+  if(resource==="client_invoices") return create?sql`UPDATE client_invoices SET created_by_id=${user.id},created_by_name=${name},created_by_designation=${designation} WHERE id=${id}`:sql`UPDATE client_invoices SET updated_by_id=${user.id},updated_by_name=${name},updated_by_designation=${designation} WHERE id=${id}`;
+  if(resource==="client_receipts") return create?sql`UPDATE client_receipts SET created_by_id=${user.id},created_by_name=${name},created_by_designation=${designation} WHERE id=${id}`:sql`UPDATE client_receipts SET updated_by_id=${user.id},updated_by_name=${name},updated_by_designation=${designation} WHERE id=${id}`;
 }
 async function ensureCashSaleSchema(sql) {
   await sql`CREATE TABLE IF NOT EXISTS cash_sale_queue (id BIGSERIAL PRIMARY KEY, invoice_number TEXT UNIQUE NOT NULL, created_by_id BIGINT, created_by_name TEXT NOT NULL, customer_name TEXT, sale_date DATE NOT NULL DEFAULT CURRENT_DATE, items JSONB NOT NULL DEFAULT '[]'::jsonb, subtotal NUMERIC(14,2) NOT NULL DEFAULT 0, discount NUMERIC(14,2) NOT NULL DEFAULT 0, total NUMERIC(14,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
@@ -526,9 +525,10 @@ export default async function handler(req, res) {
     if(resource==="gulshan_ecommerce")return gulshanEcommerceHandler(req,res);
     const sql = db(),
       user = await getSessionUser(req, sql);
-    await ensureCoreAuditColumns(sql);
     if (!user)
       return res.status(401).json({ error: "Authentication required" });
+    if (["supplier_invoices","supplier_payments","client_invoices","client_receipts"].includes(resource))
+      await ensureCoreAuditColumns(sql);
     if (resource === "client_invoices") await ensureClientOcrAudit(sql);
     if (resource === "cash_sales") {
       const out = await cashSales(sql, req, user);
