@@ -12,7 +12,7 @@
         <div class="cs-field cashier-discount"><label>Invoice Discount</label><input id="cashierDiscount" type="number" min="0" value="0" readonly></div>
         <div class="cashier-financials"><div class="cs-summary-row"><span>Invoice Total</span><b id="cashierDue">PKR 0</b></div><div class="cs-summary-row"><span>Received</span><b id="cashierReceivedTotal">PKR 0</b></div><div class="cs-summary-row total"><span>Balance Due</span><b id="cashierBalance">PKR 0</b></div></div>
         <div class="cashier-payment-history" id="cashierPaymentHistory"><div class="cashier-history-empty">No payment history</div></div>
-        <button class="cs-primary" id="cashierPaid" type="button" disabled>Receive Payment / Credit</button><button class="cs-secondary" id="cashierCancelBill" type="button" disabled>Cancel Invoice</button><div class="cashier-receipt-actions"><button id="cashierPrint" type="button" disabled>Print Receipt</button><button id="cashierShare" type="button" disabled>PDF Share</button></div><div class="cs-status" id="cashierStatus">Bill select karein.</div>
+        <button class="cs-primary" id="cashierPaid" type="button" disabled>Receive Payment / Credit</button><button class="cs-secondary" id="cashierCancelBill" type="button" disabled>Cancel Invoice</button><button class="cashier-delete cs-hidden" id="cashierDeleteBill" type="button">🗑 Delete Cancelled Invoice (Admin Only)</button><div class="cashier-receipt-actions"><button id="cashierPrint" type="button" disabled>Print Receipt</button><button id="cashierShare" type="button" disabled>PDF Share</button></div><div class="cs-status" id="cashierStatus">Bill select karein.</div>
       </aside>
     </div>
   </main>
@@ -20,5 +20,5 @@
     <div class="cashier-settlement-options" id="cashierSettlementOptions"><button class="active" data-settlement="full" type="button">Full Paid</button><button data-settlement="partial" type="button">Partial Paid</button><button data-settlement="credit" type="button">Credit</button></div>
     <div id="cashierPaymentMethodsWrap"><input id="cashierPaymentMethod" type="hidden" value="Cash"><div class="cashier-payment-options" id="cashierPaymentOptions"><button class="active" data-method="Cash" type="button">Cash</button><button data-method="Bank Transfer" type="button">Bank Transfer</button><button data-method="EasyPaisa" type="button">EasyPaisa</button><button data-method="JazzCash" type="button">JazzCash</button></div></div>
     <div class="cs-field"><label>Amount Received</label><input id="cashierReceived" type="number" min="0" step="0.01" value="0"></div><div class="cashier-change"><span id="cashierPaymentBalanceLabel">Return to Customer</span><b id="cashierChange">PKR 0</b></div><div class="cashier-payment-actions"><button class="cs-secondary" id="cashierPaymentClose" type="button">Back</button><button class="cs-primary" id="cashierConfirmPaid" type="button">Confirm</button></div></div></div>
-  <script src="/cashier-sales-ui.js?v=20260921-customeraccount1"></script>
+  <script src="/cashier-sales-ui.js?v=20260923-admin-delete1"></script>
 </body></html>
