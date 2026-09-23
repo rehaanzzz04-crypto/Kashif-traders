@@ -35,8 +35,9 @@
     if(!(amt>0))return window.toast?.('Valid payment amount required',true);
     const save=form.querySelector('[type="submit"]'),old=save?.textContent;if(save){save.disabled=true;save.textContent='Saving…'}
     try{
-      const r=await fetch('/api/data?resource=supplier_payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Supplier payment failed');
-      document.getElementById('modal')?.remove();window.toast?.('Payment saved — invoices auto-adjusted');
+      const editId=Number(form.dataset.recordId||0)||null,method=editId?'PATCH':'POST',url='/api/data?resource=supplier_payments'+(editId?'&id='+encodeURIComponent(editId):'');
+      const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Supplier payment failed');
+      document.getElementById('modal')?.remove();window.toast?.(editId?'Payment updated':'Payment saved — invoices auto-adjusted');
       setTimeout(()=>document.querySelector('#nav [data-view="supplier-payments"]')?.click(),80);
     }catch(err){window.toast?.(err.message||'Supplier payment failed',true);if(save){save.disabled=false;save.textContent=old||'Save'}}
   },true);
