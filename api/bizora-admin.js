@@ -54,9 +54,13 @@ export default async function handler(req,res){
           INSERT INTO company_users(company_id,user_code,full_name,email,password_hash,role)
           SELECT c.id,'ADMIN001',${adminName},${adminEmail},${passHash},'company_admin' FROM c
           RETURNING id,company_id,user_code,full_name,email,role
+        ), w AS(
+          INSERT INTO erp_warehouses(company_id,warehouse_code,warehouse_name,created_by_user_id)
+          SELECT c.id,'MAIN','Main Warehouse',u.id FROM c,u
+          RETURNING id,company_id
         )
-        SELECT c.id,c.company_code,c.company_name,c.status,s.id subscription_id,s.starts_on,s.expires_on,u.id company_admin_id
-        FROM c JOIN s ON s.company_id=c.id JOIN u ON u.company_id=c.id`;
+        SELECT c.id,c.company_code,c.company_name,c.status,s.id subscription_id,s.starts_on,s.expires_on,u.id company_admin_id,w.id warehouse_id
+        FROM c JOIN s ON s.company_id=c.id JOIN u ON u.company_id=c.id JOIN w ON w.company_id=c.id`;
       if(!rows[0])return res.status(400).json({error:'Subscription plan not found'});
       await audit(sql,admin.id,'COMPANY_CREATED',{companyId:rows[0].id,entityType:'company',entityId:String(rows[0].id),metadata:{plan_code:planCode,months}});
       return res.status(201).json({company:rows[0]});

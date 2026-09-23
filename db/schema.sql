@@ -1,4 +1,4 @@
--- Bizora ERP SaaS core schema
+-- Bizora ERP SaaS tenant foundation
 -- IMPORTANT: run only against BIZORA_DATABASE_URL, never Kashif Traders DATABASE_URL.
 
 CREATE TABLE bizora_admins (
@@ -56,13 +56,76 @@ CREATE TABLE company_users (
   role TEXT NOT NULL DEFAULT 'company_admin',
   active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login_at TIMESTAMPTZ,
   UNIQUE(company_id,user_code)
+);
+
+CREATE TABLE erp_warehouses (
+  id BIGSERIAL PRIMARY KEY,
+  company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  warehouse_code TEXT NOT NULL,
+  warehouse_name TEXT NOT NULL,
+  address TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(company_id,warehouse_code)
+);
+
+CREATE TABLE erp_suppliers (
+  id BIGSERIAL PRIMARY KEY,
+  company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  supplier_code TEXT NOT NULL,
+  business_name TEXT NOT NULL,
+  contact_person TEXT,
+  mobile_number TEXT,
+  opening_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive')),
+  created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(company_id,supplier_code)
+);
+
+CREATE TABLE erp_clients (
+  id BIGSERIAL PRIMARY KEY,
+  company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  client_code TEXT NOT NULL,
+  business_name TEXT NOT NULL,
+  contact_person TEXT,
+  mobile_number TEXT,
+  credit_limit NUMERIC(14,2) NOT NULL DEFAULT 0,
+  opening_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive')),
+  created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(company_id,client_code)
+);
+
+CREATE TABLE erp_products (
+  id BIGSERIAL PRIMARY KEY,
+  company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  sku TEXT NOT NULL,
+  barcode TEXT,
+  product_name TEXT NOT NULL,
+  unit TEXT NOT NULL DEFAULT 'pcs',
+  purchase_price NUMERIC(14,2) NOT NULL DEFAULT 0,
+  sale_price NUMERIC(14,2) NOT NULL DEFAULT 0,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(company_id,sku),
+  UNIQUE(company_id,barcode)
 );
 
 CREATE TABLE audit_events (
   id BIGSERIAL PRIMARY KEY,
   company_id BIGINT REFERENCES companies(id) ON DELETE RESTRICT,
   actor_admin_id BIGINT REFERENCES bizora_admins(id) ON DELETE SET NULL,
+  actor_company_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
   event_type TEXT NOT NULL,
   entity_type TEXT,
   entity_id TEXT,
@@ -72,4 +135,8 @@ CREATE TABLE audit_events (
 
 CREATE INDEX subscriptions_company_idx ON subscriptions(company_id,expires_on DESC);
 CREATE INDEX company_users_company_idx ON company_users(company_id,active);
+CREATE INDEX erp_warehouses_company_idx ON erp_warehouses(company_id,active);
+CREATE INDEX erp_suppliers_company_idx ON erp_suppliers(company_id,status);
+CREATE INDEX erp_clients_company_idx ON erp_clients(company_id,status);
+CREATE INDEX erp_products_company_idx ON erp_products(company_id,active);
 CREATE INDEX audit_events_company_idx ON audit_events(company_id,created_at DESC);

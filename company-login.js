@@ -1,0 +1,4 @@
+'use strict';
+const form=document.getElementById('companyLoginForm'),msg=document.getElementById('companyLoginMessage'),btn=document.getElementById('companyLoginBtn');
+(async()=>{try{const r=await fetch('/api/bizora-company-auth?action=me',{cache:'no-store'});if(r.ok)location.replace('/workspace.html')}catch{}})();
+form.addEventListener('submit',async e=>{e.preventDefault();btn.disabled=true;btn.textContent='Opening…';msg.textContent='';try{const r=await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',company_code:document.getElementById('companyCode').value,login:document.getElementById('companyUser').value,password:document.getElementById('companyPassword').value})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Login failed');location.replace('/workspace.html')}catch(err){msg.textContent=err.message}finally{btn.disabled=false;btn.textContent='Open Workspace'}});

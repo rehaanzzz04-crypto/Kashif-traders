@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#0f3b36"><title>Bizora ERP — Super Admin</title><link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <header class="topbar"><div class="brandmark">BZ</div><div class="brandcopy"><strong>Bizora ERP</strong><span>by Bizora Technologies</span></div><div class="badge" id="adminBadge">Authorizing…</div><button id="logout" class="toplogout">Logout</button></header>
+  <header class="topbar"><div class="brandmark">BZ</div><div class="brandcopy"><strong>Bizora ERP</strong><span>by Bizora Technologies</span></div><a href="/company-login.html" class="companyLoginLink">Company Login</a><div class="badge" id="adminBadge">Authorizing…</div><button id="logout" class="toplogout">Logout</button></header>
   <main class="wrap">
     <section class="hero"><div><span class="eyebrow">MULTI-COMPANY ERP PLATFORM</span><h1>Super Admin Control Center</h1><p>Create companies, assign subscriptions and control workspace access. Each company remains an isolated tenant.</p></div><button id="addCompany" class="primary">+ Add Company</button></section>
     <div id="systemMessage" class="systemmessage hidden"></div>
@@ -14,7 +14,7 @@
       <article class="card wide"><div class="cardhead"><div><h2>Companies</h2><p>Separate tenants and latest subscription status</p></div><input id="companySearch" placeholder="Search company"></div><div class="tablewrap"><table><thead><tr><th>Company</th><th>Code</th><th>Plan</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="companyRows"><tr><td colspan="6">Loading…</td></tr></tbody></table></div></article>
       <article class="card"><div class="cardhead"><div><h2>Subscription Plans</h2><p>Plans stored in Bizora SaaS database</p></div></div><div id="plans" class="plans"></div></article>
     </section>
-    <section class="architecture"><div><b>Bizora Super Admin</b><span>Companies + Subscriptions</span></div><i>→</i><div><b>Tenant Session</b><span>company_id enforced by backend</span></div><i>→</i><div><b>Company ERP Workspace</b><span>Operational modules — next phase</span></div></section>
+    <section class="architecture"><div><b>Bizora Super Admin</b><span>Companies + Subscriptions</span></div><i>→</i><div><b>Tenant Session</b><span>company_id enforced by backend</span></div><i>→</i><div><b>Company ERP Workspace</b><span>Suppliers, Clients, Products, Warehouses</span></div></section>
   </main>
 
   <dialog id="companyDialog"><form id="companyForm">
