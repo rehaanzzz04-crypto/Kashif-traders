@@ -5,7 +5,7 @@
   loadStyle('/mobile-upgrades.css');
   loadScript('/mobile-upgrades.js');
   loadScript('/employee-delete-ui.js');
-  loadScript('/supplier-payment-invoice.js');
+  if(!document.querySelector('script[src^="/supplier-payment-invoice.js"]')){const s=document.createElement('script');s.src='/supplier-payment-invoice.js?v=20260923-stablefix1';s.defer=true;document.body.appendChild(s)}
   if(!('serviceWorker'in navigator))return;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js',{scope:'/'}).then(r=>{r.update().catch(()=>{})}).catch(e=>console.warn('Offline app shell unavailable',e))},{once:true});
 })();
