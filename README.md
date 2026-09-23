@@ -16,14 +16,19 @@ Separate multi-company subscription ERP foundation. This branch does not modify 
 - Company Code + User ID/Email + Password login
 - company_id comes only from the secure server session
 - subscription gate: active = write, expired = read-only, suspended = blocked
-- Dashboard
-- Suppliers
-- Clients
+- Dashboard with Supplier Payable / Client Receivable
+- Company Users with plan user limit
+- Suppliers + Supplier Bills + Supplier Payments
+- Clients + Client Bills + Client Payments
 - Products
-- Warehouses
+- Warehouses with plan warehouse limit
 - tenant-scoped create/list APIs
-- warehouse limit enforcement from subscription plan
 - company-user audit events
+
+## Accounting scope in this phase
+Supplier/client balances are company-level totals:
+opening balance + bills - payments/receipts.
+Invoice-payment allocation and per-invoice settlement are intentionally left for the next accounting phase.
 
 ## Database safety
 The code reads **only** `BIZORA_DATABASE_URL`. It never falls back to Kashif Traders `DATABASE_URL`.

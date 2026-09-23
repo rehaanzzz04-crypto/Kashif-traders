@@ -178,6 +178,60 @@ export async function ensureBizoraSchema(sql){
     UNIQUE(company_id,sku),
     UNIQUE(company_id,barcode)
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_supplier_invoices(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    supplier_id BIGINT NOT NULL REFERENCES erp_suppliers(id) ON DELETE RESTRICT,
+    invoice_number TEXT NOT NULL,
+    invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    due_date DATE,
+    amount NUMERIC(14,2) NOT NULL CHECK(amount>=0),
+    status TEXT NOT NULL DEFAULT 'unpaid' CHECK(status IN ('unpaid','partial','paid','cancelled')),
+    notes TEXT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,supplier_id,invoice_number)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_supplier_payments(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    supplier_id BIGINT NOT NULL REFERENCES erp_suppliers(id) ON DELETE RESTRICT,
+    payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    amount NUMERIC(14,2) NOT NULL CHECK(amount>0),
+    payment_method TEXT NOT NULL DEFAULT 'CASH',
+    reference_number TEXT,
+    notes TEXT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_client_invoices(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    client_id BIGINT NOT NULL REFERENCES erp_clients(id) ON DELETE RESTRICT,
+    invoice_number TEXT NOT NULL,
+    invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    due_date DATE,
+    amount NUMERIC(14,2) NOT NULL CHECK(amount>=0),
+    status TEXT NOT NULL DEFAULT 'unpaid' CHECK(status IN ('unpaid','partial','paid','cancelled')),
+    notes TEXT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,invoice_number)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_client_receipts(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    client_id BIGINT NOT NULL REFERENCES erp_clients(id) ON DELETE RESTRICT,
+    receipt_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    amount NUMERIC(14,2) NOT NULL CHECK(amount>0),
+    payment_method TEXT NOT NULL DEFAULT 'CASH',
+    reference_number TEXT,
+    notes TEXT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
   await sql`CREATE TABLE IF NOT EXISTS audit_events(
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT REFERENCES companies(id) ON DELETE RESTRICT,
@@ -189,14 +243,21 @@ export async function ensureBizoraSchema(sql){
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+
   await sql`ALTER TABLE company_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`;
   await sql`ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS actor_company_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL`;
+
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS company_users_company_email_uidx ON company_users(company_id,lower(email)) WHERE email IS NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS subscriptions_company_idx ON subscriptions(company_id,expires_on DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS company_users_company_idx ON company_users(company_id,active)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_warehouses_company_idx ON erp_warehouses(company_id,active)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_suppliers_company_idx ON erp_suppliers(company_id,status)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_clients_company_idx ON erp_clients(company_id,status)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_products_company_idx ON erp_products(company_id,active)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_supplier_invoices_company_idx ON erp_supplier_invoices(company_id,invoice_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_supplier_payments_company_idx ON erp_supplier_payments(company_id,payment_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_client_invoices_company_idx ON erp_client_invoices(company_id,invoice_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_client_receipts_company_idx ON erp_client_receipts(company_id,receipt_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS audit_events_company_idx ON audit_events(company_id,created_at DESC)`;
 
   const planCount=await sql`SELECT COUNT(*)::int count FROM plans`;

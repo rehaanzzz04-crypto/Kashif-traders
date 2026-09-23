@@ -1,4 +1,4 @@
--- Bizora ERP SaaS tenant foundation
+-- Bizora ERP SaaS tenant/accounting foundation
 -- IMPORTANT: run only against BIZORA_DATABASE_URL, never Kashif Traders DATABASE_URL.
 
 CREATE TABLE bizora_admins (
@@ -59,6 +59,7 @@ CREATE TABLE company_users (
   last_login_at TIMESTAMPTZ,
   UNIQUE(company_id,user_code)
 );
+CREATE UNIQUE INDEX company_users_company_email_uidx ON company_users(company_id,lower(email)) WHERE email IS NOT NULL;
 
 CREATE TABLE erp_warehouses (
   id BIGSERIAL PRIMARY KEY,
@@ -121,6 +122,64 @@ CREATE TABLE erp_products (
   UNIQUE(company_id,barcode)
 );
 
+CREATE TABLE erp_supplier_invoices (
+  id BIGSERIAL PRIMARY KEY,
+  company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  supplier_id BIGINT NOT NULL REFERENCES erp_suppliers(id) ON DELETE RESTRICT,
+  invoice_number TEXT NOT NULL,
+  invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  due_date DATE,
+  amount NUMERIC(14,2) NOT NULL CHECK(amount>=0),
+  status TEXT NOT NULL DEFAULT 'unpaid' CHECK(status IN ('unpaid','partial','paid','cancelled')),
+  notes TEXT,
+  created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(company_id,supplier_id,invoice_number)
+);
+
+CREATE TABLE erp_supplier_payments (
+  id BIGSERIAL PRIMARY KEY,
+  company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  supplier_id BIGINT NOT NULL REFERENCES erp_suppliers(id) ON DELETE RESTRICT,
+  payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  amount NUMERIC(14,2) NOT NULL CHECK(amount>0),
+  payment_method TEXT NOT NULL DEFAULT 'CASH',
+  reference_number TEXT,
+  notes TEXT,
+  created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE erp_client_invoices (
+  id BIGSERIAL PRIMARY KEY,
+  company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  client_id BIGINT NOT NULL REFERENCES erp_clients(id) ON DELETE RESTRICT,
+  invoice_number TEXT NOT NULL,
+  invoice_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  due_date DATE,
+  amount NUMERIC(14,2) NOT NULL CHECK(amount>=0),
+  status TEXT NOT NULL DEFAULT 'unpaid' CHECK(status IN ('unpaid','partial','paid','cancelled')),
+  notes TEXT,
+  created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(company_id,invoice_number)
+);
+
+CREATE TABLE erp_client_receipts (
+  id BIGSERIAL PRIMARY KEY,
+  company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+  client_id BIGINT NOT NULL REFERENCES erp_clients(id) ON DELETE RESTRICT,
+  receipt_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  amount NUMERIC(14,2) NOT NULL CHECK(amount>0),
+  payment_method TEXT NOT NULL DEFAULT 'CASH',
+  reference_number TEXT,
+  notes TEXT,
+  created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE audit_events (
   id BIGSERIAL PRIMARY KEY,
   company_id BIGINT REFERENCES companies(id) ON DELETE RESTRICT,
@@ -139,4 +198,8 @@ CREATE INDEX erp_warehouses_company_idx ON erp_warehouses(company_id,active);
 CREATE INDEX erp_suppliers_company_idx ON erp_suppliers(company_id,status);
 CREATE INDEX erp_clients_company_idx ON erp_clients(company_id,status);
 CREATE INDEX erp_products_company_idx ON erp_products(company_id,active);
+CREATE INDEX erp_supplier_invoices_company_idx ON erp_supplier_invoices(company_id,invoice_date DESC);
+CREATE INDEX erp_supplier_payments_company_idx ON erp_supplier_payments(company_id,payment_date DESC);
+CREATE INDEX erp_client_invoices_company_idx ON erp_client_invoices(company_id,invoice_date DESC);
+CREATE INDEX erp_client_receipts_company_idx ON erp_client_receipts(company_id,receipt_date DESC);
 CREATE INDEX audit_events_company_idx ON audit_events(company_id,created_at DESC);

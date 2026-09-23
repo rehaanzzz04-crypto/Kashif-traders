@@ -1,7 +1,18 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0f3b36"><title>Bizora ERP — Company Workspace</title><link rel="stylesheet" href="/workspace.css"></head><body>
 <header class="topbar"><div class="brandmark">BZ</div><div class="brandcopy"><strong id="companyName">Bizora ERP</strong><span id="companyMeta">COMPANY WORKSPACE</span></div><div id="accessBadge" class="badge">Loading…</div><button id="companyLogout" class="toplogout">Logout</button></header>
 <div class="shell">
-  <nav class="sidenav" id="workspaceNav"><button class="active" data-view="dashboard">Dashboard</button><button data-view="suppliers">Suppliers</button><button data-view="clients">Clients</button><button data-view="products">Products</button><button data-view="warehouses">Warehouses</button></nav>
+  <nav class="sidenav" id="workspaceNav">
+    <button class="active" data-view="dashboard">Dashboard</button>
+    <button data-view="users" id="usersNav">Users</button>
+    <button data-view="suppliers">Suppliers</button>
+    <button data-view="supplier-bills">Supplier Bills</button>
+    <button data-view="supplier-payments">Supplier Payments</button>
+    <button data-view="clients">Clients</button>
+    <button data-view="client-bills">Client Bills</button>
+    <button data-view="client-payments">Client Payments</button>
+    <button data-view="products">Products</button>
+    <button data-view="warehouses">Warehouses</button>
+  </nav>
   <main class="content"><section class="hero"><div><span class="eyebrow">BIZORA ERP</span><h1 id="workspaceTitle">Company Dashboard</h1><p id="workspaceSubtitle">Tenant-isolated ERP workspace</p></div><button id="addRecord" class="primary hidden">+ Add Record</button></section><div id="readOnlyNote" class="readonly hidden"></div><section id="workspaceBody"></section></main>
 </div>
 <dialog id="recordDialog"><form id="recordForm"><div class="dialoghead"><div><h2 id="recordTitle">Add Record</h2><p id="recordHint"></p></div><button type="button" id="closeRecord" class="iconbtn">×</button></div><div id="recordFields"></div><div class="actions"><button type="button" class="secondary" id="cancelRecord">Cancel</button><button class="primary" id="saveRecord">Save</button></div></form></dialog>
