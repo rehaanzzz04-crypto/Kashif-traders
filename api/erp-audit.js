@@ -1,8 +1,10 @@
 import { neon } from "@neondatabase/serverless";
 import { getSessionUser } from "./_auth.js";
+import crypto from "node:crypto";
 const db=()=>{if(!process.env.DATABASE_URL)throw new Error("DATABASE_URL_NOT_CONFIGURED");return neon(process.env.DATABASE_URL)};
 async function ensure(sql){await sql`CREATE TABLE IF NOT EXISTS erp_audit_reports(id BIGSERIAL PRIMARY KEY,audit_type TEXT NOT NULL,period_start DATE NOT NULL,period_end DATE NOT NULL,generated_at TIMESTAMPTZ NOT NULL DEFAULT now(),generated_by TEXT,summary JSONB NOT NULL DEFAULT '{}'::jsonb,findings JSONB NOT NULL DEFAULT '[]'::jsonb)`;await sql`CREATE INDEX IF NOT EXISTS erp_audit_reports_generated_idx ON erp_audit_reports(generated_at DESC)`;}
 const n=v=>Number(v||0);
+const safeEq=(a,b)=>{const x=Buffer.from(String(a||"")),y=Buffer.from(String(b||""));return x.length===y.length&&x.length>0&&crypto.timingSafeEqual(x,y)};
 async function build(sql,type){
  const days=type==="180_day"?180:30;
  const [sb,sp,cb,cp,grn,zeroItems,zeroLedger,adj]=await Promise.all([
@@ -25,12 +27,14 @@ async function build(sql,type){
 }
 export default async function handler(req,res){
  try{
-  const user=await getSessionUser(req);if(!user)return res.status(401).json({error:"Authentication required"});
+  const cronSecret=process.env.ERP_AUDIT_CRON_SECRET,cronOk=req.method==="POST"&&safeEq(req.headers["x-erp-audit-secret"],cronSecret);
+  const user=cronOk?{full_name:"ERP Automatic Audit",designation:"admin"}:await getSessionUser(req);if(!user)return res.status(401).json({error:"Authentication required"});
   if(String(user.designation||"").toLowerCase()!=="admin")return res.status(403).json({error:"Admin only"});
   const sql=db();await ensure(sql);
   if(req.method==="GET"){const rows=await sql`SELECT id,audit_type,period_start,period_end,generated_at,generated_by,summary,findings FROM erp_audit_reports ORDER BY generated_at DESC LIMIT 24`;return res.status(200).json({records:rows});}
   if(req.method!=="POST")return res.status(405).json({error:"Method not allowed"});
   const body=typeof req.body==="string"?JSON.parse(req.body||"{}"):(req.body||{}),auditType=body.audit_type==="180_day"?"180_day":"monthly";
+  if(cronOk){const last=await sql`SELECT generated_at FROM erp_audit_reports WHERE audit_type=${auditType} ORDER BY generated_at DESC LIMIT 1`;const days=auditType==="180_day"?180:30;if(last[0]&&Date.now()-new Date(last[0].generated_at).getTime()<days*86400000)return res.status(200).json({skipped:true,reason:"not_due"});}
   const a=await build(sql,auditType),end=new Date(),start=new Date(end.getTime()-a.days*86400000);
   const rows=await sql`INSERT INTO erp_audit_reports(audit_type,period_start,period_end,generated_by,summary,findings) VALUES(${auditType},${start.toISOString().slice(0,10)},${end.toISOString().slice(0,10)},${user.full_name||user.employee_code||"Admin"},${JSON.stringify(a.summary)}::jsonb,${JSON.stringify(a.findings)}::jsonb) RETURNING *`;
   return res.status(201).json({record:rows[0]});
