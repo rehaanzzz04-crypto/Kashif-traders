@@ -124,3 +124,21 @@ export async function runErpAudit(sql, auditType, generatedBy) {
     ) RETURNING *`;
   return rows[0];
 }
+
+
+export async function runDueErpAudits(sql, generatedBy = "ERP Automatic Audit") {
+  await ensureErpAudit(sql);
+  const now = Date.now();
+  const due = async (auditType, days) => {
+    const last = await sql`SELECT generated_at FROM erp_audit_reports WHERE audit_type=${auditType} ORDER BY generated_at DESC,id DESC LIMIT 1`;
+    if (last[0] && now - new Date(last[0].generated_at).getTime() < days * 86400000) {
+      return { skipped:true, reason:"not_due", last_generated_at:last[0].generated_at };
+    }
+    return { created:true, record:await runErpAudit(sql, auditType, generatedBy) };
+  };
+  return {
+    checked_at:new Date(now).toISOString(),
+    monthly:await due("monthly",30),
+    day_180:await due("180_day",180)
+  };
+}
