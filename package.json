@@ -1,25 +1,12 @@
 {
-  "name": "kashif-traders",
-  "version": "1.0.0",
+  "name": "bizora-erp-saas",
+  "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "description": "Independent Kashif Traders supplier and credit management system",
-  "dependencies": {
-    "@neondatabase/serverless": "^1.0.1",
-    "@vercel/blob": "^2.0.0",
-    "@vercel/oidc": "latest",
-    "archiver": "^7.0.1",
-    "exceljs": "^4.4.0",
-    "pdf-lib": "^1.17.1",
-    "sharp": "^0.33.5"
-  },
-  "devDependencies": {
-    "fake-indexeddb": "^6.2.4"
-  },
+  "description": "Bizora Technologies multi-company ERP SaaS",
   "scripts": {
-    "test:offline": "node --test tests/offline-shell.test.mjs tests/offline-replay.test.mjs tests/offline-storage.test.mjs",
-    "build:offline": "python3 scripts/build-offline-manifest.py",
-    "local:start": "node local-server/server.mjs",
-    "test:local-server": "node --test tests/local-server.test.mjs"
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -1,22 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": [
-    "sin1"
-  ],
-  "rewrites": [
-    {
-      "source": "/api/client-bill-whatsapp",
-      "destination": "/api/payment-whatsapp?type=client_bill"
-    },
-    {
-      "source": "/api/supplier-bill-pdf",
-      "destination": "/api/payment-whatsapp?type=supplier_bill_pdf"
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/payment-whatsapp?type=erp_audit_cron",
-      "schedule": "0 1 * * *"
-    }
-  ]
+  "git": {
+    "deploymentEnabled": false
+  }
 }
