@@ -295,7 +295,13 @@ async function cashSales(sql, req, user) {
   if (req.method === "DELETE") {
     const id = asId(req.query?.id);
     if (!id) return { status: 400, data: { error: "Valid bill id required" } };
-    const rows = await sql`DELETE FROM cash_sale_queue WHERE id=${id} RETURNING id`;
+    if (String(user.designation || "").toLowerCase() !== "admin")
+      return { status: 403, data: { error: "Sirf Admin cancelled invoice delete kar sakta hai" } };
+    const current = (await sql`SELECT id,status FROM cash_sale_queue WHERE id=${id}`)[0];
+    if (!current) return { status: 404, data: { error: "Cash sale bill not found" } };
+    if (current.status !== "cancelled")
+      return { status: 409, data: { error: "Sirf cancelled invoice delete ki ja sakti hai" } };
+    const rows = await sql`DELETE FROM cash_sale_queue WHERE id=${id} AND status='cancelled' RETURNING id`;
     return { status: 200, data: { deleted: Boolean(rows[0]) } };
   }
   return { status: 405, data: { error: "Method not allowed" } };
