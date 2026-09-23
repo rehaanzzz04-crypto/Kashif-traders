@@ -1,0 +1,4 @@
+'use strict';
+const form=document.getElementById('loginForm'),msg=document.getElementById('loginMessage'),btn=document.getElementById('loginBtn');
+(async()=>{try{const r=await fetch('/api/bizora-auth?action=me',{cache:'no-store'});if(r.ok)location.replace('/')}catch{}})();
+form.addEventListener('submit',async e=>{e.preventDefault();btn.disabled=true;btn.textContent='Signing in…';msg.textContent='';try{const r=await fetch('/api/bizora-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'login',email:document.getElementById('email').value,password:document.getElementById('password').value})}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Login failed');location.replace('/')}catch(err){msg.textContent=err.message}finally{btn.disabled=false;btn.textContent='Sign In'}});

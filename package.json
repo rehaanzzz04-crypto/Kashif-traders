@@ -1,12 +1,10 @@
 {
   "name": "bizora-erp-saas",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "type": "module",
   "description": "Bizora Technologies multi-company ERP SaaS",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=20"
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.1"
   }
 }

@@ -1,13 +1,22 @@
--- Bizora ERP SaaS foundation
--- Separate from Kashif Traders production database.
--- Do not run against the Kashif Traders database.
+-- Bizora ERP SaaS core schema
+-- IMPORTANT: run only against BIZORA_DATABASE_URL, never Kashif Traders DATABASE_URL.
+
+CREATE TABLE bizora_admins (
+  id BIGSERIAL PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  full_name TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login_at TIMESTAMPTZ
+);
 
 CREATE TABLE companies (
   id BIGSERIAL PRIMARY KEY,
   company_code TEXT NOT NULL UNIQUE,
   company_name TEXT NOT NULL,
   logo_url TEXT,
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','trial','closed')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','suspended','trial','closed')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -21,7 +30,8 @@ CREATE TABLE plans (
   user_limit INT,
   warehouse_limit INT,
   features JSONB NOT NULL DEFAULT '{}'::jsonb,
-  active BOOLEAN NOT NULL DEFAULT true
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE subscriptions (
@@ -30,20 +40,20 @@ CREATE TABLE subscriptions (
   plan_id BIGINT NOT NULL REFERENCES plans(id) ON DELETE RESTRICT,
   starts_on DATE NOT NULL,
   expires_on DATE NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('trial','active','expired','suspended','cancelled')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('trial','active','expired','suspended','cancelled')),
   amount NUMERIC(14,2) NOT NULL DEFAULT 0,
-  billing_cycle TEXT NOT NULL DEFAULT 'monthly' CHECK (billing_cycle IN ('monthly','yearly','custom')),
+  billing_cycle TEXT NOT NULL DEFAULT 'monthly' CHECK(billing_cycle IN ('monthly','yearly','custom')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE users (
+CREATE TABLE company_users (
   id BIGSERIAL PRIMARY KEY,
-  company_id BIGINT REFERENCES companies(id) ON DELETE RESTRICT,
+  company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
   user_code TEXT NOT NULL,
   full_name TEXT NOT NULL,
   email TEXT,
   password_hash TEXT NOT NULL,
-  role TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'company_admin',
   active BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(company_id,user_code)
@@ -52,7 +62,7 @@ CREATE TABLE users (
 CREATE TABLE audit_events (
   id BIGSERIAL PRIMARY KEY,
   company_id BIGINT REFERENCES companies(id) ON DELETE RESTRICT,
-  user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  actor_admin_id BIGINT REFERENCES bizora_admins(id) ON DELETE SET NULL,
   event_type TEXT NOT NULL,
   entity_type TEXT,
   entity_id TEXT,
@@ -60,8 +70,6 @@ CREATE TABLE audit_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Operational ERP tables added in Phase 2 must include company_id NOT NULL
--- and every server-side query must scope by the authenticated company session.
 CREATE INDEX subscriptions_company_idx ON subscriptions(company_id,expires_on DESC);
-CREATE INDEX users_company_idx ON users(company_id,active);
+CREATE INDEX company_users_company_idx ON company_users(company_id,active);
 CREATE INDEX audit_events_company_idx ON audit_events(company_id,created_at DESC);

@@ -1,21 +1,28 @@
-# Bizora Technologies — SaaS ERP
+# Bizora Technologies — Bizora ERP SaaS
 
-This branch is a **separate SaaS product foundation**. It does not modify the Kashif Traders production ERP.
+Separate multi-company subscription ERP foundation. This branch does not modify the Kashif Traders production ERP.
 
-## Product
-- Company: Bizora Technologies
-- Product: Bizora ERP
-- Model: Multi-company subscription SaaS
-- Isolation: Every business record is scoped by company_id
-- Control: Super Admin manages companies, plans, subscriptions and access
+## Current build
+- Super Admin authentication with secure HttpOnly session
+- Companies / tenants
+- Basic, Standard and Premium plans
+- Add Company creates subscription + first Company Admin
+- Renew subscription
+- Activate / Suspend company
+- SaaS audit events
+- Dashboard summary
+- Mobile-friendly Super Admin UI
 
-## Safety
-Automatic Vercel Git deployments are disabled on this branch while the deployment quota is exhausted. Kashif Traders production remains untouched.
+## Database safety
+The code reads **only** `BIZORA_DATABASE_URL`. It never falls back to Kashif Traders `DATABASE_URL`.
 
-## Phase 1
-1. Super Admin shell
-2. Companies
-3. Subscription plans
-4. Company onboarding
-5. Tenant-aware login
-6. Database schema with company isolation
+Required private environment variables:
+- `BIZORA_DATABASE_URL`
+- `BIZORA_SESSION_SECRET` (32+ characters)
+- `BIZORA_BOOTSTRAP_EMAIL`
+- `BIZORA_BOOTSTRAP_PASSWORD` (10+ characters)
+
+The bootstrap email/password create the first Super Admin only when no Bizora admin exists.
+
+## Deployment safety
+Automatic Vercel Git deployments are disabled in `vercel.json` while the deployment quota is exhausted.

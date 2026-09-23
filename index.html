@@ -1,75 +1,38 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0f3b36">
-  <title>Bizora ERP — Super Admin</title>
-  <link rel="stylesheet" href="/app.css">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f3b36"><title>Bizora ERP — Super Admin</title><link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brandmark">BZ</div>
-    <div class="brandcopy">
-      <strong>Bizora ERP</strong>
-      <span>by Bizora Technologies</span>
-    </div>
-    <div class="badge">SaaS Control</div>
-  </header>
-
+  <header class="topbar"><div class="brandmark">BZ</div><div class="brandcopy"><strong>Bizora ERP</strong><span>by Bizora Technologies</span></div><div class="badge" id="adminBadge">Authorizing…</div><button id="logout" class="toplogout">Logout</button></header>
   <main class="wrap">
-    <section class="hero">
-      <div>
-        <span class="eyebrow">MULTI-COMPANY ERP PLATFORM</span>
-        <h1>One platform. Separate workspace for every company.</h1>
-        <p>Super Admin controls onboarding, subscription, access and company status without mixing customer data.</p>
-      </div>
-      <button id="addCompany" class="primary">+ Add Company</button>
-    </section>
-
+    <section class="hero"><div><span class="eyebrow">MULTI-COMPANY ERP PLATFORM</span><h1>Super Admin Control Center</h1><p>Create companies, assign subscriptions and control workspace access. Each company remains an isolated tenant.</p></div><button id="addCompany" class="primary">+ Add Company</button></section>
+    <div id="systemMessage" class="systemmessage hidden"></div>
     <section class="stats" id="stats"></section>
-
     <section class="grid">
-      <article class="card wide">
-        <div class="cardhead">
-          <div><h2>Companies</h2><p>Separate tenants and subscription status</p></div>
-          <input id="companySearch" placeholder="Search company">
-        </div>
-        <div class="tablewrap">
-          <table>
-            <thead><tr><th>Company</th><th>Code</th><th>Plan</th><th>Status</th><th>Expiry</th><th>Action</th></tr></thead>
-            <tbody id="companyRows"></tbody>
-          </table>
-        </div>
-      </article>
-
-      <article class="card">
-        <div class="cardhead"><div><h2>Subscription Plans</h2><p>Example launch structure</p></div></div>
-        <div id="plans" class="plans"></div>
-      </article>
+      <article class="card wide"><div class="cardhead"><div><h2>Companies</h2><p>Separate tenants and latest subscription status</p></div><input id="companySearch" placeholder="Search company"></div><div class="tablewrap"><table><thead><tr><th>Company</th><th>Code</th><th>Plan</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="companyRows"><tr><td colspan="6">Loading…</td></tr></tbody></table></div></article>
+      <article class="card"><div class="cardhead"><div><h2>Subscription Plans</h2><p>Plans stored in Bizora SaaS database</p></div></div><div id="plans" class="plans"></div></article>
     </section>
-
-    <section class="architecture">
-      <div><b>Super Admin</b><span>Bizora Technologies</span></div>
-      <i>→</i>
-      <div><b>Bizora ERP SaaS</b><span>Authentication + Tenant Isolation</span></div>
-      <i>→</i>
-      <div><b>Company Workspace</b><span>Products, Accounts, Inventory, Reports</span></div>
-    </section>
+    <section class="architecture"><div><b>Bizora Super Admin</b><span>Companies + Subscriptions</span></div><i>→</i><div><b>Tenant Session</b><span>company_id enforced by backend</span></div><i>→</i><div><b>Company ERP Workspace</b><span>Operational modules — next phase</span></div></section>
   </main>
 
-  <dialog id="companyDialog">
-    <form method="dialog" id="companyForm">
-      <div class="dialoghead"><div><h2>Add Company</h2><p>Create a separate ERP workspace</p></div><button value="cancel" class="iconbtn">×</button></div>
-      <label>Company Name<input name="name" required placeholder="ABC Foods"></label>
-      <label>Company Code<input name="code" required maxlength="20" placeholder="ABC001"></label>
-      <label>Subscription Plan<select name="plan"><option>Basic</option><option selected>Standard</option><option>Premium</option></select></label>
-      <label>Admin Name<input name="admin" required placeholder="Company Admin"></label>
-      <div class="actions"><button value="cancel" class="secondary">Cancel</button><button id="createCompany" value="default" class="primary">Create Draft Company</button></div>
-      <p class="note">Foundation mode: this screen is UI-only until the separate SaaS database is connected.</p>
-    </form>
-  </dialog>
+  <dialog id="companyDialog"><form id="companyForm">
+    <div class="dialoghead"><div><h2>Add Company</h2><p>Create subscription + first Company Admin</p></div><button type="button" id="closeCompany" class="iconbtn">×</button></div>
+    <label>Company Name<input name="company_name" required placeholder="ABC Foods"></label>
+    <label>Company Code<input name="company_code" required maxlength="24" placeholder="ABC001"></label>
+    <label>Subscription Plan<select name="plan_code" id="planSelect"></select></label>
+    <label>Subscription Months<input name="months" type="number" min="1" max="36" value="1" required></label>
+    <label>Company Admin Name<input name="admin_name" required placeholder="Company Admin"></label>
+    <label>Company Admin Email<input name="admin_email" type="email" required placeholder="admin@company.com"></label>
+    <label>Temporary Password<input name="admin_password" type="password" minlength="8" required autocomplete="new-password"></label>
+    <div class="actions"><button type="button" class="secondary" id="cancelCompany">Cancel</button><button class="primary" id="createCompany">Create Company</button></div>
+  </form></dialog>
 
+  <dialog id="renewDialog"><form id="renewForm">
+    <div class="dialoghead"><div><h2>Renew Subscription</h2><p id="renewCompanyName"></p></div><button type="button" id="closeRenew" class="iconbtn">×</button></div>
+    <input type="hidden" name="company_id"><label>Plan<select name="plan_code" id="renewPlan"></select></label><label>Months<input name="months" type="number" min="1" max="36" value="1" required></label>
+    <div class="actions"><button type="button" class="secondary" id="cancelRenew">Cancel</button><button class="primary" id="renewBtn">Renew</button></div>
+  </form></dialog>
   <script src="/app.js"></script>
-</body>
-</html>
+</body></html>

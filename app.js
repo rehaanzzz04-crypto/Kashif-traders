@@ -1,36 +1,29 @@
 'use strict';
-const state={
-  companies:[
-    {name:'Kashif Traders',code:'KASHIF001',plan:'Premium',status:'Active',expiry:'30 Dec 2026'},
-    {name:'Gulshan Traders',code:'GULSHAN001',plan:'Standard',status:'Active',expiry:'15 Nov 2026'},
-    {name:'ABC Foods',code:'ABC001',plan:'Basic',status:'Active',expiry:'10 Jan 2027'}
-  ],
-  plans:[
-    {name:'Basic',price:'PKR 2,000 / month',note:'3 users • 1 warehouse • Core ERP'},
-    {name:'Standard',price:'PKR 5,000 / month',note:'10 users • Multi-warehouse • Audit reports'},
-    {name:'Premium',price:'PKR 10,000 / month',note:'More users • Advanced controls • Priority support'}
-  ]
-};
 const $=id=>document.getElementById(id);
+let model={stats:{},companies:[],plans:[]};
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+const date=v=>v?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(v)):'—';
+const money=v=>'PKR '+Number(v||0).toLocaleString('en-PK',{maximumFractionDigits:0});
+function message(text,bad=false){const el=$('systemMessage');el.textContent=text;el.className='systemmessage '+(bad?'bad':'good');setTimeout(()=>el.classList.add('hidden'),3500)}
+async function json(url,options){const r=await fetch(url,{cache:'no-store',...options}),j=await r.json().catch(()=>({}));if(r.status===401){location.replace('/login.html');throw new Error('Login required')}if(!r.ok)throw new Error(j.error||'Request failed');return j}
+function planOptions(selected=''){return model.plans.filter(x=>x.active).map(p=>'<option value="'+esc(p.plan_code)+'" '+(p.plan_code===selected?'selected':'')+'>'+esc(p.plan_name)+'</option>').join('')}
 function render(){
-  $('stats').innerHTML=[
-    ['Companies',state.companies.length],
-    ['Active',state.companies.filter(x=>x.status==='Active').length],
-    ['Plans',state.plans.length],
-    ['Data Model','Tenant Isolated']
-  ].map(([k,v])=>'<div class="stat"><small>'+k+'</small><b>'+v+'</b></div>').join('');
-  const q=($('companySearch').value||'').trim().toLowerCase();
-  const rows=state.companies.filter(x=>!q||[x.name,x.code,x.plan].join(' ').toLowerCase().includes(q));
-  $('companyRows').innerHTML=rows.map(x=>'<tr><td><b>'+x.name+'</b></td><td>'+x.code+'</td><td>'+x.plan+'</td><td><span class="pill '+x.status.toLowerCase()+'">'+x.status+'</span></td><td>'+x.expiry+'</td><td><button class="secondary" type="button">Open</button></td></tr>').join('');
-  $('plans').innerHTML=state.plans.map(x=>'<div class="plan"><b><span>'+x.name+'</span><span>'+x.price+'</span></b><small>'+x.note+'</small></div>').join('');
+  const s=model.stats||{};
+  $('stats').innerHTML=[['Companies',s.companies??0],['Active Companies',s.active_companies??0],['Active Subscriptions',s.active_subscriptions??0],['Expiring ≤14 Days',s.expiring_14_days??0]].map(([k,v])=>'<div class="stat"><small>'+k+'</small><b>'+esc(v)+'</b></div>').join('');
+  const q=($('companySearch').value||'').trim().toLowerCase(),rows=model.companies.filter(x=>!q||[x.company_name,x.company_code,x.plan_name].join(' ').toLowerCase().includes(q));
+  $('companyRows').innerHTML=rows.length?rows.map(x=>'<tr><td><b>'+esc(x.company_name)+'</b></td><td>'+esc(x.company_code)+'</td><td>'+esc(x.plan_name||'—')+'</td><td><span class="pill '+esc(x.status)+'">'+esc(x.status)+'</span></td><td>'+date(x.expires_on)+'</td><td><div class="rowactions"><button class="secondary renew" data-id="'+x.id+'">Renew</button><button class="secondary status" data-id="'+x.id+'" data-status="'+(x.status==='suspended'?'active':'suspended')+'">'+(x.status==='suspended'?'Activate':'Suspend')+'</button></div></td></tr>').join(''):'<tr><td colspan="6">No companies</td></tr>';
+  $('plans').innerHTML=model.plans.map(p=>'<div class="plan"><b><span>'+esc(p.plan_name)+'</span><span>'+money(p.monthly_price)+'/mo</span></b><small>'+esc(p.user_limit??'Unlimited')+' users · '+esc(p.warehouse_limit??'Unlimited')+' warehouses</small></div>').join('');
+  $('planSelect').innerHTML=planOptions('standard');$('renewPlan').innerHTML=planOptions('standard');
+  document.querySelectorAll('.renew').forEach(b=>b.onclick=()=>{const c=model.companies.find(x=>String(x.id)===b.dataset.id);$('renewForm').elements.company_id.value=c.id;$('renewCompanyName').textContent=c.company_name;$('renewPlan').innerHTML=planOptions(c.plan_code||'standard');$('renewDialog').showModal()});
+  document.querySelectorAll('.status').forEach(b=>b.onclick=()=>setStatus(Number(b.dataset.id),b.dataset.status));
 }
-$('companySearch').addEventListener('input',render);
-$('addCompany').onclick=()=>$('companyDialog').showModal();
-$('companyForm').addEventListener('submit',e=>{
-  e.preventDefault();
-  const fd=new FormData(e.currentTarget),name=String(fd.get('name')||'').trim(),code=String(fd.get('code')||'').trim().toUpperCase(),plan=String(fd.get('plan')||'Standard');
-  if(!name||!code)return;
-  state.companies.push({name,code,plan,status:'Active',expiry:'Draft'});
-  $('companyDialog').close();e.currentTarget.reset();render();
-});
-render();
+async function load(){
+  const me=await json('/api/bizora-auth?action=me');$('adminBadge').textContent=me.user.full_name||me.user.email;
+  model=await json('/api/bizora-admin?action=overview');render();
+}
+async function setStatus(id,status){if(!confirm((status==='suspended'?'Suspend':'Activate')+' this company?'))return;try{await json('/api/bizora-admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_company_status',company_id:id,status})});message('Company status updated');model=await json('/api/bizora-admin?action=overview');render()}catch(e){message(e.message,true)}}
+$('companySearch').oninput=render;$('addCompany').onclick=()=>$('companyDialog').showModal();$('closeCompany').onclick=$('cancelCompany').onclick=()=>$('companyDialog').close();$('closeRenew').onclick=$('cancelRenew').onclick=()=>$('renewDialog').close();
+$('companyForm').onsubmit=async e=>{e.preventDefault();const btn=$('createCompany');btn.disabled=true;btn.textContent='Creating…';try{const body=Object.fromEntries(new FormData(e.currentTarget));await json('/api/bizora-admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create_company',...body})});$('companyDialog').close();e.currentTarget.reset();message('Company workspace created');model=await json('/api/bizora-admin?action=overview');render()}catch(err){message(err.message,true)}finally{btn.disabled=false;btn.textContent='Create Company'}};
+$('renewForm').onsubmit=async e=>{e.preventDefault();const btn=$('renewBtn');btn.disabled=true;btn.textContent='Renewing…';try{const body=Object.fromEntries(new FormData(e.currentTarget));await json('/api/bizora-admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'renew_subscription',...body})});$('renewDialog').close();message('Subscription renewed');model=await json('/api/bizora-admin?action=overview');render()}catch(err){message(err.message,true)}finally{btn.disabled=false;btn.textContent='Renew'}};
+$('logout').onclick=async()=>{await fetch('/api/bizora-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/login.html')};
+load().catch(e=>{message(e.message,true);if(/database|SESSION_SECRET/i.test(e.message))$('companyRows').innerHTML='<tr><td colspan="6">Bizora backend configuration pending.</td></tr>'});
