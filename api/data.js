@@ -7,6 +7,7 @@ import { ensureEntryNumbers, attachEntryNumbers } from "./_entry-number.js";
 import { ensurePaymentAllocationTables, allocateSupplierPayment, allocateClientReceipt } from "./_payment-allocation.js";
 import ecommerceHandler from "../ecommerce-core.js";
 import gulshanEcommerceHandler from "../gulshan-ecommerce-core.js";
+import { ensureCoreFinancialAuditColumns, isCoreFinancialResource, stampCoreFinancialAudit } from "./_core-financial-audit.js";
 
 const allowed = new Set([
   "suppliers",
@@ -618,6 +619,7 @@ async function handler(req, res) {
       user = await getSessionUser(req, sql);
     if (!user)
       return res.status(401).json({ error: "Authentication required" });
+    if (isCoreFinancialResource(resource)) await ensureCoreFinancialAuditColumns(sql);
     if (resource === "client_invoices") await ensureClientOcrAudit(sql);
     if (resource === "cash_sales") {
       const out = await cashSales(sql, req, user);
@@ -704,6 +706,11 @@ async function handler(req, res) {
     if (req.method === "POST") {
       const x = resource==='supplier_invoices' && Object.hasOwn(b,'items') ? await saveSupplierBillItems(sql,null,b) : await create(sql, resource, b);
       let record = (await attachEntryNumbers(sql, resource, x))[0] || null;
+      if (record?.id && isCoreFinancialResource(resource)) {
+        await stampCoreFinancialAudit(sql, resource, record.id, user, "create");
+        const refreshed = (await list(sql, resource, record.id))[0];
+        if (refreshed) record = { ...refreshed, entry_number: record.entry_number };
+      }
       if (
         ["supplier_invoices", "client_invoices"].includes(resource) &&
         record?.id &&
@@ -722,6 +729,11 @@ async function handler(req, res) {
       if (!id) return res.status(400).json({ error: "Valid id is required" });
       const x = resource==='supplier_invoices' && Object.hasOwn(b,'items') ? await saveSupplierBillItems(sql,id,b) : await patch(sql, resource, id, b),
         record = (await attachEntryNumbers(sql, resource, x))[0] || null;
+      if (record?.id && isCoreFinancialResource(resource)) {
+        await stampCoreFinancialAudit(sql, resource, record.id, user, "update");
+        const refreshed = (await list(sql, resource, record.id))[0];
+        if (refreshed) Object.assign(record, refreshed);
+      }
       return res.status(200).json({ record });
     }
     if (req.method === "DELETE") {
