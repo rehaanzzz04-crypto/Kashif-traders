@@ -15,7 +15,7 @@
   const balanceOf = x => Math.max(0, Number(x?.total || 0) - receivedOf(x));
   const hasCustomerAccount = x => Number(x?.customer_id || 0) > 0;
 
-  let bills = [], active = null, editing = false, status = "pending", busy = false, settlement = "full";
+  let bills = [], active = null, editing = false, status = "pending", busy = false, settlement = "full", isAdmin = false;
   $("cashierBack").onclick = () => location.href = "/";
 
   const head = document.querySelector(".cashier-head");
@@ -151,6 +151,12 @@
     document.querySelectorAll(".cashier-rate").forEach(x => x.readOnly = !pending || !editing);
     $("cashierPaid").disabled = !(pending || openCredit) || busy;
     $("cashierCancelBill").disabled = !pending || busy;
+    const deleteButton = $("cashierDeleteBill");
+    if (deleteButton) {
+      const canDelete = has && active.status === "cancelled" && isAdmin;
+      deleteButton.classList.toggle("cs-hidden", !canDelete);
+      deleteButton.disabled = !canDelete || busy;
+    }
     $("cashierPrint").disabled = !printable;
     $("cashierShare").disabled = !printable;
     if (pending) $("cashierPaid").textContent = "Receive Payment / Credit";
@@ -370,8 +376,32 @@
     }, nextStatus === "paid" ? "Invoice paid ho gaya." : nextStatus === "partial" ? "Partial payment save ho gayi; balance credit mein chala gaya." : "Invoice credit par save ho gaya.");
   }
 
+  async function deleteCancelledBill() {
+    if (!active || active.status !== "cancelled" || !isAdmin || busy) return;
+    const invoice = active.invoice_number || "this invoice";
+    if (!confirm("Permanently delete cancelled invoice " + invoice + "?\n\nThis only deletes the Cashier invoice and its related Cashier payment rows.")) return;
+    busy = true;
+    setActions();
+    $("cashierStatus").textContent = "Deleting cancelled invoice...";
+    try {
+      const response = await fetch("/api/data?resource=cash_sales&id=" + active.id, { method:"DELETE" });
+      const j = await response.json().catch(() => ({}));
+      if (!response.ok) throw Error(j.error || "Invoice delete failed");
+      if (!j.deleted) throw Error("Invoice delete nahi hui");
+      active = null;
+      await load();
+      $("cashierStatus").textContent = "Cancelled invoice permanently delete ho gayi.";
+    } catch (e) {
+      $("cashierStatus").textContent = e.message;
+    } finally {
+      busy = false;
+      setActions();
+    }
+  }
+
   $("cashierPaid").onclick = openPayment;
   $("cashierConfirmPaid").onclick = confirmPayment;
+  if ($("cashierDeleteBill")) $("cashierDeleteBill").onclick = deleteCancelledBill;
   $("cashierCancelBill").onclick = () => {
     if (!active || active.status !== "pending" || !confirm("Cancel this invoice?")) return;
     patchBill({status:"cancelled"}, "Invoice cancelled.");
@@ -534,7 +564,11 @@
 
   fetch("/api/auth?action=me",{cache:"no-store"}).then(r => r.json()).then(j => {
     const u = j?.user;
-    if (u) $("cashierUser").textContent = (u.full_name || u.employee_code) + " · " + String(u.designation || "").toUpperCase();
+    if (u) {
+      isAdmin = String(u.designation || "").toLowerCase() === "admin";
+      $("cashierUser").textContent = (u.full_name || u.employee_code) + " · " + String(u.designation || "").toUpperCase();
+      setActions();
+    }
   }).catch(() => {});
   load();
   setInterval(load,10000);
