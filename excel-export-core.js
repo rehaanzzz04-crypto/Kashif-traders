@@ -17,7 +17,7 @@ function addWorkerDesignations(rows,dir){
   const r={...row};
   for(const k of Object.keys(r)){
    if(!/(^|_)(created_by|updated_by|received_by|requested_by|reviewed_by|paid_by|cancelled_by|approved_by)(_|$)/i.test(k))continue;
-   if(/(_id|_designation)$/i.test(k)||r[k]==null||r[k]==='')continue;
+   if(/(_id|_code|_designation)$/i.test(k)||r[k]==null||r[k]==='')continue;
    const base=k.replace(/_name$/i,'');
    const designationKey=base+'_designation';
    if(r[designationKey])continue;
