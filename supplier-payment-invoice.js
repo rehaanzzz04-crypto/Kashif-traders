@@ -2,10 +2,18 @@
 (()=>{
   const isSupplierPayments=()=>document.querySelector('#nav [data-view="supplier-payments"]')?.classList.contains('active');
   const money=n=>'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:2});
+  let pendingEditId=null;
+  document.addEventListener('click',e=>{
+    if(!isSupplierPayments())return;
+    const edit=e.target.closest('[data-action="edit"][data-id]');
+    if(edit){pendingEditId=Number(edit.dataset.id||0)||null;return;}
+    if(e.target.closest('#addBtn'))pendingEditId=null;
+  },true);
   async function getJson(url){const r=await fetch(url,{cache:'no-store'}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('HTTP '+r.status));return j}
   async function enhance(form){
     if(!form||form.dataset.invoiceLinked==='1'||!isSupplierPayments())return;
     form.dataset.invoiceLinked='1';
+    if(pendingEditId){form.dataset.recordId=String(pendingEditId);form.dataset.mode='edit';pendingEditId=null}else{form.dataset.mode='add';}
     const supplier=form.querySelector('[name="supplier_id"]'),amount=form.querySelector('[name="amount"]');
     if(!supplier||!amount)return;
     const grid=form.querySelector('.grid')||form;
@@ -35,8 +43,11 @@
     if(!(amt>0))return window.toast?.('Valid payment amount required',true);
     const save=form.querySelector('[type="submit"]'),old=save?.textContent;if(save){save.disabled=true;save.textContent='Saving…'}
     try{
-      const r=await fetch('/api/data?resource=supplier_payments',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Supplier payment failed');
-      document.getElementById('modal')?.remove();window.toast?.('Payment saved — invoices auto-adjusted');
+      const editId=Number(form.dataset.recordId||0)||null;
+      if(form.dataset.mode==='edit'&&!editId)throw new Error('Edit payment ID missing — duplicate save blocked');
+      const method=editId?'PATCH':'POST',url='/api/data?resource=supplier_payments'+(editId?'&id='+encodeURIComponent(editId):'');
+      const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}),j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Supplier payment failed');
+      document.getElementById('modal')?.remove();window.toast?.(editId?'Payment updated':'Payment saved — invoices auto-adjusted');
       setTimeout(()=>document.querySelector('#nav [data-view="supplier-payments"]')?.click(),80);
     }catch(err){window.toast?.(err.message||'Supplier payment failed',true);if(save){save.disabled=false;save.textContent=old||'Save'}}
   },true);
