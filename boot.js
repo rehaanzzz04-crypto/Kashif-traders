@@ -1,9 +1,10 @@
 'use strict';
 (async()=>{
   try{
-    const OFFLINE_USER='kt_offline_user_v1';let j=null,offlineSession=false;
-    try{const r=await fetch('/api/auth?action=me',{cache:'no-store'});if(!r.ok){if(r.status===401||r.status===403){localStorage.removeItem(OFFLINE_USER);location.replace('/login.html');return;}throw new Error('Auth unavailable')}j=await r.json();if(j?.user)localStorage.setItem(OFFLINE_USER,JSON.stringify({user:j.user,saved_at:new Date().toISOString()}));}
-    catch(e){if(navigator.onLine)throw e;try{const saved=JSON.parse(localStorage.getItem(OFFLINE_USER)||'null');if(!saved?.user)throw e;j={user:saved.user};offlineSession=true}catch{location.replace('/login.html');return}}
+    const OFFLINE_USER='kt_offline_user_v1';let j=null,offlineSession=false;const forcedOffline=new URLSearchParams(location.search).get('offline')==='1'||sessionStorage.getItem('kt_offline_entry')==='1';
+    if(forcedOffline){try{const saved=JSON.parse(localStorage.getItem(OFFLINE_USER)||'null');if(saved?.user){j={user:saved.user};offlineSession=true;sessionStorage.removeItem('kt_offline_entry');history.replaceState(null,'','/');}}catch{}}
+    try{if(j?.user)throw {ktOfflineReady:true};const r=await fetch('/api/auth?action=me',{cache:'no-store'});if(!r.ok){if(r.status===401||r.status===403){localStorage.removeItem(OFFLINE_USER);location.replace('/login.html');return;}throw new Error('Auth unavailable')}j=await r.json();if(j?.user)localStorage.setItem(OFFLINE_USER,JSON.stringify({user:j.user,saved_at:new Date().toISOString()}));}
+    catch(e){if(e?.ktOfflineReady){}else if(navigator.onLine)throw e;try{if(j?.user){}else{const saved=JSON.parse(localStorage.getItem(OFFLINE_USER)||'null');if(!saved?.user)throw e;j={user:saved.user};offlineSession=true}}catch{location.replace('/login.html');return}}
     window.KT_USER=j.user;window.KT_OFFLINE_SESSION=offlineSession;const access=new Set(j.user.access||[]),isAdmin=j.user.designation==='admin';
     document.querySelectorAll('#nav [data-view]').forEach(b=>{if(!access.has(b.dataset.view)&&!(b.dataset.view==='dashboard'&&!isAdmin))b.style.display='none';});
     document.querySelectorAll('#nav .section').forEach(s=>{let n=s.nextElementSibling,visible=false;while(n&&!n.classList.contains('section')&&!n.classList.contains('navfoot')){if(n.matches?.('[data-view]')&&n.style.display!=='none')visible=true;n=n.nextElementSibling;}if(!visible)s.style.display='none';});
