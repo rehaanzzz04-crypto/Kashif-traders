@@ -47,3 +47,5 @@
   .cashier-tabs button{min-width:0;width:100%;min-height:52px;padding:8px 5px;font-size:11px;line-height:1.2;white-space:normal;overflow-wrap:anywhere}
   .cashier-layout{grid-template-columns:minmax(430px,.9fr) minmax(390px,1.1fr)}
 }
+
+.cashier-delete{width:100%;margin:9px 0 0;min-height:46px;border:1px solid #c62828;border-radius:11px;background:#fff3f3;color:#b71c1c;font-weight:900;cursor:pointer}.cashier-delete:hover{background:#ffe7e7}.cashier-delete:disabled{opacity:.55;cursor:not-allowed}
