@@ -8,5 +8,5 @@
 })();
 ,'/cash-sale.html');else{add('Cash Sale','
 })();
-,'/cash-sale.html');add('Cashier Billing','₨','/cashier-sales.html');add('E-Commerce','EC','/ecommerce-dashboard.html')}};const localRole=String(window.KT_USER?.designation||'').toLowerCase();if(localRole)installSales(localRole);else fetch('/api/auth?action=me',{cache:'no-store'}).then(r=>r.json()).then(j=>installSales(String(j?.user?.designation||'').toLowerCase())).catch(()=>{});
+,'/cash-sale.html');add('Cashier Billing','₨','/cashier-sales.html');add('E-Commerce','EC','/ecommerce-dashboard.html')}};let savedRole='';try{savedRole=String(JSON.parse(localStorage.getItem('kt_offline_user_v1')||'null')?.user?.designation||'').toLowerCase()}catch{}const localRole=String(window.KT_USER?.designation||savedRole||'').toLowerCase();if(localRole)installSales(localRole);else fetch('/api/auth?action=me',{cache:'no-store'}).then(r=>r.json()).then(j=>installSales(String(j?.user?.designation||'').toLowerCase())).catch(()=>{});
 })();
