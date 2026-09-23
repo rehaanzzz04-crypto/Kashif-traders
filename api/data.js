@@ -85,6 +85,22 @@ async function ensureClientOcrAudit(sql) {
   await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_corrected_at TIMESTAMPTZ`;
   await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_line_items JSONB NOT NULL DEFAULT \'[]\'::jsonb`;
 }
+async function ensureCoreAuditColumns(sql) {
+  for (const table of ["supplier_invoices","supplier_payments","client_invoices","client_receipts"]) {
+    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS created_by_id BIGINT`);
+    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS created_by_name TEXT`);
+    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS created_by_designation TEXT`);
+    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS updated_by_id BIGINT`);
+    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS updated_by_name TEXT`);
+    await sql.unsafe(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS updated_by_designation TEXT`);
+  }
+}
+async function stampCoreAudit(sql, resource, id, user, mode) {
+  if (!["supplier_invoices","supplier_payments","client_invoices","client_receipts"].includes(resource) || !id) return;
+  const name=user.full_name||user.employee_code||"Admin", designation=user.designation||null;
+  if(mode==="create") await sql.unsafe(`UPDATE ${resource} SET created_by_id=$1,created_by_name=$2,created_by_designation=$3 WHERE id=$4`,[user.id,name,designation,id]);
+  else await sql.unsafe(`UPDATE ${resource} SET updated_by_id=$1,updated_by_name=$2,updated_by_designation=$3 WHERE id=$4`,[user.id,name,designation,id]);
+}
 async function ensureCashSaleSchema(sql) {
   await sql`CREATE TABLE IF NOT EXISTS cash_sale_queue (id BIGSERIAL PRIMARY KEY, invoice_number TEXT UNIQUE NOT NULL, created_by_id BIGINT, created_by_name TEXT NOT NULL, customer_name TEXT, sale_date DATE NOT NULL DEFAULT CURRENT_DATE, items JSONB NOT NULL DEFAULT '[]'::jsonb, subtotal NUMERIC(14,2) NOT NULL DEFAULT 0, discount NUMERIC(14,2) NOT NULL DEFAULT 0, total NUMERIC(14,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   await sql`CREATE TABLE IF NOT EXISTS cash_sale_customers (id BIGSERIAL PRIMARY KEY, customer_code TEXT UNIQUE NOT NULL, name TEXT NOT NULL, mobile TEXT, notes TEXT, status TEXT NOT NULL DEFAULT 'active', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
@@ -510,6 +526,7 @@ export default async function handler(req, res) {
     if(resource==="gulshan_ecommerce")return gulshanEcommerceHandler(req,res);
     const sql = db(),
       user = await getSessionUser(req, sql);
+    await ensureCoreAuditColumns(sql);
     if (!user)
       return res.status(401).json({ error: "Authentication required" });
     if (resource === "client_invoices") await ensureClientOcrAudit(sql);
@@ -598,6 +615,7 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const x = resource==='supplier_invoices' && Object.hasOwn(b,'items') ? await saveSupplierBillItems(sql,null,b) : await create(sql, resource, b);
       let record = (await attachEntryNumbers(sql, resource, x))[0] || null;
+      if(record?.id){await stampCoreAudit(sql,resource,record.id,user,"create"); const refreshed=(await list(sql,resource,record.id))[0]; if(refreshed)record={...refreshed,entry_number:record.entry_number};}
       if (
         ["supplier_invoices", "client_invoices"].includes(resource) &&
         record?.id &&
@@ -616,6 +634,7 @@ export default async function handler(req, res) {
       if (!id) return res.status(400).json({ error: "Valid id is required" });
       const x = resource==='supplier_invoices' && Object.hasOwn(b,'items') ? await saveSupplierBillItems(sql,id,b) : await patch(sql, resource, id, b),
         record = (await attachEntryNumbers(sql, resource, x))[0] || null;
+      if(record?.id){await stampCoreAudit(sql,resource,record.id,user,"update"); const refreshed=(await list(sql,resource,record.id))[0]; if(refreshed)Object.assign(record,refreshed);}
       return res.status(200).json({ record });
     }
     if (req.method === "DELETE") {
