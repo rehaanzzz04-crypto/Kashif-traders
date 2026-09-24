@@ -776,3 +776,21 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
 .returnSubmit{display:flex;justify-content:flex-end}.returnSubmit button{min-width:170px}
 @media(max-width:700px){.returnToolbar{align-items:stretch;flex-direction:column}.returnToolbar button{align-self:flex-start}.returnLine{grid-template-columns:1fr 1fr}.returnLine .lineProductName{grid-column:1/-1}}
 @media(max-width:430px){.returnLine{grid-template-columns:1fr}.returnLine .lineProductName{grid-column:auto}.returnTotal{justify-content:space-between}.returnSubmit button{width:100%}}
+
+
+/* Printable payments and safe payment cancellation */
+.paymentReceiptActions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.paymentReceiptActions>div{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.paymentStatus{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:9px;font-weight:900;text-transform:uppercase;border:1px solid #dce4ef}.paymentStatus.posted{background:#e9fbf2;color:#087f58;border-color:#bce7d4}.paymentStatus.cancelled{background:#fff0f2;color:#b4233c;border-color:#f0c9d0}
+.paymentReceiptTitle{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid #e2e8f0}.paymentReceiptTitle h2{margin:4px 0 2px;color:#14213d;font-size:24px}.paymentReceiptTitle p{margin:0;color:#74829a;font-size:10px}.paymentReceiptTitle>div:last-child{text-align:right}.paymentReceiptTitle>div:last-child b{display:block;color:#10265a;font-size:20px}.paymentReceiptTitle>div:last-child span{display:block;margin-top:3px;color:#7b879b;font-size:9px}
+.paymentReceiptMeta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}.paymentReceiptMeta>div{padding:10px;border-radius:13px;background:#f7f9fd;border:1px solid #e3eaf2}.paymentReceiptMeta small,.paymentReceiptNotes small{display:block;color:#7a879d;font-size:8px;text-transform:uppercase}.paymentReceiptMeta b{display:block;margin-top:3px;color:#17213a;font-size:11px}
+.paymentReceiptTotals{display:grid;gap:6px;max-width:360px;margin:14px 0 0 auto}.paymentReceiptTotals>div{display:flex;justify-content:space-between;gap:15px;color:#5d6c84;font-size:11px}.paymentReceiptTotals>div:first-child{padding-top:8px;border-top:1px solid #dde5ef;color:#10265a;font-size:15px;font-weight:900}.paymentReceiptNotes{margin-top:14px;padding:10px 12px;border-radius:12px;background:#f8faff;border:1px solid #e3eaf3}.paymentReceiptNotes p{margin:4px 0 0;color:#53627a;font-size:10px}
+@media(max-width:620px){.paymentReceiptActions{align-items:stretch;flex-direction:column}.paymentReceiptActions>div{width:100%}.paymentReceiptActions>div button{flex:1}.paymentReceiptMeta{grid-template-columns:1fr 1fr}.paymentReceiptTitle{flex-direction:column}.paymentReceiptTitle>div:last-child{text-align:left}}
+@media(max-width:420px){.paymentReceiptMeta{grid-template-columns:1fr}}
+@media print{
+  body.payment-print{background:#fff!important}
+  body.payment-print .topbar,body.payment-print .sidenav,body.payment-print .navbackdrop,body.payment-print .hero,body.payment-print #readOnlyNote,body.payment-print .paymentReceiptActions{display:none!important}
+  body.payment-print .shell{padding:0!important;margin:0!important;max-width:none!important}
+  body.payment-print #workspaceBody>*:not(.paymentPrintable){display:none!important}
+  body.payment-print .paymentPrintable{display:block!important;box-shadow:none!important;border:0!important;padding:0!important}
+  body.payment-print .paymentPrintable .tablewrap{overflow:visible!important}
+}

@@ -9,10 +9,10 @@ const defs={
   users:{title:'Users',action:'users',create:'create_user',cols:[['user_code','User ID'],['full_name','Name'],['email','Email'],['role','Role'],['active','Status']],fields:[['user_code','User ID','text'],['full_name','Full Name','text'],['email','Email','email'],['role','Role','select:company_admin,manager,accountant,salesman,cashier'],['password','Temporary Password','password']]},
   suppliers:{title:'Suppliers',action:'suppliers',create:'create_supplier',cols:[['supplier_code','Code'],['business_name','Business'],['contact_person','Contact'],['mobile_number','Mobile'],['opening_balance','Opening Balance']],fields:[['supplier_code','Supplier Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['opening_balance','Opening Balance','number']]},
   'supplier-bills':{title:'Supplier Invoices',action:'supplier_invoices',create:'create_supplier_invoice',cols:[['invoice_number','Invoice'],['business_name','Supplier'],['invoice_date','Date'],['due_date','Due'],['amount','Amount'],['grn_status','GRN Status'],['status','Payment Status']],fields:[['supplier_id','Supplier','supplier'],['invoice_number','Invoice Number','text'],['invoice_date','Invoice Date','date'],['due_date','Due Date','date'],['amount','Amount','number'],['notes','Notes','textarea']]},
-  'supplier-payments':{title:'Supplier Payments',action:'supplier_payments',create:'create_supplier_payment',cols:[['payment_date','Date'],['business_name','Supplier'],['amount','Amount'],['payment_method','Method'],['reference_number','Reference']],fields:[['supplier_id','Supplier','supplier'],['payment_date','Payment Date','date'],['amount','Amount','number'],['payment_method','Method','select:CASH,BANK,ONLINE,CHEQUE,EASYPAISA,JAZZCASH'],['reference_number','Reference','text'],['notes','Notes','textarea']]},
+  'supplier-payments':{title:'Supplier Payments',action:'supplier_payments',create:'create_supplier_payment',cols:[['payment_date','Date'],['business_name','Supplier'],['amount','Amount'],['allocated_amount','Allocated'],['payment_method','Method'],['reference_number','Reference'],['status','Status']],fields:[['supplier_id','Supplier','supplier'],['payment_date','Payment Date','date'],['amount','Amount','number'],['payment_method','Method','select:CASH,BANK,ONLINE,CHEQUE,EASYPAISA,JAZZCASH'],['reference_number','Reference','text'],['notes','Notes','textarea']]},
   clients:{title:'Customers',action:'clients',create:'create_client',cols:[['client_code','Code'],['business_name','Business'],['contact_person','Contact'],['mobile_number','Mobile'],['credit_limit','Credit Limit'],['opening_balance','Opening Balance']],fields:[['client_code','Customer Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['credit_limit','Credit Limit','number'],['opening_balance','Opening Balance','number']]},
   'client-bills':{title:'Customer Invoices',action:'client_invoices',create:'create_client_invoice',cols:[['invoice_number','Invoice'],['business_name','Customer'],['invoice_date','Date'],['due_date','Due'],['warehouse_name','Warehouse'],['item_count','Items'],['total_quantity','Quantity'],['amount','Amount'],['status','Status']]},
-  'client-payments':{title:'Customer Payments',action:'client_receipts',create:'create_client_receipt',cols:[['receipt_date','Date'],['business_name','Customer'],['amount','Amount'],['payment_method','Method'],['reference_number','Reference']],fields:[['client_id','Customer','client'],['receipt_date','Receipt Date','date'],['amount','Amount','number'],['payment_method','Method','select:CASH,BANK,ONLINE,CHEQUE,EASYPAISA,JAZZCASH'],['reference_number','Reference','text'],['notes','Notes','textarea']]},
+  'client-payments':{title:'Customer Payments',action:'client_receipts',create:'create_client_receipt',cols:[['receipt_date','Date'],['business_name','Customer'],['amount','Amount'],['allocated_amount','Allocated'],['payment_method','Method'],['reference_number','Reference'],['status','Status']],fields:[['client_id','Customer','client'],['receipt_date','Receipt Date','date'],['amount','Amount','number'],['payment_method','Method','select:CASH,BANK,ONLINE,CHEQUE,EASYPAISA,JAZZCASH'],['reference_number','Reference','text'],['notes','Notes','textarea']]},
   products:{title:'Products',action:'products',create:'create_product',cols:[['sku','SKU'],['barcode','Barcode'],['product_name','Product'],['unit','Unit'],['purchase_price','Purchase Price'],['sale_price','Sale Price']],fields:[['sku','SKU','text'],['barcode','Barcode','text'],['product_name','Product Name','text'],['unit','Unit','text'],['purchase_price','Purchase Price','number'],['sale_price','Sale Price','number']]},
   warehouses:{title:'Warehouses',action:'warehouses',create:'create_warehouse',cols:[['warehouse_code','Code'],['warehouse_name','Warehouse'],['address','Address']],fields:[['warehouse_code','Warehouse Code','text'],['warehouse_name','Warehouse Name','text'],['address','Address','text']]},
   grns:{title:'Goods Receiving (GRN)',action:'grns',create:'create_grn',cols:[['grn_number','GRN'],['received_date','Date'],['supplier_name','Supplier'],['supplier_invoice_number','Supplier Invoice'],['warehouse_name','Warehouse'],['item_count','Items'],['total_quantity','Quantity'],['status','Status']],fields:[['supplier_id','Supplier','supplier'],['supplier_invoice_id','Supplier Invoice','supplier_invoice'],['warehouse_id','Warehouse','warehouse'],['product_id','Product','product'],['quantity','Quantity','number'],['unit_cost','Unit Cost','number'],['received_date','Received Date','date'],['notes','Notes','textarea']]},
@@ -91,6 +91,12 @@ async function show(view){
   }
   if(view==='client-bills'){
     document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openCustomerInvoiceDetail(row)}});
+  }
+  if(view==='supplier-payments'){
+    document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openPaymentDetail('supplier',row)}});
+  }
+  if(view==='client-payments'){
+    document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openPaymentDetail('client',row)}});
   }
   if(view==='inventory-stock'||view==='inventory-ledger')await installWarehouseFilter(view,rows);
 }
@@ -705,6 +711,34 @@ async function showCashierReceipt(r,back){
   $('workspaceBody').innerHTML=html;
   $('cashierBack').onclick=()=>openCashier().catch(e=>alert(e.message));
   $('cashierPrint').onclick=()=>{document.body.classList.add('cashier-print');window.print();setTimeout(()=>document.body.classList.remove('cashier-print'),500)};
+}
+async function openPaymentDetail(kind,row){
+  const isSupplier=kind==='supplier',id=row.id;
+  $('workspaceTitle').textContent=isSupplier?'Supplier Payment':'Customer Payment';
+  $('workspaceSubtitle').textContent=row.business_name+' · '+money(row.amount);
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading payment…</div></div>';
+  const d=await json('/api/bizora-company?action='+(isSupplier?'supplier_payment_detail&payment_id=':'client_receipt_detail&receipt_id=')+id),r=d.record||{},alloc=d.allocations||[],status=String(r.status||'posted').toLowerCase();
+  const unallocated=Math.max(0,Number(r.amount||0)-alloc.reduce((n,x)=>n+Number(x.amount||0),0));
+  $('workspaceBody').innerHTML=
+    '<div class="paymentReceiptActions"><button id="paymentBack" class="secondary">← Back</button><div><span class="paymentStatus '+esc(status)+'">'+esc(status)+'</span><button id="printPaymentReceipt" class="secondary">Print / Save PDF</button>'+(status==='posted'&&model.subscription.access_mode==='write'?'<button id="cancelPayment" class="dangerAction">Cancel Payment</button>':'')+'</div></div>'+
+    '<div class="card paymentReceipt paymentPrintable">'+
+      '<div class="paymentReceiptTitle"><div><span class="capEyebrow">'+(isSupplier?'SUPPLIER PAYMENT':'CUSTOMER PAYMENT')+'</span><h2>'+esc(model.company.name)+'</h2><p>'+esc(r.business_name)+'</p></div><div><b>'+money(r.amount)+'</b><span>'+date(isSupplier?r.payment_date:r.receipt_date)+'</span></div></div>'+
+      '<div class="paymentReceiptMeta"><div><small>'+(isSupplier?'Supplier':'Customer')+'</small><b>'+esc(r.business_name)+'</b></div><div><small>Method</small><b>'+esc(r.payment_method)+'</b></div><div><small>Reference</small><b>'+esc(r.reference_number||'—')+'</b></div><div><small>Status</small><b>'+esc(status)+'</b></div></div>'+
+      '<div class="reportSectionTitle"><b>Invoice Allocation</b><span>'+alloc.length+' invoice(s)</span></div>'+
+      '<div class="tablewrap"><table><thead><tr><th>Invoice</th><th>Allocated Amount</th></tr></thead><tbody>'+
+        (alloc.length?alloc.map(x=>'<tr><td><b>'+esc(x.invoice_number)+'</b></td><td>'+money(x.amount)+'</td></tr>').join(''):'<tr><td colspan="2">No invoice allocation</td></tr>')+
+      '</tbody></table></div>'+
+      '<div class="paymentReceiptTotals"><div><span>Total Payment</span><b>'+money(r.amount)+'</b></div><div><span>Allocated</span><b>'+money(Number(r.amount||0)-unallocated)+'</b></div><div><span>Unallocated</span><b>'+money(unallocated)+'</b></div></div>'+
+      (r.notes?'<div class="paymentReceiptNotes"><small>Notes</small><p>'+esc(r.notes)+'</p></div>':'')+
+    '</div>';
+  $('paymentBack').onclick=()=>show(isSupplier?'supplier-payments':'client-payments');
+  $('printPaymentReceipt').onclick=()=>{document.body.classList.add('payment-print');window.print();setTimeout(()=>document.body.classList.remove('payment-print'),500)};
+  if($('cancelPayment'))$('cancelPayment').onclick=async()=>{
+    if(!confirm('Cancel this payment? Invoice allocations automatically reverse ho jayengi.'))return;
+    try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:isSupplier?'cancel_supplier_payment':'cancel_client_receipt',[isSupplier?'payment_id':'receipt_id']:id})});optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(isSupplier?'supplier-payments':'client-payments')}
+    catch(e){alert(e.message)}
+  };
 }
 async function openPaymentForm(kind){
   const isSupplier=kind==='supplier',parties=await partyOptions(kind),today=new Date().toISOString().slice(0,10);

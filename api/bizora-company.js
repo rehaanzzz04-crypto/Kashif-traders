@@ -19,13 +19,13 @@ async function overview(sql,u){
       COALESCE((SELECT SUM(opening_balance) FROM erp_suppliers WHERE company_id=${u.company_id}),0)
       + COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
       - COALESCE((SELECT SUM(amount) FROM erp_supplier_returns WHERE company_id=${u.company_id} AND status='posted'),0)
-      - COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id}),0)
+      - COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id} AND status='posted'),0)
     )::numeric supplier_payable,
     (
       COALESCE((SELECT SUM(opening_balance) FROM erp_clients WHERE company_id=${u.company_id}),0)
       + COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
       - COALESCE((SELECT SUM(amount) FROM erp_client_returns WHERE company_id=${u.company_id} AND status='posted'),0)
-      - COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id}),0)
+      - COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND status='posted'),0)
     )::numeric client_receivable`;
   const auditPriceRows=await sql`SELECT asp.per_audit_price,asp.active FROM audit_service_prices asp WHERE asp.plan_id=${u.plan_id} LIMIT 1`;
   return {company:{id:u.company_id,code:u.company_code,name:u.company_name,logo_url:u.logo_url,status:u.company_status},user:{id:u.id,user_code:u.user_code,full_name:u.full_name,email:u.email,role:u.role},subscription:{status:u.subscription_status,expires_on:u.expires_on,plan_code:u.plan_code,plan_name:u.plan_name,features:u.features,access_mode:u.access_mode},limits:{user_limit:u.user_limit,warehouse_limit:u.warehouse_limit},stats:stats[0]||{},audit_service:{per_audit_price:auditPriceRows[0]?.per_audit_price||null,active:auditPriceRows[0]?.active===true}};
@@ -40,10 +40,10 @@ export default async function handler(req,res){
 
     const featureByAction={
       users:'core_erp',create_user:'core_erp',set_user_status:'core_erp',
-      suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',supplier_statement:'supplier_management',
-      create_supplier:'supplier_management',create_supplier_invoice:'supplier_management',cancel_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',
-      clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',client_statement:'customer_management',
-      create_client:'customer_management',create_client_invoice:'customer_management',cancel_client_invoice:'customer_management',create_client_receipt:'customer_management',
+      suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',supplier_payment_detail:'supplier_management',supplier_statement:'supplier_management',
+      create_supplier:'supplier_management',create_supplier_invoice:'supplier_management',cancel_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',cancel_supplier_payment:'supplier_management',
+      clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',client_receipt_detail:'customer_management',client_statement:'customer_management',
+      create_client:'customer_management',create_client_invoice:'customer_management',cancel_client_invoice:'customer_management',create_client_receipt:'customer_management',cancel_client_receipt:'customer_management',
       products:'products',create_product:'products',
       warehouses:'warehouses',create_warehouse:'warehouses',
       grns:'grn',create_grn:'grn',
@@ -110,12 +110,24 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='supplier_payments'){
-      const rows=await sql`SELECT p.id,p.supplier_id,s.business_name,p.payment_date,p.amount,p.payment_method,p.reference_number,p.notes,p.created_at,
+      const rows=await sql`SELECT p.id,p.supplier_id,s.business_name,p.payment_date,p.amount,p.payment_method,p.reference_number,p.notes,p.status,p.cancelled_at,p.created_at,
         COALESCE(a.allocated_amount,0)::numeric allocated_amount
         FROM erp_supplier_payments p JOIN erp_suppliers s ON s.id=p.supplier_id AND s.company_id=p.company_id
         LEFT JOIN LATERAL(SELECT COALESCE(SUM(amount),0)::numeric allocated_amount FROM erp_supplier_payment_allocations x WHERE x.company_id=p.company_id AND x.supplier_payment_id=p.id) a ON true
         WHERE p.company_id=${u.company_id} ORDER BY p.payment_date DESC,p.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='supplier_payment_detail'){
+      const paymentId=positiveInt(req.query?.payment_id,0);
+      if(!paymentId)return res.status(400).json({error:'Valid supplier payment required'});
+      const rows=await sql`SELECT p.id,p.supplier_id,s.business_name,s.supplier_code,p.payment_date,p.amount,p.payment_method,p.reference_number,p.notes,p.status,p.cancelled_at,p.created_at
+        FROM erp_supplier_payments p JOIN erp_suppliers s ON s.id=p.supplier_id AND s.company_id=p.company_id
+        WHERE p.id=${paymentId} AND p.company_id=${u.company_id} LIMIT 1`;
+      if(!rows[0])return res.status(404).json({error:'Supplier payment not found'});
+      const allocations=await sql`SELECT a.supplier_invoice_id invoice_id,i.invoice_number,a.amount
+        FROM erp_supplier_payment_allocations a JOIN erp_supplier_invoices i ON i.id=a.supplier_invoice_id AND i.company_id=a.company_id
+        WHERE a.company_id=${u.company_id} AND a.supplier_payment_id=${paymentId} ORDER BY a.id`;
+      return res.status(200).json({record:rows[0],allocations});
     }
     if(req.method==='GET'&&action==='supplier_statement'){
       const supplierId=positiveInt(req.query?.supplier_id,0);
@@ -130,7 +142,7 @@ export default async function handler(req,res){
         FROM erp_supplier_returns r WHERE r.company_id=${u.company_id} AND r.supplier_id=${supplierId} AND r.status='posted'
         UNION ALL
         SELECT p.payment_date::date,'PAYMENT',COALESCE(p.reference_number,''),0::numeric,p.amount::numeric,p.notes,1000000000+p.id
-        FROM erp_supplier_payments p WHERE p.company_id=${u.company_id} AND p.supplier_id=${supplierId}
+        FROM erp_supplier_payments p WHERE p.company_id=${u.company_id} AND p.supplier_id=${supplierId} AND p.status='posted'
       )
       SELECT entry_date,entry_type,reference,debit,credit,notes,
         ${number(supplier[0].opening_balance)} + SUM(debit-credit) OVER(ORDER BY entry_date,sort_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_balance
@@ -173,12 +185,24 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='client_receipts'){
-      const rows=await sql`SELECT r.id,r.client_id,c.business_name,r.receipt_date,r.amount,r.payment_method,r.reference_number,r.notes,r.created_at,
+      const rows=await sql`SELECT r.id,r.client_id,c.business_name,r.receipt_date,r.amount,r.payment_method,r.reference_number,r.notes,r.status,r.cancelled_at,r.created_at,
         COALESCE(a.allocated_amount,0)::numeric allocated_amount
         FROM erp_client_receipts r JOIN erp_clients c ON c.id=r.client_id AND c.company_id=r.company_id
         LEFT JOIN LATERAL(SELECT COALESCE(SUM(amount),0)::numeric allocated_amount FROM erp_client_receipt_allocations x WHERE x.company_id=r.company_id AND x.client_receipt_id=r.id) a ON true
         WHERE r.company_id=${u.company_id} ORDER BY r.receipt_date DESC,r.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='client_receipt_detail'){
+      const receiptId=positiveInt(req.query?.receipt_id,0);
+      if(!receiptId)return res.status(400).json({error:'Valid customer payment required'});
+      const rows=await sql`SELECT r.id,r.client_id,c.business_name,c.client_code,r.receipt_date,r.amount,r.payment_method,r.reference_number,r.notes,r.status,r.cancelled_at,r.created_at
+        FROM erp_client_receipts r JOIN erp_clients c ON c.id=r.client_id AND c.company_id=r.company_id
+        WHERE r.id=${receiptId} AND r.company_id=${u.company_id} LIMIT 1`;
+      if(!rows[0])return res.status(404).json({error:'Customer payment not found'});
+      const allocations=await sql`SELECT a.client_invoice_id invoice_id,i.invoice_number,a.amount
+        FROM erp_client_receipt_allocations a JOIN erp_client_invoices i ON i.id=a.client_invoice_id AND i.company_id=a.company_id
+        WHERE a.company_id=${u.company_id} AND a.client_receipt_id=${receiptId} ORDER BY a.id`;
+      return res.status(200).json({record:rows[0],allocations});
     }
     if(req.method==='GET'&&action==='client_statement'){
       const clientId=positiveInt(req.query?.client_id,0);
@@ -193,7 +217,7 @@ export default async function handler(req,res){
         FROM erp_client_returns cr WHERE cr.company_id=${u.company_id} AND cr.client_id=${clientId} AND cr.status='posted'
         UNION ALL
         SELECT r.receipt_date::date,'PAYMENT',COALESCE(r.reference_number,''),0::numeric,r.amount::numeric,r.notes,1000000000+r.id
-        FROM erp_client_receipts r WHERE r.company_id=${u.company_id} AND r.client_id=${clientId}
+        FROM erp_client_receipts r WHERE r.company_id=${u.company_id} AND r.client_id=${clientId} AND r.status='posted'
       )
       SELECT entry_date,entry_type,reference,debit,credit,notes,
         ${number(client[0].opening_balance)} + SUM(debit-credit) OVER(ORDER BY entry_date,sort_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_balance
@@ -411,19 +435,19 @@ export default async function handler(req,res){
       const from=clean(req.query?.date_from)||monthStart,to=clean(req.query?.date_to)||today;
       const rows=await sql`SELECT
         COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_purchases,
-        COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id} AND payment_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_payments,
+        COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id} AND status='posted' AND payment_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_payments,
         COALESCE((SELECT SUM(amount) FROM erp_supplier_returns WHERE company_id=${u.company_id} AND status='posted' AND return_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_returns,
         COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_sales,
-        COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND receipt_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_receipts,
+        COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND status='posted' AND receipt_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_receipts,
         COALESCE((SELECT SUM(amount) FROM erp_client_returns WHERE company_id=${u.company_id} AND status='posted' AND return_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_returns,
         (COALESCE((SELECT SUM(opening_balance) FROM erp_suppliers WHERE company_id=${u.company_id}),0)
           +COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
           -COALESCE((SELECT SUM(amount) FROM erp_supplier_returns WHERE company_id=${u.company_id} AND status='posted'),0)
-          -COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id}),0))::numeric supplier_payable,
+          -COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id} AND status='posted'),0))::numeric supplier_payable,
         (COALESCE((SELECT SUM(opening_balance) FROM erp_clients WHERE company_id=${u.company_id}),0)
           +COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
           -COALESCE((SELECT SUM(amount) FROM erp_client_returns WHERE company_id=${u.company_id} AND status='posted'),0)
-          -COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id}),0))::numeric customer_receivable,
+          -COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND status='posted'),0))::numeric customer_receivable,
         COALESCE((SELECT SUM((qty_in-qty_out)*unit_cost) FROM erp_inventory_movements WHERE company_id=${u.company_id}),0)::numeric stock_value`;
       const daily=await sql`WITH d AS(
         SELECT invoice_date::date day,SUM(amount)::numeric sales,0::numeric receipts,0::numeric purchases,0::numeric payments FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date GROUP BY invoice_date
@@ -724,8 +748,8 @@ export default async function handler(req,res){
       const supplierId=positiveInt(b.supplier_id,0),amount=number(b.amount),paymentDate=clean(b.payment_date)||new Date().toISOString().slice(0,10),method=clean(b.payment_method||'CASH').toUpperCase();
       const selectedInvoiceId=positiveInt(b.invoice_id,0)||null;
       if(!supplierId||amount<=0||!paymentMethods.has(method))return res.status(400).json({error:'Supplier, positive amount and valid payment method required'});
-      const rows=await sql`INSERT INTO erp_supplier_payments(company_id,supplier_id,payment_date,amount,payment_method,reference_number,notes,created_by_user_id)
-        SELECT ${u.company_id},s.id,${paymentDate}::date,${amount},${method},${clean(b.reference_number)||null},${clean(b.notes)||null},${u.id}
+      const rows=await sql`INSERT INTO erp_supplier_payments(company_id,supplier_id,payment_date,amount,payment_method,reference_number,notes,status,created_by_user_id)
+        SELECT ${u.company_id},s.id,${paymentDate}::date,${amount},${method},${clean(b.reference_number)||null},${clean(b.notes)||null},'posted',${u.id}
         FROM erp_suppliers s WHERE s.id=${supplierId} AND s.company_id=${u.company_id}
         RETURNING id,supplier_id,payment_date,amount,payment_method,reference_number,notes,created_at`;
       if(!rows[0])return res.status(404).json({error:'Supplier not found'});
@@ -752,6 +776,29 @@ export default async function handler(req,res){
       await companyAudit(sql,u,'SUPPLIER_PAYMENT_CREATED',{entityType:'supplier_payment',entityId:String(rows[0].id),metadata:{amount,method,allocated:amount-remaining,unallocated:remaining}});
       return res.status(201).json({record:rows[0],allocated:amount-remaining,unallocated:remaining});
     }
+    if(req.method==='POST'&&action==='cancel_supplier_payment'){
+      const paymentId=positiveInt(b.payment_id,0);
+      if(!paymentId)return res.status(400).json({error:'Valid supplier payment required'});
+      const payment=await sql`SELECT id,supplier_id,amount,status,reference_number FROM erp_supplier_payments WHERE id=${paymentId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!payment[0])return res.status(404).json({error:'Supplier payment not found'});
+      if(payment[0].status==='cancelled')return res.status(200).json({record:payment[0]});
+      const allocations=await sql`SELECT supplier_invoice_id FROM erp_supplier_payment_allocations WHERE company_id=${u.company_id} AND supplier_payment_id=${paymentId}`;
+      await sql`DELETE FROM erp_supplier_payment_allocations WHERE company_id=${u.company_id} AND supplier_payment_id=${paymentId}`;
+      const rows=await sql`UPDATE erp_supplier_payments SET status='cancelled',cancelled_at=now() WHERE id=${paymentId} AND company_id=${u.company_id} RETURNING *`;
+      for(const a of allocations){
+        const inv=await sql`SELECT i.id,i.amount,i.status,
+          COALESCE((SELECT SUM(r.amount) FROM erp_supplier_returns r WHERE r.company_id=i.company_id AND r.supplier_invoice_id=i.id AND r.status='posted'),0)::numeric returned,
+          COALESCE((SELECT SUM(x.amount) FROM erp_supplier_payment_allocations x WHERE x.company_id=i.company_id AND x.supplier_invoice_id=i.id),0)::numeric paid
+          FROM erp_supplier_invoices i WHERE i.id=${a.supplier_invoice_id} AND i.company_id=${u.company_id} LIMIT 1`;
+        if(inv[0]&&inv[0].status!=='cancelled'){
+          const net=Math.max(0,number(inv[0].amount)-number(inv[0].returned)),paid=number(inv[0].paid),status=paid+0.000001>=net?'paid':paid>0?'partial':'unpaid';
+          await sql`UPDATE erp_supplier_invoices SET status=${status},updated_at=now() WHERE id=${inv[0].id} AND company_id=${u.company_id}`;
+        }
+      }
+      await companyAudit(sql,u,'SUPPLIER_PAYMENT_CANCELLED',{entityType:'supplier_payment',entityId:String(paymentId),metadata:{amount:payment[0].amount,reference:payment[0].reference_number}});
+      return res.status(200).json({record:rows[0]});
+    }
+
     if(req.method==='POST'&&action==='create_client'){
       const clientCode=code(b.client_code),name=clean(b.business_name);
       if(!clientCode||!name)return res.status(400).json({error:'Client code and business name required'});
@@ -828,8 +875,8 @@ export default async function handler(req,res){
       const clientId=positiveInt(b.client_id,0),amount=number(b.amount),receiptDate=clean(b.receipt_date)||new Date().toISOString().slice(0,10),method=clean(b.payment_method||'CASH').toUpperCase();
       const selectedInvoiceId=positiveInt(b.invoice_id,0)||null;
       if(!clientId||amount<=0||!paymentMethods.has(method))return res.status(400).json({error:'Customer, positive amount and valid payment method required'});
-      const rows=await sql`INSERT INTO erp_client_receipts(company_id,client_id,receipt_date,amount,payment_method,reference_number,notes,created_by_user_id)
-        SELECT ${u.company_id},c.id,${receiptDate}::date,${amount},${method},${clean(b.reference_number)||null},${clean(b.notes)||null},${u.id}
+      const rows=await sql`INSERT INTO erp_client_receipts(company_id,client_id,receipt_date,amount,payment_method,reference_number,notes,status,created_by_user_id)
+        SELECT ${u.company_id},c.id,${receiptDate}::date,${amount},${method},${clean(b.reference_number)||null},${clean(b.notes)||null},'posted',${u.id}
         FROM erp_clients c WHERE c.id=${clientId} AND c.company_id=${u.company_id}
         RETURNING id,client_id,receipt_date,amount,payment_method,reference_number,notes,created_at`;
       if(!rows[0])return res.status(404).json({error:'Customer not found'});
@@ -856,6 +903,29 @@ export default async function handler(req,res){
       await companyAudit(sql,u,'CLIENT_RECEIPT_CREATED',{entityType:'client_receipt',entityId:String(rows[0].id),metadata:{amount,method,allocated:amount-remaining,unallocated:remaining}});
       return res.status(201).json({record:rows[0],allocated:amount-remaining,unallocated:remaining});
     }
+    if(req.method==='POST'&&action==='cancel_client_receipt'){
+      const receiptId=positiveInt(b.receipt_id,0);
+      if(!receiptId)return res.status(400).json({error:'Valid customer payment required'});
+      const receipt=await sql`SELECT id,client_id,amount,status,reference_number FROM erp_client_receipts WHERE id=${receiptId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!receipt[0])return res.status(404).json({error:'Customer payment not found'});
+      if(receipt[0].status==='cancelled')return res.status(200).json({record:receipt[0]});
+      const allocations=await sql`SELECT client_invoice_id FROM erp_client_receipt_allocations WHERE company_id=${u.company_id} AND client_receipt_id=${receiptId}`;
+      await sql`DELETE FROM erp_client_receipt_allocations WHERE company_id=${u.company_id} AND client_receipt_id=${receiptId}`;
+      const rows=await sql`UPDATE erp_client_receipts SET status='cancelled',cancelled_at=now() WHERE id=${receiptId} AND company_id=${u.company_id} RETURNING *`;
+      for(const a of allocations){
+        const inv=await sql`SELECT i.id,i.amount,i.status,
+          COALESCE((SELECT SUM(r.amount) FROM erp_client_returns r WHERE r.company_id=i.company_id AND r.client_invoice_id=i.id AND r.status='posted'),0)::numeric returned,
+          COALESCE((SELECT SUM(x.amount) FROM erp_client_receipt_allocations x WHERE x.company_id=i.company_id AND x.client_invoice_id=i.id),0)::numeric paid
+          FROM erp_client_invoices i WHERE i.id=${a.client_invoice_id} AND i.company_id=${u.company_id} LIMIT 1`;
+        if(inv[0]&&inv[0].status!=='cancelled'){
+          const net=Math.max(0,number(inv[0].amount)-number(inv[0].returned)),paid=number(inv[0].paid),status=paid+0.000001>=net?'paid':paid>0?'partial':'unpaid';
+          await sql`UPDATE erp_client_invoices SET status=${status},updated_at=now() WHERE id=${inv[0].id} AND company_id=${u.company_id}`;
+        }
+      }
+      await companyAudit(sql,u,'CLIENT_PAYMENT_CANCELLED',{entityType:'client_receipt',entityId:String(receiptId),metadata:{amount:receipt[0].amount,reference:receipt[0].reference_number}});
+      return res.status(200).json({record:rows[0]});
+    }
+
     if(req.method==='POST'&&action==='create_product'){
       const sku=code(b.sku),name=clean(b.product_name),barcode=clean(b.barcode)||null;
       if(!sku||!name)return res.status(400).json({error:'SKU and product name required'});
