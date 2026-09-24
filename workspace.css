@@ -696,3 +696,22 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
 .auditMeta{max-width:320px;white-space:normal!important;word-break:break-word;color:#68758d;font-size:10px}
 @media(max-width:800px){.reportKpis{grid-template-columns:repeat(2,minmax(0,1fr))}.reportHead{align-items:stretch;flex-direction:column}.reportDates{width:100%}.reportDates label{flex:1}}
 @media(max-width:430px){.reportKpis{grid-template-columns:1fr 1fr}.reportKpis>div{min-height:78px;padding:12px}.reportKpis b{font-size:17px}.reportDates{display:grid;grid-template-columns:1fr 1fr}.reportDates button{grid-column:1/-1}.reportDates label{min-width:0}}
+
+
+/* Pay-per-audit service */
+.auditPayItem .featureState{background:linear-gradient(135deg,#e8fbf3,#eaf4ff);color:#0b8f6b!important}
+.auditServiceCard,.auditHistoryCard{margin-bottom:14px}
+.auditServiceHero{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:16px;border-bottom:1px solid #e2eaf4}
+.auditServiceHero h2{margin:3px 0 7px;color:#14213d;font-size:25px}.auditServiceHero p{margin:0;max-width:650px;color:#667085;font-size:12px;line-height:1.5}
+.auditPrice{min-width:170px;padding:14px;border-radius:18px;background:linear-gradient(135deg,#0e2f75,#7042e8);color:#fff;text-align:right;box-shadow:0 12px 28px rgba(63,73,190,.18)}
+.auditPrice small,.auditPrice span{display:block;color:#d8e7ff;font-size:9px;text-transform:uppercase;letter-spacing:.5px}.auditPrice b{display:block;margin:4px 0;font-size:24px}
+.auditRequestForm{margin-top:14px}.auditApplyBar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding:13px 14px;border-radius:15px;background:#f4f8ff;border:1px solid #dbe7f7}
+.auditApplyBar small{display:block;color:#78859b;font-size:9px;text-transform:uppercase}.auditApplyBar b{display:block;margin-top:3px;color:#10265a;font-size:18px}
+.auditStatus{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;font-size:9px;font-weight:900;text-transform:uppercase;border:1px solid #dce4ef;background:#f4f6f9;color:#667085}
+.auditStatus.verified,.auditStatus.approved,.auditStatus.completed{background:#e9fbf2;color:#087f58;border-color:#bce7d4}
+.auditStatus.submitted{background:#fff7df;color:#946200;border-color:#f0dda6}
+.auditStatus.rejected{background:#fff0f2;color:#b4233c;border-color:#f0c9d0}
+.auditPurchasedHead{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:14px}
+.auditPurchasedHead>div{padding:12px;border-radius:14px;border:1px solid #dce6f3;background:#f8fbff}
+.auditPurchasedHead small{display:block;color:#77849a;font-size:9px;text-transform:uppercase}.auditPurchasedHead b{display:block;margin-top:4px;color:#14213d;font-size:14px}
+@media(max-width:620px){.auditServiceHero{align-items:stretch;flex-direction:column}.auditPrice{text-align:left;min-width:0}.auditApplyBar{align-items:stretch;flex-direction:column}.auditApplyBar button{width:100%}.auditPurchasedHead{grid-template-columns:1fr 1fr}.auditPurchasedHead>div:first-child{grid-column:1/-1}}
