@@ -13,3 +13,128 @@ dialog{width:min(540px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflo
 @media(max-width:900px){.topbar{grid-template-columns:48px 130px minmax(0,1fr) auto}.brandcopy{display:none}.hero{grid-template-columns:1fr}.heroArt{display:none}.stats{grid-template-columns:1fr 1fr}.plans{overflow-x:auto;grid-template-columns:repeat(3,220px)}}
 @media(max-width:620px){.topbar{grid-template-columns:44px 112px minmax(0,1fr) auto;gap:7px;padding:9px 10px}.topbar .bizora-logo{width:112px;height:42px}.adminrole{font-size:10px;padding:7px 8px}.toplogout{font-size:12px;padding:7px 9px}.menubtn{width:42px;padding:0}.wrap{padding:10px}.hero{padding:24px 18px;border-radius:22px}.hero h1{font-size:38px}.hero p{font-size:15px}.heroCta{width:100%;min-width:0}.stats{grid-template-columns:1fr 1fr;gap:10px}.stat{min-height:102px;padding:16px 12px 12px 70px}.stat:before{left:12px;top:22px;width:44px;height:44px}.stat small{font-size:11px}.stat b{font-size:26px}.card{padding:14px;border-radius:20px}.sectionHead h2{font-size:22px}.sectionIcon{width:48px;height:48px}.plans{grid-template-columns:repeat(3,210px)}dialog{width:calc(100vw - 12px);max-width:none;border-radius:17px}dialog form{padding:14px 12px}.actions{position:sticky;bottom:0;margin:14px -12px -14px;padding:10px 12px;background:#07143a;border-top:1px solid #1c3779}}
 @media(max-width:430px){.topbar{grid-template-columns:42px 98px minmax(0,1fr) auto}.topbar .bizora-logo{width:98px}.adminrole{display:none}.hero h1{font-size:34px}.stats{grid-template-columns:1fr}.stat{padding-left:78px}}
+
+
+/* Super Admin mobile refinement after device test */
+@media(max-width:620px){
+  .topbar{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:9px 10px;
+  }
+  .topbar .menubtn{
+    flex:0 0 44px;
+    width:44px;
+    min-width:44px;
+  }
+  .topbar .bizora-logo{
+    flex:0 1 150px;
+    width:150px;
+    height:48px;
+    padding:4px 7px;
+    border-radius:12px;
+    background-color:rgba(255,255,255,.08);
+    background-size:94% auto;
+    filter:drop-shadow(0 0 8px rgba(38,216,255,.30));
+  }
+  .topbar .brandcopy,
+  .topbar .adminrole{display:none!important}
+  .topbar .toplogout{
+    margin-left:auto;
+    flex:0 0 92px;
+    width:92px;
+    min-width:92px;
+    min-height:44px;
+    padding:7px 8px;
+  }
+
+  .stats{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:10px;
+  }
+  .stat{
+    min-height:104px;
+    padding:15px 10px 12px 62px;
+    border-radius:19px;
+  }
+  .stat:before{
+    left:11px;
+    top:22px;
+    width:42px;
+    height:42px;
+    font-size:21px;
+  }
+  .stat small{font-size:10px;line-height:1.25}
+  .stat b{font-size:25px;margin-top:4px}
+
+  .companyCard .tablewrap{
+    border:0;
+    background:transparent;
+    overflow:visible;
+  }
+  .companyCard table,
+  .companyCard tbody,
+  .companyCard tr,
+  .companyCard td{display:block;width:100%}
+  .companyCard table{min-width:0}
+  .companyCard thead{display:none}
+  .companyCard tbody{display:grid;gap:10px}
+  .companyCard tr{
+    padding:12px;
+    border:1px solid #1c62dd;
+    border-radius:16px;
+    background:linear-gradient(145deg,#081947,#0b245f);
+  }
+  .companyCard td{
+    display:grid;
+    grid-template-columns:104px minmax(0,1fr);
+    gap:10px;
+    align-items:center;
+    padding:8px 2px;
+    border-bottom:1px solid #173b7c;
+    font-size:13px;
+  }
+  .companyCard td:last-child{border-bottom:0}
+  .companyCard td::before{
+    content:attr(data-label);
+    color:#91a7dc;
+    font-size:9px;
+    font-weight:850;
+    letter-spacing:.55px;
+    text-transform:uppercase;
+  }
+  .companyCard td:first-child b{font-size:15px}
+  .companyCard .rowactions{justify-content:flex-start}
+  .companyCard .rowactions button{
+    min-height:39px;
+    padding:8px 12px;
+  }
+  .searchWrap input{font-size:15px}
+
+  .plans{
+    display:grid;
+    grid-template-columns:1fr!important;
+    overflow:visible!important;
+  }
+  .plan{
+    min-height:0;
+    padding:15px;
+  }
+  .plan b{
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:10px;
+    align-items:center;
+  }
+  .plan b span:first-child{font-size:18px}
+  .plan b span:last-child{margin-top:0;font-size:18px}
+  .plan small{margin-top:8px}
+}
+@media(max-width:390px){
+  .topbar .bizora-logo{flex-basis:132px;width:132px}
+  .topbar .toplogout{flex-basis:82px;width:82px;min-width:82px;font-size:11px}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .stat{padding-left:58px}
+  .companyCard td{grid-template-columns:90px minmax(0,1fr)}
+}
