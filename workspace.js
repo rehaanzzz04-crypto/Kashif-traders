@@ -17,17 +17,33 @@ const defs={
   warehouses:{title:'Warehouses',action:'warehouses',create:'create_warehouse',cols:[['warehouse_code','Code'],['warehouse_name','Warehouse'],['address','Address']],fields:[['warehouse_code','Warehouse Code','text'],['warehouse_name','Warehouse Name','text'],['address','Address','text']]}
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
+const featureOn=key=>model?.subscription?.features?.[key]===true;
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management',products:'products',warehouses:'warehouses'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
-  $('usersNav').classList.toggle('hidden',model.user.role!=='company_admin');
+  document.querySelectorAll('#workspaceNav [data-feature]').forEach(el=>el.classList.toggle('hidden',!featureOn(el.dataset.feature)));
+  $('usersNav').classList.toggle('hidden',model.user.role!=='company_admin'||!featureOn('core_erp'));
   if(model.subscription.access_mode!=='write'){$('readOnlyNote').classList.remove('hidden');$('readOnlyNote').textContent='Subscription expired. Data dekh sakte hain, lekin renewal tak new entries blocked hain.'}
+  else $('readOnlyNote').classList.add('hidden');
 }
 function dashboard(){
   $('workspaceTitle').textContent=model.company.name;
   $('workspaceSubtitle').innerHTML='<span class="dashboardPill">Dashboard</span><span class="ownerChip"><span class="ownerAvatar">'+esc((model.user.full_name||'O').trim().charAt(0).toUpperCase())+'</span><span><small>Company Owner</small><b>'+esc(model.user.full_name)+'</b></span></span>';
   $('addRecord').classList.add('hidden');
-  const s=model.stats||{};const icon=(k)=>({Users:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 2-6 6-6s6 2 6 6"/><circle cx="17" cy="9" r="2"/><path d="M15 14c4 0 6 2 6 6"/></svg>',Suppliers:'<svg viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>',Customers:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-5 3-8 8-8s8 3 8 8"/></svg>',Products:'<svg viewBox="0 0 24 24"><path d="M4 7l8-4 8 4-8 4zM4 7v10l8 4 8-4V7M12 11v10"/></svg>',Warehouses:'<svg viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v11H3zM8 21v-7h8v7"/></svg>','Supplier Payable':'<svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 9h8M8 13h5"/><path d="M16 14c-2 0-3 1-3 2s1 2 3 2 3 1 3 2-1 2-3 2M16 13v10"/></svg>','Customer Receivable':'<svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 9h8M8 13h5"/><path d="M16 14c-2 0-3 1-3 2s1 2 3 2 3 1 3 2-1 2-3 2M16 13v10"/></svg>'}[k]||'');const items=[['Users',s.users],['Suppliers',s.suppliers],['Customers',s.clients],['Products',s.products],['Warehouses',s.warehouses],['Supplier Payable',money(s.supplier_payable)],['Customer Receivable',money(s.client_receivable)]];$('workspaceBody').innerHTML='<div class="stats">'+items.map(([k,v],i)=>'<div class="stat '+(i===6?'wide':'')+'"><span class="statIcon">'+icon(k)+'</span><small>'+k+'</small><b>'+esc(v??0)+'</b><span class="statChevron">›</span></div>').join('')+'</div><div class="card subscription"><h2>Subscription</h2><div class="subgrid"><div><small>Plan</small><b>'+esc(model.subscription.plan_name||'—')+'</b></div><div><small>Expires</small><b>'+date(model.subscription.expires_on)+'</b></div><div><small>Access</small><b>'+esc(model.subscription.access_mode)+'</b></div><div><small>Role</small><b>'+esc(model.user.role)+'</b></div><div><small>User Limit</small><b>'+esc(model.limits.user_limit??'Unlimited')+'</b></div><div><small>Warehouse Limit</small><b>'+esc(model.limits.warehouse_limit??'Unlimited')+'</b></div></div></div>';
+  const s=model.stats||{};
+  const icon=(k)=>({Users:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 2-6 6-6s6 2 6 6"/><circle cx="17" cy="9" r="2"/><path d="M15 14c4 0 6 2 6 6"/></svg>',Suppliers:'<svg viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>',Customers:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-5 3-8 8-8s8 3 8 8"/></svg>',Products:'<svg viewBox="0 0 24 24"><path d="M4 7l8-4 8 4-8 4zM4 7v10l8 4 8-4V7M12 11v10"/></svg>',Warehouses:'<svg viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v11H3zM8 21v-7h8v7"/></svg>','Supplier Payable':'<svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 9h8M8 13h5"/><path d="M16 14c-2 0-3 1-3 2s1 2 3 2 3 1 3 2-1 2-3 2M16 13v10"/></svg>','Customer Receivable':'<svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 9h8M8 13h5"/><path d="M16 14c-2 0-3 1-3 2s1 2 3 2 3 1 3 2-1 2-3 2M16 13v10"/></svg>'}[k]||'');
+  const items=[['Users',s.users],['Suppliers',s.suppliers],['Customers',s.clients],['Products',s.products],['Warehouses',s.warehouses],['Supplier Payable',money(s.supplier_payable)],['Customer Receivable',money(s.client_receivable)]];
+  const featureLabels=[
+    ['core_erp','Core ERP'],['basic_reports','Basic Reports'],['inventory_ledger','Inventory Ledger'],['grn','Goods Receiving (GRN)'],
+    ['audit_reports','Audit Reports'],['advanced_reports','Advanced Reports'],['cashier','Cashier / Counter Sale'],
+    ['ecommerce','E-commerce'],['ocr','OCR Automation'],['automation','Workflow Automation']
+  ];
+  const featureHtml=featureLabels.map(([key,label])=>'<div class="featureItem '+(featureOn(key)?'included':'locked')+'"><span class="featureState">'+(featureOn(key)?'✓':'🔒')+'</span><span><b>'+esc(label)+'</b><small>'+(featureOn(key)?'Included in '+esc(model.subscription.plan_name||'plan'):'Upgrade required')+'</small></span></div>').join('');
+  $('workspaceBody').innerHTML=
+    '<div class="stats">'+items.map(([k,v],i)=>'<div class="stat '+(i===6?'wide':'')+'"><span class="statIcon">'+icon(k)+'</span><small>'+k+'</small><b>'+esc(v??0)+'</b><span class="statChevron">›</span></div>').join('')+'</div>'+
+    '<div class="card subscription"><h2>Subscription</h2><div class="subgrid"><div><small>Plan</small><b>'+esc(model.subscription.plan_name||'—')+'</b></div><div><small>Expires</small><b>'+date(model.subscription.expires_on)+'</b></div><div><small>Access</small><b>'+esc(model.subscription.access_mode)+'</b></div><div><small>Role</small><b>'+esc(model.user.role)+'</b></div><div><small>User Limit</small><b>'+esc(model.limits.user_limit??'Unlimited')+'</b></div><div><small>Warehouse Limit</small><b>'+esc(model.limits.warehouse_limit??'Unlimited')+'</b></div></div></div>'+
+    '<div class="card capabilityCard"><div class="capHead"><div><span class="capEyebrow">SUBSCRIPTION ACCESS</span><h2>'+esc(model.subscription.plan_name||'Plan')+' Features</h2></div><span class="planBadge">'+esc(model.subscription.plan_name||'No Plan')+'</span></div><div class="featureGrid">'+featureHtml+'</div></div>';
 }
 function cell(key,value){
   if(key==='active')return value?'<span class="pill active">Active</span>':'<span class="pill inactive">Inactive</span>';
@@ -39,6 +55,14 @@ async function show(view){
   currentView=view;document.querySelectorAll('#workspaceNav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   if(view==='dashboard')return dashboard();
   if(view==='users'&&model.user.role!=='company_admin')return dashboard();
+  const needed=viewFeatures[view];
+  if(needed&&!featureOn(needed)){
+    $('workspaceTitle').textContent='Upgrade Required';
+    $('workspaceSubtitle').textContent=(model.subscription.plan_name||'Current plan')+' does not include this module';
+    $('addRecord').classList.add('hidden');
+    $('workspaceBody').innerHTML='<div class="card upgradeCard"><h2>Module not included</h2><p>This feature is not available in the current '+esc(model.subscription.plan_name||'subscription')+' plan.</p></div>';
+    return;
+  }
   const d=defs[view];$('workspaceTitle').textContent=d.title;$('workspaceSubtitle').textContent=model.company.name+' · '+d.title;$('addRecord').classList.toggle('hidden',model.subscription.access_mode!=='write');
   $('workspaceBody').innerHTML='<div class="card">Loading…</div>';
   const j=await json('/api/bizora-company?action='+d.action),rows=j.records||[];optionCache[view]=rows;
