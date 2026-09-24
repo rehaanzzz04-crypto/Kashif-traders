@@ -14,11 +14,14 @@ const defs={
   'client-bills':{title:'Customer Invoices',action:'client_invoices',create:'create_client_invoice',cols:[['invoice_number','Invoice'],['business_name','Customer'],['invoice_date','Date'],['due_date','Due'],['amount','Amount'],['status','Status']],fields:[['client_id','Customer','client'],['invoice_number','Invoice Number','text'],['invoice_date','Invoice Date','date'],['due_date','Due Date','date'],['amount','Amount','number'],['notes','Notes','textarea']]},
   'client-payments':{title:'Customer Payments',action:'client_receipts',create:'create_client_receipt',cols:[['receipt_date','Date'],['business_name','Customer'],['amount','Amount'],['payment_method','Method'],['reference_number','Reference']],fields:[['client_id','Customer','client'],['receipt_date','Receipt Date','date'],['amount','Amount','number'],['payment_method','Method','select:CASH,BANK,ONLINE,CHEQUE,EASYPAISA,JAZZCASH'],['reference_number','Reference','text'],['notes','Notes','textarea']]},
   products:{title:'Products',action:'products',create:'create_product',cols:[['sku','SKU'],['barcode','Barcode'],['product_name','Product'],['unit','Unit'],['purchase_price','Purchase Price'],['sale_price','Sale Price']],fields:[['sku','SKU','text'],['barcode','Barcode','text'],['product_name','Product Name','text'],['unit','Unit','text'],['purchase_price','Purchase Price','number'],['sale_price','Sale Price','number']]},
-  warehouses:{title:'Warehouses',action:'warehouses',create:'create_warehouse',cols:[['warehouse_code','Code'],['warehouse_name','Warehouse'],['address','Address']],fields:[['warehouse_code','Warehouse Code','text'],['warehouse_name','Warehouse Name','text'],['address','Address','text']]}
+  warehouses:{title:'Warehouses',action:'warehouses',create:'create_warehouse',cols:[['warehouse_code','Code'],['warehouse_name','Warehouse'],['address','Address']],fields:[['warehouse_code','Warehouse Code','text'],['warehouse_name','Warehouse Name','text'],['address','Address','text']]},
+  grns:{title:'Goods Receiving (GRN)',action:'grns',create:'create_grn',cols:[['grn_number','GRN'],['received_date','Date'],['supplier_name','Supplier'],['supplier_invoice_number','Supplier Invoice'],['warehouse_name','Warehouse'],['item_count','Items'],['total_quantity','Quantity'],['status','Status']],fields:[['supplier_id','Supplier','supplier'],['supplier_invoice_id','Supplier Invoice','supplier_invoice'],['warehouse_id','Warehouse','warehouse'],['product_id','Product','product'],['quantity','Quantity','number'],['unit_cost','Unit Cost','number'],['received_date','Received Date','date'],['notes','Notes','textarea']]},
+  'inventory-stock':{title:'Warehouse Stock',action:'inventory_stock',cols:[['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['unit','Unit'],['quantity','Quantity'],['stock_value','Stock Value']]},
+  'inventory-ledger':{title:'Inventory Ledger',action:'inventory_ledger',cols:[['movement_date','Date / Time'],['movement_type','Type'],['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['qty_in','Qty In'],['qty_out','Qty Out'],['unit_cost','Unit Cost'],['reference_number','Reference']]}
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management',products:'products',warehouses:'warehouses'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -48,6 +51,7 @@ function dashboard(){
 function cell(key,value){
   if(key==='active')return value?'<span class="pill active">Active</span>':'<span class="pill inactive">Inactive</span>';
   if(key==='status')return '<span class="pill '+esc(String(value||'').toLowerCase())+'">'+esc(value??'—')+'</span>';
+  if(key==='movement_date')return value?esc(new Date(value).toLocaleString('en-GB')):'—';
   if(/_date$|due_date/.test(key))return esc(date(value));
   return isMoney(key)?esc(money(value)):esc(value??'—');
 }
@@ -63,7 +67,7 @@ async function show(view){
     $('workspaceBody').innerHTML='<div class="card upgradeCard"><h2>Module not included</h2><p>This feature is not available in the current '+esc(model.subscription.plan_name||'subscription')+' plan.</p></div>';
     return;
   }
-  const d=defs[view];$('workspaceTitle').textContent=d.title;$('workspaceSubtitle').textContent=model.company.name+' · '+d.title;$('addRecord').classList.toggle('hidden',model.subscription.access_mode!=='write');
+  const d=defs[view];$('workspaceTitle').textContent=d.title;$('workspaceSubtitle').textContent=model.company.name+' · '+d.title;$('addRecord').classList.toggle('hidden',model.subscription.access_mode!=='write'||!d.create);
   $('workspaceBody').innerHTML='<div class="card">Loading…</div>';
   const j=await json('/api/bizora-company?action='+d.action),rows=j.records||[];optionCache[view]=rows;
   const userActions=view==='users'?'<th>Action</th>':'';
@@ -71,14 +75,22 @@ async function show(view){
   if(view==='users')document.querySelectorAll('.userStatusBtn').forEach(b=>b.onclick=()=>setUserStatus(Number(b.dataset.id),b.dataset.active==='1'));
 }
 async function partyOptions(kind){
-  const action=kind==='supplier'?'suppliers':'clients';
+  const actionMap={supplier:'suppliers',client:'clients',product:'products',warehouse:'warehouses',supplier_invoice:'supplier_invoices'};
+  const action=actionMap[kind];
   if(!optionCache[action])optionCache[action]=(await json('/api/bizora-company?action='+action)).records||[];
-  return optionCache[action].map(r=>({value:r.id,label:r.business_name+' · '+(r[kind+'_code']||'')}));
+  return optionCache[action].map(r=>{
+    if(kind==='supplier')return {value:r.id,label:r.business_name+' · '+(r.supplier_code||'')};
+    if(kind==='client')return {value:r.id,label:r.business_name+' · '+(r.client_code||'')};
+    if(kind==='product')return {value:r.id,label:r.product_name+' · '+(r.sku||'')};
+    if(kind==='warehouse')return {value:r.id,label:r.warehouse_name+' · '+(r.warehouse_code||'')};
+    if(kind==='supplier_invoice')return {value:r.id,label:(r.invoice_number||'Invoice')+' · '+(r.business_name||'')};
+    return {value:r.id,label:String(r.id)};
+  });
 }
 async function renderField([name,label,type]){
-  const required=['user_code','full_name','password','supplier_code','business_name','client_code','sku','product_name','warehouse_code','warehouse_name','supplier_id','client_id','invoice_number','amount'].includes(name)?' required':'';
+  const required=['user_code','full_name','password','supplier_code','business_name','client_code','sku','product_name','warehouse_code','warehouse_name','supplier_id','client_id','invoice_number','amount','warehouse_id','product_id','quantity','unit_cost'].includes(name)?' required':'';
   const today=new Date().toISOString().slice(0,10);
-  if(type==='supplier'||type==='client'){const opts=await partyOptions(type);return '<label>'+label+'<select name="'+name+'"'+required+'><option value="">Select '+label+'</option>'+opts.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'}
+  if(['supplier','client','product','warehouse','supplier_invoice'].includes(type)){const opts=await partyOptions(type);return '<label>'+label+'<select name="'+name+'"'+required+'><option value="">Select '+label+'</option>'+opts.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'}
   if(type.startsWith('select:')){const opts=type.slice(7).split(',');return '<label>'+label+'<select name="'+name+'"'+required+'>'+opts.map(o=>'<option value="'+esc(o)+'">'+esc(o.replaceAll('_',' '))+'</option>').join('')+'</select></label>'}
   if(type==='textarea')return '<label>'+label+'<textarea name="'+name+'"></textarea></label>';
   const value=type==='date'?' value="'+today+'"':'';
