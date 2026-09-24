@@ -260,14 +260,24 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_client_receipts_company_idx ON erp_client_receipts(company_id,receipt_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS audit_events_company_idx ON audit_events(company_id,created_at DESC)`;
 
-  const planCount=await sql`SELECT COUNT(*)::int count FROM plans`;
-  if(!Number(planCount[0]?.count||0)){
-    await sql`INSERT INTO plans(plan_code,plan_name,monthly_price,yearly_price,user_limit,warehouse_limit,features) VALUES
-      ('basic','Basic',2000,20000,3,1,'{"core_erp":true,"audit_reports":false,"ecommerce":false}'::jsonb),
-      ('standard','Standard',5000,50000,10,5,'{"core_erp":true,"audit_reports":true,"ecommerce":true}'::jsonb),
-      ('premium','Premium',10000,100000,NULL,NULL,'{"core_erp":true,"audit_reports":true,"ecommerce":true,"priority_support":true}'::jsonb)
-      ON CONFLICT(plan_code) DO NOTHING`;
-  }
+  // Canonical Bizora subscription matrix. Keeping this as an UPSERT means
+  // existing companies immediately receive the correct plan capabilities without
+  // recreating their subscription or tenant data.
+  await sql`INSERT INTO plans(plan_code,plan_name,monthly_price,yearly_price,user_limit,warehouse_limit,features) VALUES
+    ('basic','Basic',2000,20000,3,1,
+      '{"core_erp":true,"supplier_management":true,"customer_management":true,"products":true,"warehouses":true,"basic_reports":true,"inventory_ledger":false,"grn":false,"audit_reports":false,"advanced_reports":false,"cashier":false,"ecommerce":false,"ocr":false,"automation":false,"priority_support":false}'::jsonb),
+    ('standard','Standard',5000,50000,10,5,
+      '{"core_erp":true,"supplier_management":true,"customer_management":true,"products":true,"warehouses":true,"basic_reports":true,"inventory_ledger":true,"grn":true,"audit_reports":true,"advanced_reports":true,"cashier":true,"ecommerce":true,"ocr":false,"automation":false,"priority_support":false}'::jsonb),
+    ('premium','Premium',10000,100000,NULL,NULL,
+      '{"core_erp":true,"supplier_management":true,"customer_management":true,"products":true,"warehouses":true,"basic_reports":true,"inventory_ledger":true,"grn":true,"audit_reports":true,"advanced_reports":true,"cashier":true,"ecommerce":true,"ocr":true,"automation":true,"priority_support":true}'::jsonb)
+    ON CONFLICT(plan_code) DO UPDATE SET
+      plan_name=EXCLUDED.plan_name,
+      monthly_price=EXCLUDED.monthly_price,
+      yearly_price=EXCLUDED.yearly_price,
+      user_limit=EXCLUDED.user_limit,
+      warehouse_limit=EXCLUDED.warehouse_limit,
+      features=EXCLUDED.features,
+      active=true`;
 
   const adminCount=await sql`SELECT COUNT(*)::int count FROM bizora_admins`;
   if(!Number(adminCount[0]?.count||0)){
@@ -305,6 +315,16 @@ export async function getCompanyAccess(sql,req){
   const subValid=u.subscription_is_valid===true||String(u.subscription_is_valid)==='true';
   const access_mode=blocked?'blocked':subValid?'write':'read_only';
   return {...u,access_mode};
+}
+
+export function hasFeature(user,feature){
+  const features=user?.features||{};
+  return features?.[feature]===true;
+}
+export function requireFeature(user,res,feature,label=feature){
+  if(hasFeature(user,feature))return true;
+  res.status(403).json({error:`${label} is not included in the current ${user?.plan_name||'subscription'} plan`});
+  return false;
 }
 
 export async function requireCompanyUser(sql,req,res,{write=false}={}){
