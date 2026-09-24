@@ -3,6 +3,8 @@ import { bizoraSql,ensureBizoraSchema,requireCompanyUser,requireFeature,body,cle
 const code=v=>clean(v).toUpperCase().replace(/[^A-Z0-9_-]/g,'').slice(0,30);
 const number=v=>Number.isFinite(Number(v))?Number(v):0;
 const paymentMethods=new Set(['CASH','BANK','ONLINE','CHEQUE','EASYPAISA','JAZZCASH']);
+const ecommercePaymentMethods=new Set(['COD','CASH','BANK','ONLINE','EASYPAISA','JAZZCASH']);
+const ecommerceOrderStatuses=new Set(['pending','confirmed','packed','shipped','completed','cancelled']);
 const userRoles=new Set(['company_admin','manager','accountant','salesman','cashier']);
 
 async function overview(sql,u){
@@ -45,6 +47,7 @@ export default async function handler(req,res){
       inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger',
       stock_transfers:'inventory_ledger',create_stock_transfer:'inventory_ledger',
       stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',
+      ecommerce_dashboard:'ecommerce',ecommerce_products:'ecommerce',ecommerce_orders:'ecommerce',save_ecommerce_product:'ecommerce',set_ecommerce_product_status:'ecommerce',save_ecommerce_settings:'ecommerce',create_ecommerce_order:'ecommerce',set_ecommerce_order_status:'ecommerce',
       reports_summary:'basic_reports',advanced_reports:'advanced_reports'
     };
     const requiredFeature=featureByAction[action];
@@ -261,6 +264,35 @@ export default async function handler(req,res){
         ORDER BY a.adjustment_date DESC,a.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
     }
+    if(req.method==='GET'&&action==='ecommerce_dashboard'){
+      const settings=await sql`SELECT company_id,store_name,contact_phone,whatsapp_number,address,delivery_charge,active,updated_at
+        FROM ecommerce_store_settings WHERE company_id=${u.company_id} LIMIT 1`;
+      const stats=await sql`SELECT
+        (SELECT COUNT(*) FROM ecommerce_products WHERE company_id=${u.company_id})::int products,
+        (SELECT COUNT(*) FROM ecommerce_products WHERE company_id=${u.company_id} AND active=true)::int active_products,
+        (SELECT COUNT(*) FROM ecommerce_orders WHERE company_id=${u.company_id} AND status='pending')::int pending_orders,
+        (SELECT COUNT(*) FROM ecommerce_orders WHERE company_id=${u.company_id} AND status='completed')::int completed_orders,
+        COALESCE((SELECT SUM(total) FROM ecommerce_orders WHERE company_id=${u.company_id} AND status='completed'),0)::numeric completed_sales`;
+      const recent=await sql`SELECT id,order_number,customer_name,phone,payment_method,status,total,created_at
+        FROM ecommerce_orders WHERE company_id=${u.company_id} ORDER BY created_at DESC,id DESC LIMIT 8`;
+      return res.status(200).json({settings:settings[0]||{store_name:u.company_name,delivery_charge:0,active:true},stats:stats[0]||{},recent_orders:recent});
+    }
+    if(req.method==='GET'&&action==='ecommerce_products'){
+      const rows=await sql`SELECT id,sku,product_name,description,price,stock_qty,image_url,active,created_at,updated_at
+        FROM ecommerce_products WHERE company_id=${u.company_id} ORDER BY created_at DESC,id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='ecommerce_orders'){
+      const rows=await sql`SELECT o.id,o.order_number,o.customer_name,o.phone,o.address,o.payment_method,o.status,o.subtotal,o.delivery_charge,o.total,o.notes,o.created_at,o.updated_at,
+        COALESCE(i.item_count,0)::int item_count,COALESCE(i.total_quantity,0)::numeric total_quantity
+        FROM ecommerce_orders o
+        LEFT JOIN LATERAL(
+          SELECT COUNT(*)::int item_count,COALESCE(SUM(quantity),0)::numeric total_quantity
+          FROM ecommerce_order_items x WHERE x.company_id=o.company_id AND x.ecommerce_order_id=o.id
+        ) i ON true
+        WHERE o.company_id=${u.company_id} ORDER BY o.created_at DESC,o.id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
+    }
     if(req.method==='GET'&&action==='reports_summary'){
       const today=new Date().toISOString().slice(0,10),monthStart=today.slice(0,8)+'01';
       const from=clean(req.query?.date_from)||monthStart,to=clean(req.query?.date_to)||today;
@@ -384,6 +416,84 @@ export default async function handler(req,res){
         GROUP BY p.id,p.sku,p.product_name,p.unit
         ORDER BY sales_value DESC LIMIT 20`;
       return res.status(200).json({date_from:from,date_to:to,summary:totals[0]||{},top_products:products});
+    }
+
+    if(req.method==='POST'&&action==='save_ecommerce_product'){
+      const productId=positiveInt(b.product_id,0)||null,sku=code(b.sku),name=clean(b.product_name),price=number(b.price),stockQty=number(b.stock_qty);
+      if(!sku||!name||price<0||stockQty<0)return res.status(400).json({error:'SKU, product name, valid price and stock required'});
+      let rows;
+      if(productId){
+        rows=await sql`UPDATE ecommerce_products SET sku=${sku},product_name=${name},description=${clean(b.description)||null},price=${price},stock_qty=${stockQty},image_url=${clean(b.image_url)||null},updated_at=now()
+          WHERE id=${productId} AND company_id=${u.company_id}
+          RETURNING id,sku,product_name,description,price,stock_qty,image_url,active,created_at,updated_at`;
+      }else{
+        rows=await sql`INSERT INTO ecommerce_products(company_id,sku,product_name,description,price,stock_qty,image_url,created_by_user_id)
+          VALUES(${u.company_id},${sku},${name},${clean(b.description)||null},${price},${stockQty},${clean(b.image_url)||null},${u.id})
+          RETURNING id,sku,product_name,description,price,stock_qty,image_url,active,created_at,updated_at`;
+      }
+      if(!rows[0])return res.status(404).json({error:'E-commerce product not found'});
+      await companyAudit(sql,u,productId?'ECOM_PRODUCT_UPDATED':'ECOM_PRODUCT_CREATED',{entityType:'ecommerce_product',entityId:String(rows[0].id)});
+      return res.status(productId?200:201).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='set_ecommerce_product_status'){
+      const productId=positiveInt(b.product_id,0),active=Boolean(b.active);
+      if(!productId)return res.status(400).json({error:'Valid product required'});
+      const rows=await sql`UPDATE ecommerce_products SET active=${active},updated_at=now() WHERE id=${productId} AND company_id=${u.company_id}
+        RETURNING id,sku,product_name,price,stock_qty,active`;
+      if(!rows[0])return res.status(404).json({error:'E-commerce product not found'});
+      await companyAudit(sql,u,'ECOM_PRODUCT_STATUS_CHANGED',{entityType:'ecommerce_product',entityId:String(productId),metadata:{active}});
+      return res.status(200).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='save_ecommerce_settings'){
+      const storeName=clean(b.store_name)||u.company_name,deliveryCharge=number(b.delivery_charge);
+      if(deliveryCharge<0)return res.status(400).json({error:'Valid delivery charge required'});
+      const rows=await sql`INSERT INTO ecommerce_store_settings(company_id,store_name,contact_phone,whatsapp_number,address,delivery_charge,active)
+        VALUES(${u.company_id},${storeName},${clean(b.contact_phone)||null},${clean(b.whatsapp_number)||null},${clean(b.address)||null},${deliveryCharge},${b.active===false?false:true})
+        ON CONFLICT(company_id) DO UPDATE SET store_name=EXCLUDED.store_name,contact_phone=EXCLUDED.contact_phone,whatsapp_number=EXCLUDED.whatsapp_number,address=EXCLUDED.address,delivery_charge=EXCLUDED.delivery_charge,active=EXCLUDED.active,updated_at=now()
+        RETURNING *`;
+      await companyAudit(sql,u,'ECOM_SETTINGS_UPDATED',{entityType:'ecommerce_store_settings',entityId:String(u.company_id)});
+      return res.status(200).json({settings:rows[0]});
+    }
+    if(req.method==='POST'&&action==='create_ecommerce_order'){
+      const customerName=clean(b.customer_name),phone=clean(b.phone),address=clean(b.address)||null,method=clean(b.payment_method||'COD').toUpperCase(),notes=clean(b.notes)||null;
+      const items=Array.isArray(b.items)?b.items.map(x=>({product_id:positiveInt(x.product_id,0),quantity:number(x.quantity)})):[];
+      if(!customerName||!phone||!items.length||!ecommercePaymentMethods.has(method))return res.status(400).json({error:'Customer, phone, products and valid payment method required'});
+      if(items.some(x=>!x.product_id||x.quantity<=0))return res.status(400).json({error:'Valid order product quantities required'});
+      const prepared=[];
+      for(const item of items){
+        const p=await sql`SELECT id,product_name,price,stock_qty,active FROM ecommerce_products WHERE id=${item.product_id} AND company_id=${u.company_id} LIMIT 1`;
+        if(!p[0]?.active)return res.status(400).json({error:'One or more store products are unavailable'});
+        if(number(p[0].stock_qty)+1e-9<item.quantity)return res.status(400).json({error:'Insufficient e-commerce stock for '+p[0].product_name});
+        prepared.push({...item,product_name:p[0].product_name,unit_price:number(p[0].price)});
+      }
+      const settings=await sql`SELECT delivery_charge FROM ecommerce_store_settings WHERE company_id=${u.company_id} LIMIT 1`;
+      const subtotal=prepared.reduce((n,x)=>n+x.quantity*x.unit_price,0),deliveryCharge=b.delivery_charge===undefined?number(settings[0]?.delivery_charge):number(b.delivery_charge),total=Number((subtotal+deliveryCharge).toFixed(2));
+      if(deliveryCharge<0)return res.status(400).json({error:'Valid delivery charge required'});
+      const seq=await sql`SELECT COALESCE(MAX(id),0)::bigint+1 next_id FROM ecommerce_orders WHERE company_id=${u.company_id}`;
+      const orderNumber='EC-'+new Date().toISOString().slice(0,10).replaceAll('-','')+'-'+String(seq[0]?.next_id||1).padStart(5,'0');
+      const rows=await sql`INSERT INTO ecommerce_orders(company_id,order_number,customer_name,phone,address,payment_method,status,subtotal,delivery_charge,total,notes,created_by_user_id)
+        VALUES(${u.company_id},${orderNumber},${customerName},${phone},${address},${method},'pending',${subtotal},${deliveryCharge},${total},${notes},${u.id}) RETURNING *`;
+      for(const item of prepared){
+        await sql`INSERT INTO ecommerce_order_items(company_id,ecommerce_order_id,ecommerce_product_id,product_name,quantity,unit_price)
+          VALUES(${u.company_id},${rows[0].id},${item.product_id},${item.product_name},${item.quantity},${item.unit_price})`;
+        await sql`UPDATE ecommerce_products SET stock_qty=stock_qty-${item.quantity},updated_at=now() WHERE id=${item.product_id} AND company_id=${u.company_id}`;
+      }
+      await companyAudit(sql,u,'ECOM_ORDER_CREATED',{entityType:'ecommerce_order',entityId:String(rows[0].id),metadata:{order_number:orderNumber,total,item_count:prepared.length}});
+      return res.status(201).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='set_ecommerce_order_status'){
+      const orderId=positiveInt(b.order_id,0),status=clean(b.status).toLowerCase();
+      if(!orderId||!ecommerceOrderStatuses.has(status))return res.status(400).json({error:'Valid order and status required'});
+      const current=await sql`SELECT id,status FROM ecommerce_orders WHERE id=${orderId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!current[0])return res.status(404).json({error:'E-commerce order not found'});
+      if(current[0].status==='cancelled'&&status!=='cancelled')return res.status(400).json({error:'Cancelled order cannot be reopened'});
+      if(status==='cancelled'&&current[0].status!=='cancelled'){
+        const items=await sql`SELECT ecommerce_product_id,quantity FROM ecommerce_order_items WHERE ecommerce_order_id=${orderId} AND company_id=${u.company_id}`;
+        for(const item of items)await sql`UPDATE ecommerce_products SET stock_qty=stock_qty+${item.quantity},updated_at=now() WHERE id=${item.ecommerce_product_id} AND company_id=${u.company_id}`;
+      }
+      const rows=await sql`UPDATE ecommerce_orders SET status=${status},updated_at=now() WHERE id=${orderId} AND company_id=${u.company_id} RETURNING *`;
+      await companyAudit(sql,u,'ECOM_ORDER_STATUS_CHANGED',{entityType:'ecommerce_order',entityId:String(orderId),metadata:{from:current[0].status,to:status}});
+      return res.status(200).json({record:rows[0]});
     }
 
     if(req.method==='POST'&&action==='request_audit'){

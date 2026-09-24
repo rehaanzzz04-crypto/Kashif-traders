@@ -359,6 +359,61 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(client_receipt_id,client_invoice_id)
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS ecommerce_store_settings(
+    company_id BIGINT PRIMARY KEY REFERENCES companies(id) ON DELETE RESTRICT,
+    store_name TEXT NOT NULL,
+    contact_phone TEXT,
+    whatsapp_number TEXT,
+    address TEXT,
+    delivery_charge NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(delivery_charge>=0),
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS ecommerce_products(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    sku TEXT NOT NULL,
+    product_name TEXT NOT NULL,
+    description TEXT,
+    price NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(price>=0),
+    stock_qty NUMERIC(16,3) NOT NULL DEFAULT 0 CHECK(stock_qty>=0),
+    image_url TEXT,
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,sku)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS ecommerce_orders(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    order_number TEXT NOT NULL,
+    customer_name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    address TEXT,
+    payment_method TEXT NOT NULL DEFAULT 'COD',
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','confirmed','packed','shipped','completed','cancelled')),
+    subtotal NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(subtotal>=0),
+    delivery_charge NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(delivery_charge>=0),
+    total NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(total>=0),
+    notes TEXT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,order_number)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS ecommerce_order_items(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    ecommerce_order_id BIGINT NOT NULL REFERENCES ecommerce_orders(id) ON DELETE RESTRICT,
+    ecommerce_product_id BIGINT NOT NULL REFERENCES ecommerce_products(id) ON DELETE RESTRICT,
+    product_name TEXT NOT NULL,
+    quantity NUMERIC(16,3) NOT NULL CHECK(quantity>0),
+    unit_price NUMERIC(14,2) NOT NULL CHECK(unit_price>=0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+
   await sql`CREATE TABLE IF NOT EXISTS audit_service_prices(
     id BIGSERIAL PRIMARY KEY,
     plan_id BIGINT NOT NULL UNIQUE REFERENCES plans(id) ON DELETE RESTRICT,
@@ -431,6 +486,9 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_client_invoices_company_idx ON erp_client_invoices(company_id,invoice_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_invoice_items_company_invoice_idx ON erp_client_invoice_items(company_id,client_invoice_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_receipts_company_idx ON erp_client_receipts(company_id,receipt_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS ecommerce_products_company_idx ON ecommerce_products(company_id,active,created_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS ecommerce_orders_company_idx ON ecommerce_orders(company_id,created_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS ecommerce_order_items_company_order_idx ON ecommerce_order_items(company_id,ecommerce_order_id)`;
   await sql`CREATE INDEX IF NOT EXISTS audit_requests_company_idx ON audit_requests(company_id,requested_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS audit_requests_status_idx ON audit_requests(status,payment_status,requested_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS audit_events_company_idx ON audit_events(company_id,created_at DESC)`;

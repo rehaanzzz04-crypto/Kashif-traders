@@ -23,7 +23,7 @@ const defs={
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger',cashier:'cashier',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -74,6 +74,7 @@ async function show(view){
   if(view==='supplier-statement')return openPartyStatement('supplier');
   if(view==='client-statement')return openPartyStatement('client');
   if(view==='cashier')return openCashier();
+  if(view==='ecommerce')return openEcommerce();
   if(view==='reports')return openReports(false);
   if(view==='advanced-reports')return openReports(true);
   if(view==='audit-center')return openAuditCenter();
@@ -318,6 +319,69 @@ async function viewPurchasedAudit(requestId){
     '</div>';
   $('backToAuditService').onclick=()=>openAuditCenter().catch(e=>alert(e.message));
   $('printAudit').onclick=()=>window.print();
+}
+
+function installEcommerceModule(){
+  if(document.querySelector('[data-view="ecommerce"]'))return;
+  const nav=document.querySelector('#workspaceNav .navScroll');if(!nav)return;
+  const section=document.createElement('div');section.className='navSection';
+  section.innerHTML='<div class="navSectionTitle">Online Store</div><button data-view="ecommerce" data-feature="ecommerce"><span class="navIcon"><svg viewBox="0 0 24 24"><path d="M4 8h16l-1 12H5z"/><path d="M8 8a4 4 0 0 1 8 0"/><path d="M9 13h6"/></svg></span><span class="navLabel">E-commerce</span><span class="navChevron">›</span></button>';
+  nav.appendChild(section);
+  if(!document.getElementById('bizoraEcommerceStyles')){
+    const style=document.createElement('style');style.id='bizoraEcommerceStyles';style.textContent=`
+      .ecomHead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}.ecomHead h2{margin:0;color:#14213d}.ecomHead p{margin:4px 0 0;color:#74829a;font-size:10px}
+      .ecomTabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}.ecomTabs button{border:1px solid #d8e3f1;background:#fff;color:#506079;border-radius:999px;padding:8px 12px;font-size:10px;font-weight:900}.ecomTabs button.active{background:linear-gradient(135deg,#176fe8,#7042e8);color:#fff;border-color:transparent}
+      .ecomKpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin-bottom:13px}.ecomKpis>div{padding:12px;border-radius:16px;border:1px solid #dce7f5;background:linear-gradient(145deg,#fff,#f4f8ff)}.ecomKpis small{display:block;color:#76839a;font-size:8px;text-transform:uppercase}.ecomKpis b{display:block;margin-top:5px;color:#10265a;font-size:19px}
+      .ecomGrid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:13px}.ecomForm{padding:14px!important}.ecomForm h3{margin:0 0 10px;color:#17213a;font-size:14px}.ecomForm .formGrid{grid-template-columns:1fr 1fr}.ecomFormActions{display:flex;gap:7px;justify-content:flex-end;margin-top:10px}
+      .ecomProductImg{width:46px;height:46px;border-radius:12px;object-fit:cover;background:#eef3fa;border:1px solid #dae4f1}.ecomProductCell{display:flex;align-items:center;gap:8px}.ecomProductCell b{display:block}.ecomProductCell small{display:block;color:#74829a;font-size:8px;margin-top:2px}
+      .ecomStatus{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:8px;font-weight:900;text-transform:uppercase;background:#f2f4f7;color:#667085}.ecomStatus.pending{background:#fff6df;color:#946200}.ecomStatus.confirmed,.ecomStatus.packed,.ecomStatus.shipped{background:#edf3ff;color:#345bc1}.ecomStatus.completed{background:#e9fbf2;color:#087f58}.ecomStatus.cancelled{background:#fff0f2;color:#b4233c}
+      .ecomOrderStatus{min-width:110px;padding:7px!important;font-size:9px!important}.ecomOrderLines{display:grid;gap:7px}.ecomOrderLine{display:grid;grid-template-columns:minmax(0,1fr) 90px 34px;gap:7px;align-items:end;padding:9px;border:1px solid #e0e8f2;border-radius:13px;background:#fbfdff}.ecomOrderLine label{margin:0}.ecomOrderRemove{width:34px;height:34px;padding:0!important;border-radius:10px!important}
+      .ecomNote{padding:10px 12px;border-radius:13px;background:#f4f8ff;color:#60708b;font-size:10px;border:1px solid #dce7f5;margin-bottom:12px}
+      @media(max-width:900px){.ecomGrid{grid-template-columns:1fr}.ecomKpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media(max-width:620px){.ecomHead{align-items:stretch;flex-direction:column}.ecomKpis{grid-template-columns:1fr 1fr}.ecomForm .formGrid{grid-template-columns:1fr}.ecomOrderLine{grid-template-columns:1fr 80px 32px}}
+    `;document.head.appendChild(style);
+  }
+}
+async function openEcommerce(){
+  $('workspaceTitle').textContent='E-commerce';
+  $('workspaceSubtitle').textContent=model.company.name+' · Separate Online Store';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading e-commerce…</div></div>';
+  const [dash,productsData,ordersData]=await Promise.all([
+    json('/api/bizora-company?action=ecommerce_dashboard'),
+    json('/api/bizora-company?action=ecommerce_products'),
+    json('/api/bizora-company?action=ecommerce_orders')
+  ]);
+  let products=productsData.records||[],orders=ordersData.records||[],tab='overview',editing=null;
+  const render=()=>{
+    const st=dash.stats||{},settings=dash.settings||{};
+    $('workspaceBody').innerHTML=
+      '<div class="ecomHead"><div><span class="capEyebrow">SEPARATE STORE SYSTEM</span><h2>'+esc(settings.store_name||model.company.name)+'</h2><p>Store products, stock and orders ERP products/invoices se separate hain.</p></div><span class="planBadge">'+esc(model.subscription.plan_name||'Plan')+'</span></div>'+
+      '<div class="ecomTabs"><button data-tab="overview" class="'+(tab==='overview'?'active':'')+'">Overview</button><button data-tab="products" class="'+(tab==='products'?'active':'')+'">Products</button><button data-tab="orders" class="'+(tab==='orders'?'active':'')+'">Orders</button><button data-tab="settings" class="'+(tab==='settings'?'active':'')+'">Store Settings</button></div>'+
+      (tab==='overview'?'<div class="ecomKpis">'+[['Products',st.products],['Active Products',st.active_products],['Pending Orders',st.pending_orders],['Completed Orders',st.completed_orders],['Completed Sales',money(st.completed_sales)]].map(x=>'<div><small>'+esc(x[0])+'</small><b>'+esc(x[1]??0)+'</b></div>').join('')+'</div><div class="card"><div class="reportSectionTitle"><b>Recent Orders</b><span>'+esc((dash.recent_orders||[]).length)+' latest</span></div>'+orderTable(dash.recent_orders||[])+'</div>':'')+
+      (tab==='products'?'<div class="ecomGrid"><div class="card">'+productTable(products)+'</div><form id="ecomProductForm" class="card ecomForm"><h3>'+(editing?'Edit Product':'Add Store Product')+'</h3><div class="formGrid"><label>SKU<input name="sku" required value="'+esc(editing?.sku||'')+'"></label><label>Product Name<input name="product_name" required value="'+esc(editing?.product_name||'')+'"></label><label>Price<input name="price" type="number" min="0" step="0.01" required value="'+esc(editing?.price||0)+'"></label><label>Store Stock<input name="stock_qty" type="number" min="0" step="0.001" required value="'+esc(editing?.stock_qty||0)+'"></label><label>Image URL<input name="image_url" value="'+esc(editing?.image_url||'')+'"></label></div><label>Description<textarea name="description">'+esc(editing?.description||'')+'</textarea></label><div class="ecomFormActions">'+(editing?'<button type="button" id="cancelEcomEdit" class="secondary">Cancel</button>':'')+'<button class="primary">'+(editing?'Save Changes':'Add Product')+'</button></div></form></div>':'')+
+      (tab==='orders'?'<div class="ecomGrid"><div class="card">'+orderTable(orders)+'</div><form id="ecomOrderForm" class="card ecomForm"><h3>New Manual Order</h3><div class="ecomNote">Customer storefront phase se pehla orders ko yahan manually test bhi kiya ja sakta hai.</div><div class="formGrid"><label>Customer Name<input name="customer_name" required></label><label>Phone<input name="phone" required></label><label>Payment<select name="payment_method"><option>COD</option><option>CASH</option><option>BANK</option><option>EASYPAISA</option><option>JAZZCASH</option><option>ONLINE</option></select></label><label>Delivery Charge<input name="delivery_charge" type="number" min="0" step="0.01" value="'+Number(settings.delivery_charge||0)+'"></label></div><label>Address<textarea name="address"></textarea></label><div class="lineHead"><div><b>Order Products</b><small>Separate store stock</small></div><button id="addEcomOrderLine" type="button" class="secondary">+ Product</button></div><div id="ecomOrderLines" class="ecomOrderLines"></div><label>Notes<textarea name="notes"></textarea></label><div class="ecomFormActions"><button class="primary">Create Order</button></div></form></div>':'')+
+      (tab==='settings'?'<form id="ecomSettingsForm" class="card ecomForm"><h3>Store Settings</h3><div class="formGrid"><label>Store Name<input name="store_name" required value="'+esc(settings.store_name||model.company.name)+'"></label><label>Contact Phone<input name="contact_phone" value="'+esc(settings.contact_phone||'')+'"></label><label>WhatsApp Number<input name="whatsapp_number" value="'+esc(settings.whatsapp_number||'')+'"></label><label>Default Delivery Charge<input name="delivery_charge" type="number" min="0" step="0.01" value="'+Number(settings.delivery_charge||0)+'"></label></div><label>Store Address<textarea name="address">'+esc(settings.address||'')+'</textarea></label><label><input name="active" type="checkbox" '+(settings.active!==false?'checked':'')+'> Store Active</label><div class="ecomFormActions"><button class="primary">Save Settings</button></div></form>':'');
+    wire();
+  };
+  const productTable=rows=>'<div class="tablewrap"><table><thead><tr><th>Product</th><th>Price</th><th>Store Stock</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+(rows.length?rows.map(p=>'<tr><td><div class="ecomProductCell">'+(p.image_url?'<img class="ecomProductImg" src="'+esc(p.image_url)+'" alt="">':'<div class="ecomProductImg"></div>')+'<span><b>'+esc(p.product_name)+'</b><small>'+esc(p.sku)+'</small></span></div></td><td>'+money(p.price)+'</td><td>'+esc(p.stock_qty)+'</td><td><span class="pill '+(p.active?'active':'inactive')+'">'+(p.active?'Active':'Inactive')+'</span></td><td><div class="rowactions"><button class="secondary ecomEdit" data-id="'+p.id+'">Edit</button><button class="secondary ecomToggle" data-id="'+p.id+'" data-active="'+(p.active?'1':'0')+'">'+(p.active?'Disable':'Enable')+'</button></div></td></tr>').join(''):'<tr><td colspan="5">No store products yet</td></tr>')+'</tbody></table></div>';
+  const orderTable=rows=>'<div class="tablewrap"><table><thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th></tr></thead><tbody>'+(rows.length?rows.map(o=>'<tr><td><b>'+esc(o.order_number)+'</b><small>'+esc(new Date(o.created_at).toLocaleString('en-GB'))+'</small></td><td>'+esc(o.customer_name)+'<small>'+esc(o.phone)+'</small></td><td>'+esc(o.item_count??'—')+'</td><td>'+money(o.total)+'</td><td>'+esc(o.payment_method)+'</td><td><select class="ecomOrderStatus" data-id="'+o.id+'">'+['pending','confirmed','packed','shipped','completed','cancelled'].map(x=>'<option value="'+x+'" '+(o.status===x?'selected':'')+'>'+x+'</option>').join('')+'</select></td></tr>').join(''):'<tr><td colspan="6">No orders yet</td></tr>')+'</tbody></table></div>';
+  const orderLine=()=>'<div class="ecomOrderLine"><label>Product<select class="ecomOrderProduct" required><option value="">Select Product</option>'+products.filter(p=>p.active&&Number(p.stock_qty)>0).map(p=>'<option value="'+p.id+'">'+esc(p.product_name)+' · Stock '+esc(p.stock_qty)+' · '+money(p.price)+'</option>').join('')+'</select></label><label>Qty<input class="ecomOrderQty" type="number" min="0.001" step="0.001" value="1" required></label><button type="button" class="secondary ecomOrderRemove">×</button></div>';
+  const reload=async()=>{const [d,p,o]=await Promise.all([json('/api/bizora-company?action=ecommerce_dashboard'),json('/api/bizora-company?action=ecommerce_products'),json('/api/bizora-company?action=ecommerce_orders')]);Object.assign(dash,d);products=p.records||[];orders=o.records||[];editing=null;render()};
+  const wire=()=>{
+    document.querySelectorAll('.ecomTabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;editing=null;render()});
+    document.querySelectorAll('.ecomEdit').forEach(b=>b.onclick=()=>{editing=products.find(x=>Number(x.id)===Number(b.dataset.id))||null;render()});
+    document.querySelectorAll('.ecomToggle').forEach(b=>b.onclick=async()=>{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_ecommerce_product_status',product_id:Number(b.dataset.id),active:b.dataset.active!=='1'})});await reload()});
+    document.querySelectorAll('.ecomOrderStatus').forEach(sel=>sel.onchange=async()=>{try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_ecommerce_order_status',order_id:Number(sel.dataset.id),status:sel.value})});await reload()}catch(e){alert(e.message);await reload()}});
+    if($('ecomProductForm'))$('ecomProductForm').onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save_ecommerce_product',product_id:editing?.id||null,...data})});await reload()};
+    if($('cancelEcomEdit'))$('cancelEcomEdit').onclick=()=>{editing=null;render()};
+    if($('ecomSettingsForm'))$('ecomSettingsForm').onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));data.active=e.currentTarget.elements.active.checked;await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save_ecommerce_settings',...data})});await reload()};
+    if($('ecomOrderForm')){
+      const holder=$('ecomOrderLines');holder.innerHTML=orderLine();$('addEcomOrderLine').onclick=()=>holder.insertAdjacentHTML('beforeend',orderLine());holder.onclick=e=>{if(e.target.closest('.ecomOrderRemove')&&holder.querySelectorAll('.ecomOrderLine').length>1)e.target.closest('.ecomOrderLine').remove()};
+      $('ecomOrderForm').onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));data.items=[...holder.querySelectorAll('.ecomOrderLine')].map(x=>({product_id:Number(x.querySelector('.ecomOrderProduct').value||0),quantity:Number(x.querySelector('.ecomOrderQty').value||0)}));if(data.items.some(x=>!x.product_id||x.quantity<=0))return alert('Valid order products required');await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create_ecommerce_order',...data})});await reload()};
+    }
+  };
+  render();
 }
 
 function installCashierModule(){
@@ -652,4 +716,4 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
   $('recordDialog').close();e.currentTarget.reset();optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
-(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
+(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installEcommerceModule();setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
