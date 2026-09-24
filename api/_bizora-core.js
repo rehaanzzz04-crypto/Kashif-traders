@@ -259,6 +259,48 @@ export async function ensureBizoraSchema(sql){
     CHECK((qty_in>0 AND qty_out=0) OR (qty_out>0 AND qty_in=0))
   )`;
 
+  await sql`CREATE TABLE IF NOT EXISTS erp_stock_transfers(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    transfer_number TEXT NOT NULL,
+    from_warehouse_id BIGINT NOT NULL REFERENCES erp_warehouses(id) ON DELETE RESTRICT,
+    to_warehouse_id BIGINT NOT NULL REFERENCES erp_warehouses(id) ON DELETE RESTRICT,
+    transfer_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    status TEXT NOT NULL DEFAULT 'posted' CHECK(status IN ('draft','posted','cancelled')),
+    notes TEXT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,transfer_number),
+    CHECK(from_warehouse_id<>to_warehouse_id)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_stock_transfer_items(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    stock_transfer_id BIGINT NOT NULL REFERENCES erp_stock_transfers(id) ON DELETE RESTRICT,
+    product_id BIGINT NOT NULL REFERENCES erp_products(id) ON DELETE RESTRICT,
+    quantity NUMERIC(16,3) NOT NULL CHECK(quantity>0),
+    unit_cost NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(unit_cost>=0),
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_stock_adjustments(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    adjustment_number TEXT NOT NULL,
+    warehouse_id BIGINT NOT NULL REFERENCES erp_warehouses(id) ON DELETE RESTRICT,
+    product_id BIGINT NOT NULL REFERENCES erp_products(id) ON DELETE RESTRICT,
+    adjustment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    adjustment_type TEXT NOT NULL CHECK(adjustment_type IN ('in','out')),
+    quantity NUMERIC(16,3) NOT NULL CHECK(quantity>0),
+    unit_cost NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(unit_cost>=0),
+    reason TEXT,
+    notes TEXT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,adjustment_number)
+  )`;
+
   await sql`CREATE TABLE IF NOT EXISTS erp_client_invoices(
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
@@ -321,6 +363,9 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_grn_items_company_grn_idx ON erp_grn_items(company_id,grn_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_inventory_movements_company_idx ON erp_inventory_movements(company_id,movement_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_inventory_movements_stock_idx ON erp_inventory_movements(company_id,warehouse_id,product_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_stock_transfers_company_idx ON erp_stock_transfers(company_id,transfer_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_stock_transfer_items_company_transfer_idx ON erp_stock_transfer_items(company_id,stock_transfer_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_stock_adjustments_company_idx ON erp_stock_adjustments(company_id,adjustment_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_invoices_company_idx ON erp_client_invoices(company_id,invoice_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_receipts_company_idx ON erp_client_receipts(company_id,receipt_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS audit_events_company_idx ON audit_events(company_id,created_at DESC)`;
