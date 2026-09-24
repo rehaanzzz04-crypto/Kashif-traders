@@ -297,21 +297,71 @@ export default async function handler(req,res){
     if(req.method==='GET'&&action==='audit_events'){
       const requestId=positiveInt(req.query?.request_id,0);
       if(!requestId)return res.status(400).json({error:'Approved audit request required'});
-      const request=await sql`SELECT * FROM audit_requests WHERE id=${requestId} AND company_id=${u.company_id} AND payment_status='verified' AND status IN('approved','completed') LIMIT 1`;
+      const request=await sql`SELECT r.*,p.plan_code,p.plan_name
+        FROM audit_requests r JOIN plans p ON p.id=r.plan_id
+        WHERE r.id=${requestId} AND r.company_id=${u.company_id} AND r.payment_status='verified' AND r.status IN('approved','completed') LIMIT 1`;
       if(!request[0])return res.status(403).json({error:'This audit has not been approved yet'});
-      const rows=await sql`SELECT e.id,e.created_at,e.event_type,e.entity_type,e.entity_id,e.metadata,
-        COALESCE(cu.full_name,ba.full_name,'System') actor_name
-        FROM audit_events e
-        LEFT JOIN company_users cu ON cu.id=e.actor_company_user_id AND cu.company_id=e.company_id
-        LEFT JOIN bizora_admins ba ON ba.id=e.actor_admin_id
-        WHERE e.company_id=${u.company_id}
-          AND e.created_at>=${request[0].period_from}::date
-          AND e.created_at<(${request[0].period_to}::date+INTERVAL '1 day')
-        ORDER BY e.created_at DESC,e.id DESC LIMIT 5000`;
+      const from=request[0].period_from,to=request[0].period_to;
+      const [summaryRows,controlRows,eventTypes,events]=await Promise.all([
+        sql`SELECT
+          COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_sales,
+          COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND receipt_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_receipts,
+          COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_purchases,
+          COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id} AND payment_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_payments,
+          COALESCE((SELECT SUM(ii.quantity*(ii.unit_price-ii.unit_cost))
+            FROM erp_client_invoice_items ii JOIN erp_client_invoices i ON i.id=ii.client_invoice_id AND i.company_id=ii.company_id
+            WHERE ii.company_id=${u.company_id} AND i.status<>'cancelled' AND i.invoice_date BETWEEN ${from}::date AND ${to}::date),0)::numeric gross_profit,
+          (SELECT COUNT(*) FROM erp_grns WHERE company_id=${u.company_id} AND status='posted' AND received_date BETWEEN ${from}::date AND ${to}::date)::int grn_count,
+          (SELECT COUNT(*) FROM erp_stock_transfers WHERE company_id=${u.company_id} AND status='posted' AND transfer_date BETWEEN ${from}::date AND ${to}::date)::int transfer_count,
+          (SELECT COUNT(*) FROM erp_stock_adjustments WHERE company_id=${u.company_id} AND adjustment_date BETWEEN ${from}::date AND ${to}::date)::int adjustment_count,
+          (SELECT COUNT(*) FROM audit_events WHERE company_id=${u.company_id} AND created_at>=${from}::date AND created_at<(${to}::date+INTERVAL '1 day'))::int audit_event_count,
+          (SELECT COUNT(DISTINCT COALESCE(actor_company_user_id,0)) FROM audit_events WHERE company_id=${u.company_id} AND actor_company_user_id IS NOT NULL AND created_at>=${from}::date AND created_at<(${to}::date+INTERVAL '1 day'))::int active_users`,
+        sql`SELECT
+          (SELECT COUNT(*) FROM (
+            SELECT m.product_id,m.warehouse_id,SUM(m.qty_in-m.qty_out) qty
+            FROM erp_inventory_movements m WHERE m.company_id=${u.company_id}
+            GROUP BY m.product_id,m.warehouse_id HAVING SUM(m.qty_in-m.qty_out)<0
+          ) x)::int negative_stock_items,
+          (SELECT COUNT(*) FROM erp_client_invoices i
+            WHERE i.company_id=${u.company_id} AND i.status<>'cancelled' AND i.due_date IS NOT NULL AND i.due_date<${to}::date
+              AND i.amount>COALESCE((SELECT SUM(a.amount) FROM erp_client_receipt_allocations a
+                JOIN erp_client_receipts r ON r.id=a.client_receipt_id AND r.company_id=a.company_id
+                WHERE a.company_id=i.company_id AND a.client_invoice_id=i.id AND r.receipt_date<=${to}::date),0))::int overdue_customer_invoices,
+          (SELECT COUNT(*) FROM erp_supplier_invoices i
+            WHERE i.company_id=${u.company_id} AND i.status<>'cancelled' AND i.due_date IS NOT NULL AND i.due_date<${to}::date
+              AND i.amount>COALESCE((SELECT SUM(a.amount) FROM erp_supplier_payment_allocations a
+                JOIN erp_supplier_payments p ON p.id=a.supplier_payment_id AND p.company_id=a.company_id
+                WHERE a.company_id=i.company_id AND a.supplier_invoice_id=i.id AND p.payment_date<=${to}::date),0))::int overdue_supplier_invoices,
+          (SELECT COUNT(*) FROM erp_client_receipts r
+            WHERE r.company_id=${u.company_id} AND r.receipt_date BETWEEN ${from}::date AND ${to}::date
+              AND r.amount>COALESCE((SELECT SUM(a.amount) FROM erp_client_receipt_allocations a WHERE a.company_id=r.company_id AND a.client_receipt_id=r.id),0))::int unallocated_customer_receipts,
+          (SELECT COUNT(*) FROM erp_supplier_payments p
+            WHERE p.company_id=${u.company_id} AND p.payment_date BETWEEN ${from}::date AND ${to}::date
+              AND p.amount>COALESCE((SELECT SUM(a.amount) FROM erp_supplier_payment_allocations a WHERE a.company_id=p.company_id AND a.supplier_payment_id=p.id),0))::int unallocated_supplier_payments`,
+        sql`SELECT event_type,COUNT(*)::int event_count
+          FROM audit_events WHERE company_id=${u.company_id} AND created_at>=${from}::date AND created_at<(${to}::date+INTERVAL '1 day')
+          GROUP BY event_type ORDER BY event_count DESC,event_type LIMIT 50`,
+        sql`SELECT e.id,e.created_at,e.event_type,e.entity_type,e.entity_id,e.metadata,
+          COALESCE(cu.full_name,ba.full_name,'System') actor_name
+          FROM audit_events e
+          LEFT JOIN company_users cu ON cu.id=e.actor_company_user_id AND cu.company_id=e.company_id
+          LEFT JOIN bizora_admins ba ON ba.id=e.actor_admin_id
+          WHERE e.company_id=${u.company_id}
+            AND e.created_at>=${from}::date
+            AND e.created_at<(${to}::date+INTERVAL '1 day')
+          ORDER BY e.created_at DESC,e.id DESC LIMIT 5000`
+      ]);
       if(request[0].status==='approved'){
         await sql`UPDATE audit_requests SET status='completed',completed_at=now() WHERE id=${requestId} AND company_id=${u.company_id}`;
       }
-      return res.status(200).json({request:{...request[0],status:'completed'},records:rows});
+      return res.status(200).json({
+        request:{...request[0],status:'completed'},
+        company:{id:u.company_id,code:u.company_code,name:u.company_name},
+        summary:summaryRows[0]||{},
+        controls:controlRows[0]||{},
+        event_types:eventTypes,
+        records:events
+      });
     }
     if(req.method==='GET'&&action==='advanced_reports'){
       const today=new Date().toISOString().slice(0,10),monthStart=today.slice(0,8)+'01';
@@ -334,18 +384,6 @@ export default async function handler(req,res){
         GROUP BY p.id,p.sku,p.product_name,p.unit
         ORDER BY sales_value DESC LIMIT 20`;
       return res.status(200).json({date_from:from,date_to:to,summary:totals[0]||{},top_products:products});
-    }
-    if(req.method==='GET'&&action==='audit_events'){
-      const today=new Date().toISOString().slice(0,10),monthStart=today.slice(0,8)+'01';
-      const from=clean(req.query?.date_from)||monthStart,to=clean(req.query?.date_to)||today;
-      const rows=await sql`SELECT e.id,e.created_at,e.event_type,e.entity_type,e.entity_id,e.metadata,
-        COALESCE(cu.full_name,ba.full_name,'System') actor_name
-        FROM audit_events e
-        LEFT JOIN company_users cu ON cu.id=e.actor_company_user_id AND cu.company_id=e.company_id
-        LEFT JOIN bizora_admins ba ON ba.id=e.actor_admin_id
-        WHERE e.company_id=${u.company_id} AND e.created_at>=${from}::date AND e.created_at<(${to}::date+INTERVAL '1 day')
-        ORDER BY e.created_at DESC,e.id DESC LIMIT 1000`;
-      return res.status(200).json({date_from:from,date_to:to,records:rows});
     }
 
     if(req.method==='POST'&&action==='request_audit'){
