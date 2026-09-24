@@ -23,7 +23,7 @@ const defs={
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -70,6 +70,8 @@ async function show(view){
     $('workspaceBody').innerHTML='<div class="card upgradeCard"><h2>Module not included</h2><p>This feature is not available in the current '+esc(model.subscription.plan_name||'subscription')+' plan.</p></div>';
     return;
   }
+  if(view==='supplier-statement')return openPartyStatement('supplier');
+  if(view==='client-statement')return openPartyStatement('client');
   const d=defs[view];$('workspaceTitle').textContent=d.title;$('workspaceSubtitle').textContent=model.company.name+' · '+d.title;$('addRecord').classList.toggle('hidden',model.subscription.access_mode!=='write'||!d.create);
   $('workspaceBody').innerHTML='<div class="card">Loading…</div>';
   const j=await json('/api/bizora-company?action='+d.action),rows=j.records||[];optionCache[view]=rows;
@@ -214,6 +216,41 @@ async function openCustomerInvoiceDetail(row){
     '</tbody></table></div></div>';
   $('backToCustomerInvoices').onclick=()=>show('client-bills');
 }
+async function openPaymentForm(kind){
+  const isSupplier=kind==='supplier',parties=await partyOptions(kind),today=new Date().toISOString().slice(0,10);
+  const invoices=(await json('/api/bizora-company?action='+(isSupplier?'supplier_invoices':'client_invoices'))).records||[];
+  $('recordTitle').textContent=isSupplier?'Add Supplier Payment':'Add Customer Payment';
+  $('recordHint').textContent='Invoice selection optional — otherwise oldest unpaid invoice is adjusted first';
+  $('recordFields').innerHTML='<div class="formGrid">'+
+    '<label>'+(isSupplier?'Supplier':'Customer')+'<select name="'+(isSupplier?'supplier_id':'client_id')+'" id="paymentParty" required><option value="">Select '+(isSupplier?'Supplier':'Customer')+'</option>'+parties.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'+
+    '<label>Unpaid Invoice (Optional)<select name="invoice_id" id="paymentInvoice"><option value="">Auto-adjust oldest unpaid invoice</option></select></label>'+
+    '<label>Date<input name="'+(isSupplier?'payment_date':'receipt_date')+'" type="date" value="'+today+'" required></label>'+
+    '<label>Amount<input name="amount" type="number" min="0.01" step="0.01" required></label>'+
+    '<label>Method<select name="payment_method"><option>CASH</option><option>BANK</option><option>ONLINE</option><option>CHEQUE</option><option>EASYPAISA</option><option>JAZZCASH</option></select></label>'+
+    '<label>Reference<input name="reference_number"></label></div><label>Notes<textarea name="notes"></textarea></label>';
+  $('paymentParty').onchange=e=>{
+    const partyId=Number(e.target.value||0),select=$('paymentInvoice');
+    const relevant=invoices.filter(x=>Number(x[isSupplier?'supplier_id':'client_id'])===partyId&&String(x.status)!=='paid'&&String(x.status)!=='cancelled');
+    select.innerHTML='<option value="">Auto-adjust oldest unpaid invoice</option>'+relevant.map(x=>'<option value="'+x.id+'">'+esc(x.invoice_number)+' · '+money(x.amount)+' · '+esc(x.status)+'</option>').join('');
+  };
+  $('recordDialog').showModal();
+}
+async function openPartyStatement(kind){
+  const isSupplier=kind==='supplier',parties=await partyOptions(kind);
+  $('workspaceTitle').textContent=isSupplier?'Supplier Statement':'Customer Statement';
+  $('workspaceSubtitle').textContent=model.company.name+' · Account Statement';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card statementCard"><div class="statementChooser"><label>'+(isSupplier?'Supplier':'Customer')+'<select id="statementParty"><option value="">Select '+(isSupplier?'Supplier':'Customer')+'</option>'+parties.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label></div><div id="statementContent" class="emptyLines">Select account to view statement.</div></div>';
+  $('statementParty').onchange=async e=>{
+    const id=Number(e.target.value||0),box=$('statementContent');if(!id){box.className='emptyLines';box.innerHTML='Select account to view statement.';return}
+    box.className='';box.innerHTML='<div class="emptyLines">Loading statement…</div>';
+    const data=await json('/api/bizora-company?action='+(isSupplier?'supplier_statement&supplier_id=':'client_statement&client_id=')+id),rows=data.records||[];
+    box.innerHTML='<div class="statementSummary"><div><small>Account</small><b>'+esc(data.party.business_name)+'</b></div><div><small>Opening Balance</small><b>'+money(data.opening_balance)+'</b></div><div><small>Current Balance</small><b>'+money(data.balance)+'</b></div></div>'+
+      '<div class="tablewrap"><table><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Debit</th><th>Credit</th><th>Running Balance</th><th>Notes</th></tr></thead><tbody>'+
+      (rows.length?rows.map(x=>'<tr><td>'+date(x.entry_date)+'</td><td>'+esc(x.entry_type)+'</td><td>'+esc(x.reference||'—')+'</td><td>'+money(x.debit)+'</td><td>'+money(x.credit)+'</td><td><b>'+money(x.running_balance)+'</b></td><td>'+esc(x.notes||'')+'</td></tr>').join(''):'<tr><td colspan="7">No transactions yet</td></tr>')+
+      '</tbody></table></div>';
+  };
+}
 async function openSupplierInvoiceForm(){
   const [suppliers,products]=await Promise.all([partyOptions('supplier'),partyOptions('product').then(async()=>optionCache.products||[])]);
   const today=new Date().toISOString().slice(0,10),productRows=optionCache.products||[];
@@ -281,6 +318,8 @@ async function openForm(){
   const d=defs[currentView];if(!d)return;
   if(currentView==='supplier-bills')return openSupplierInvoiceForm();
   if(currentView==='client-bills')return openCustomerInvoiceForm();
+  if(currentView==='supplier-payments')return openPaymentForm('supplier');
+  if(currentView==='client-payments')return openPaymentForm('client');
   if(currentView==='grns')return openGrnForm();
   if(currentView==='stock-transfers')return openTransferForm();
   if(currentView==='stock-adjustments')return openAdjustmentForm();
