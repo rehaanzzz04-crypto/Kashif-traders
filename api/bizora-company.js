@@ -25,7 +25,7 @@ const roleWriteViews={
 };
 const roleActionSets={
   accountant:new Set([
-    'overview','suppliers','supplier_invoices','supplier_invoice_items','supplier_payments','supplier_payment_detail','supplier_statement',
+    'overview','notification_summary','suppliers','supplier_invoices','supplier_invoice_items','supplier_payments','supplier_payment_detail','supplier_statement',
     'create_supplier','update_supplier','set_supplier_status','create_supplier_invoice','update_supplier_invoice','cancel_supplier_invoice','create_supplier_payment','cancel_supplier_payment',
     'clients','client_invoices','client_invoice_items','client_receipts','client_receipt_detail','client_statement',
     'create_client','update_client','set_client_status','create_client_invoice','update_client_invoice','cancel_client_invoice','create_client_receipt','cancel_client_receipt',
@@ -37,13 +37,13 @@ const roleActionSets={
     'reports_summary','advanced_reports'
   ]),
   salesman:new Set([
-    'overview','clients','client_invoices','client_invoice_items','client_receipts','client_receipt_detail','client_statement',
+    'overview','notification_summary','clients','client_invoices','client_invoice_items','client_receipts','client_receipt_detail','client_statement',
     'create_client','update_client','set_client_status','create_client_invoice','update_client_invoice','cancel_client_invoice','create_client_receipt','cancel_client_receipt',
     'products','warehouses','inventory_stock','client_returns','client_return_items','client_return_detail','create_client_return','cancel_client_return',
     'communication_center','prepare_whatsapp_share','reports_summary'
   ]),
   cashier:new Set([
-    'overview','clients','create_client','client_invoices','client_invoice_items','client_receipts','client_receipt_detail','create_client_invoice','create_client_receipt',
+    'overview','notification_summary','clients','create_client','client_invoices','client_invoice_items','client_receipts','client_receipt_detail','create_client_invoice','create_client_receipt',
     'products','warehouses','inventory_stock'
   ])
 };
@@ -185,7 +185,7 @@ export default async function handler(req,res){
     const u=await requireCompanyUser(sql,req,res,{write});if(!u)return;
 
     const featureByAction={
-      users:'core_erp',create_user:'core_erp',update_user:'core_erp',set_user_status:'core_erp',
+      users:'core_erp',create_user:'core_erp',update_user:'core_erp',set_user_status:'core_erp',notification_summary:'core_erp',
       suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',supplier_payment_detail:'supplier_management',supplier_statement:'supplier_management',
       create_supplier:'supplier_management',update_supplier:'supplier_management',set_supplier_status:'supplier_management',create_supplier_invoice:'supplier_management',update_supplier_invoice:'supplier_management',cancel_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',cancel_supplier_payment:'supplier_management',
       clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',client_receipt_detail:'customer_management',client_statement:'customer_management',
@@ -208,6 +208,32 @@ export default async function handler(req,res){
 
     if(req.method==='GET'&&action==='overview')return res.status(200).json(await overview(sql,u));
     if(['audit_service','audit_events','request_audit'].includes(action)&&!['company_admin','manager'].includes(u.role))return res.status(403).json({error:'Company Admin or Manager role required for Audit Service'});
+
+    if(req.method==='GET'&&action==='notification_summary'){
+      const items=[];
+      const features=u.features||{};
+      if(features.automation===true&&['company_admin','manager'].includes(u.role)){
+        const rows=await sql`SELECT id,severity,title,message,rule_code,last_detected_at
+          FROM automation_alerts WHERE company_id=${u.company_id} AND status='open'
+          ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,last_detected_at DESC LIMIT 8`;
+        for(const x of rows)items.push({type:'automation',severity:x.severity,title:x.title,message:x.message,created_at:x.last_detected_at,target_view:'automation-center'});
+      }
+      if(features.ecommerce===true&&['company_admin','manager'].includes(u.role)){
+        const rows=await sql`SELECT id,order_number,customer_name,total,created_at
+          FROM ecommerce_orders WHERE company_id=${u.company_id} AND status='pending'
+          ORDER BY created_at DESC,id DESC LIMIT 5`;
+        for(const x of rows)items.push({type:'ecommerce',severity:'info',title:'New Store Order · '+x.order_number,message:x.customer_name+' · PKR '+number(x.total).toLocaleString('en-PK'),created_at:x.created_at,target_view:'ecommerce'});
+      }
+      if(features.ocr===true&&['company_admin','manager','accountant'].includes(u.role)){
+        const rows=await sql`SELECT id,draft_number,source_file_name,created_at
+          FROM ocr_supplier_drafts WHERE company_id=${u.company_id} AND status='draft'
+          ORDER BY created_at DESC,id DESC LIMIT 5`;
+        for(const x of rows)items.push({type:'ocr',severity:'info',title:'OCR Draft Waiting · '+x.draft_number,message:x.source_file_name||'Supplier invoice draft needs review',created_at:x.created_at,target_view:'ocr-drafts'});
+      }
+      items.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+      const visible=items.slice(0,12),critical=visible.filter(x=>x.severity==='critical').length;
+      return res.status(200).json({count:items.length,critical,items:visible});
+    }
 
     if(req.method==='GET'&&action==='users'){
       if(u.role!=='company_admin')return res.status(403).json({error:'Company Admin only'});

@@ -4,6 +4,17 @@
   <div class="bizora-logo" aria-label="Bizora"></div>
   <div class="topbarSpacer"></div>
   <div id="accessBadge" class="badge">Loading…</div>
+  <div class="notificationWrap">
+    <button id="notificationBell" class="notificationBell" type="button" aria-label="Notifications" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0v5l2 3H4l2-3z"/><path d="M10 20h4"/></svg>
+      <span id="notificationCount" class="notificationCount hidden">0</span>
+    </button>
+    <div id="notificationPanel" class="notificationPanel hidden">
+      <div class="notificationHead"><div><b>Notifications</b><small id="notificationHint">Bizora activity</small></div><button id="notificationRefresh" type="button" class="iconbtn" aria-label="Refresh">↻</button></div>
+      <div id="notificationList" class="notificationList"><div class="notificationEmpty">Loading…</div></div>
+      <button id="notificationOpenAutomation" type="button" class="notificationFooter hidden">Open Automation Center</button>
+    </div>
+  </div>
   <button id="companyLogout" class="toplogout">Logout</button>
 </header>
 <div id="navBackdrop" class="navbackdrop"></div>

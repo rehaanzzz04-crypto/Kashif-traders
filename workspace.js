@@ -26,6 +26,37 @@ const featureOn=key=>model?.subscription?.features?.[key]===true;
 const roleCanView=view=>view==='dashboard'||model?.role_access?.views?.includes(view)===true;
 const roleCanWrite=view=>model?.subscription?.access_mode==='write'&&model?.role_access?.write_views?.includes(view)===true;
 const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce','ocr-drafts':'ocr','automation-center':'automation',communications:'automation',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
+let notificationTimer=null;
+async function refreshNotifications(){
+  if(!$('notificationBell'))return;
+  try{
+    const d=await json('/api/bizora-company?action=notification_summary'),items=d.items||[],count=Number(d.count||0);
+    $('notificationCount').textContent=count>99?'99+':String(count);
+    $('notificationCount').classList.toggle('hidden',count<=0);
+    $('notificationBell').classList.toggle('hasCritical',Number(d.critical||0)>0);
+    $('notificationHint').textContent=count?count+' open item'+(count===1?'':'s'):'All clear';
+    $('notificationList').innerHTML=items.length?items.map((x,i)=>'<button type="button" class="notificationItem '+esc(x.severity||'info')+'" data-view="'+esc(x.target_view||'dashboard')+'"><span class="notificationDot"></span><span><b>'+esc(x.title)+'</b><small>'+esc(x.message||'')+'</small><em>'+esc(new Date(x.created_at).toLocaleString('en-GB'))+'</em></span></button>').join(''):'<div class="notificationEmpty">✓ No open notifications.</div>';
+    $('notificationOpenAutomation').classList.toggle('hidden',!roleCanView('automation-center')||!featureOn('automation'));
+    document.querySelectorAll('.notificationItem').forEach(b=>b.onclick=()=>{closeNotificationPanel();show(b.dataset.view).catch(e=>alert(e.message))});
+  }catch{
+    $('notificationList').innerHTML='<div class="notificationEmpty">Notifications unavailable.</div>';
+  }
+}
+function closeNotificationPanel(){
+  if(!$('notificationPanel'))return;
+  $('notificationPanel').classList.add('hidden');$('notificationBell').setAttribute('aria-expanded','false');
+}
+function installNotificationCenter(){
+  if(!$('notificationBell'))return;
+  $('notificationBell').onclick=e=>{e.stopPropagation();const p=$('notificationPanel'),open=p.classList.contains('hidden');p.classList.toggle('hidden',!open);$('notificationBell').setAttribute('aria-expanded',open?'true':'false');if(open)refreshNotifications()};
+  $('notificationPanel').onclick=e=>e.stopPropagation();
+  $('notificationRefresh').onclick=()=>refreshNotifications();
+  $('notificationOpenAutomation').onclick=()=>{closeNotificationPanel();show('automation-center').catch(e=>alert(e.message))};
+  document.addEventListener('click',closeNotificationPanel);
+  refreshNotifications();
+  clearInterval(notificationTimer);notificationTimer=setInterval(refreshNotifications,180000);
+}
+
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -733,7 +764,7 @@ function installAutomationModule(){
 }
 async function automationPulse(){
   if(!featureOn('automation')||!roleCanView('automation-center')||model.subscription.access_mode!=='write')return;
-  try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'run_automations',force:false})})}catch{}
+  try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'run_automations',force:false})});await refreshNotifications()}catch{}
 }
 async function openAutomationCenter(){
   $('workspaceTitle').textContent='Automation Center';
@@ -761,7 +792,7 @@ async function openAutomationCenter(){
     '</div>';
   if($('runAutomationNow'))$('runAutomationNow').onclick=async()=>{const b=$('runAutomationNow');b.disabled=true;b.textContent='Running…';try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'run_automations',force:true})});await openAutomationCenter()}catch(e){alert(e.message)}finally{b.disabled=false;b.textContent='Run Now'}};
   document.querySelectorAll('.automationRule').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button');if(!b)return;b.disabled=true;b.textContent='Saving…';try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update_automation_rule',rule_code:form.dataset.code,active:form.querySelector('.automationActive').checked,value:Number(form.querySelector('.automationValue').value||0)})});await openAutomationCenter()}catch(err){alert(err.message)}finally{b.disabled=false;b.textContent='Save'}});
-  document.querySelectorAll('.dismissAutomation').forEach(b=>b.onclick=async()=>{try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'dismiss_automation_alert',alert_id:Number(b.dataset.id)})});await openAutomationCenter()}catch(e){alert(e.message)}});
+  document.querySelectorAll('.dismissAutomation').forEach(b=>b.onclick=async()=>{try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'dismiss_automation_alert',alert_id:Number(b.dataset.id)})});await openAutomationCenter();await refreshNotifications()}catch(e){alert(e.message)}});
 }
 
 function installCommunicationModule(){
@@ -1285,4 +1316,4 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
   $('recordDialog').close();e.currentTarget.reset();invoiceEditContext=null;optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
-(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();installCommunicationModule();setHeader();dashboard();automationPulse()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
+(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();installCommunicationModule();installNotificationCenter();setHeader();dashboard();automationPulse()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
