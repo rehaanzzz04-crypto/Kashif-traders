@@ -41,11 +41,11 @@ export default async function handler(req,res){
     const featureByAction={
       users:'core_erp',create_user:'core_erp',set_user_status:'core_erp',
       suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',supplier_payment_detail:'supplier_management',supplier_statement:'supplier_management',
-      create_supplier:'supplier_management',create_supplier_invoice:'supplier_management',cancel_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',cancel_supplier_payment:'supplier_management',
+      create_supplier:'supplier_management',update_supplier:'supplier_management',set_supplier_status:'supplier_management',create_supplier_invoice:'supplier_management',cancel_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',cancel_supplier_payment:'supplier_management',
       clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',client_receipt_detail:'customer_management',client_statement:'customer_management',
-      create_client:'customer_management',create_client_invoice:'customer_management',cancel_client_invoice:'customer_management',create_client_receipt:'customer_management',cancel_client_receipt:'customer_management',
-      products:'products',create_product:'products',
-      warehouses:'warehouses',create_warehouse:'warehouses',
+      create_client:'customer_management',update_client:'customer_management',set_client_status:'customer_management',create_client_invoice:'customer_management',cancel_client_invoice:'customer_management',create_client_receipt:'customer_management',cancel_client_receipt:'customer_management',
+      products:'products',create_product:'products',update_product:'products',set_product_status:'products',
+      warehouses:'warehouses',create_warehouse:'warehouses',update_warehouse:'warehouses',set_warehouse_status:'warehouses',
       grns:'grn',create_grn:'grn',
       inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger',
       stock_transfers:'inventory_ledger',create_stock_transfer:'inventory_ledger',
@@ -694,6 +694,36 @@ export default async function handler(req,res){
       await companyAudit(sql,u,'COMPANY_USER_STATUS_CHANGED',{entityType:'company_user',entityId:String(userId),metadata:{active}});
       return res.status(200).json({record:rows[0]});
     }
+    if(req.method==='POST'&&action==='update_supplier'){
+      const supplierId=positiveInt(b.supplier_id,0),supplierCode=code(b.supplier_code),name=clean(b.business_name),openingBalance=number(b.opening_balance);
+      if(!supplierId||!supplierCode||!name||openingBalance<0)return res.status(400).json({error:'Valid supplier code, business name and opening balance required'});
+      const current=await sql`SELECT id,opening_balance FROM erp_suppliers WHERE id=${supplierId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!current[0])return res.status(404).json({error:'Supplier not found'});
+      const duplicate=await sql`SELECT id FROM erp_suppliers WHERE company_id=${u.company_id} AND supplier_code=${supplierCode} AND id<>${supplierId} LIMIT 1`;
+      if(duplicate[0])return res.status(409).json({error:'Supplier code already exists'});
+      if(Math.abs(number(current[0].opening_balance)-openingBalance)>0.000001){
+        const used=await sql`SELECT
+          EXISTS(SELECT 1 FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND supplier_id=${supplierId}) has_invoice,
+          EXISTS(SELECT 1 FROM erp_supplier_payments WHERE company_id=${u.company_id} AND supplier_id=${supplierId}) has_payment,
+          EXISTS(SELECT 1 FROM erp_supplier_returns WHERE company_id=${u.company_id} AND supplier_id=${supplierId}) has_return`;
+        if(used[0]?.has_invoice||used[0]?.has_payment||used[0]?.has_return)return res.status(409).json({error:'Opening balance cannot be changed after supplier transactions exist'});
+      }
+      const rows=await sql`UPDATE erp_suppliers SET supplier_code=${supplierCode},business_name=${name},contact_person=${clean(b.contact_person)||null},mobile_number=${clean(b.mobile_number)||null},opening_balance=${openingBalance},updated_at=now()
+        WHERE id=${supplierId} AND company_id=${u.company_id}
+        RETURNING id,supplier_code,business_name,contact_person,mobile_number,opening_balance,status,created_at,updated_at`;
+      await companyAudit(sql,u,'SUPPLIER_UPDATED',{entityType:'supplier',entityId:String(supplierId)});
+      return res.status(200).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='set_supplier_status'){
+      const supplierId=positiveInt(b.supplier_id,0),status=clean(b.status).toLowerCase();
+      if(!supplierId||!['active','inactive'].includes(status))return res.status(400).json({error:'Valid supplier and status required'});
+      const rows=await sql`UPDATE erp_suppliers SET status=${status},updated_at=now() WHERE id=${supplierId} AND company_id=${u.company_id}
+        RETURNING id,supplier_code,business_name,status`;
+      if(!rows[0])return res.status(404).json({error:'Supplier not found'});
+      await companyAudit(sql,u,'SUPPLIER_STATUS_CHANGED',{entityType:'supplier',entityId:String(supplierId),metadata:{status}});
+      return res.status(200).json({record:rows[0]});
+    }
+
     if(req.method==='POST'&&action==='create_supplier'){
       const supplierCode=code(b.supplier_code),name=clean(b.business_name);
       if(!supplierCode||!name)return res.status(400).json({error:'Supplier code and business name required'});
@@ -796,6 +826,36 @@ export default async function handler(req,res){
         }
       }
       await companyAudit(sql,u,'SUPPLIER_PAYMENT_CANCELLED',{entityType:'supplier_payment',entityId:String(paymentId),metadata:{amount:payment[0].amount,reference:payment[0].reference_number}});
+      return res.status(200).json({record:rows[0]});
+    }
+
+    if(req.method==='POST'&&action==='update_client'){
+      const clientId=positiveInt(b.client_id,0),clientCode=code(b.client_code),name=clean(b.business_name),creditLimit=number(b.credit_limit),openingBalance=number(b.opening_balance);
+      if(!clientId||!clientCode||!name||creditLimit<0||openingBalance<0)return res.status(400).json({error:'Valid customer code, business name, credit limit and opening balance required'});
+      const current=await sql`SELECT id,opening_balance FROM erp_clients WHERE id=${clientId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!current[0])return res.status(404).json({error:'Customer not found'});
+      const duplicate=await sql`SELECT id FROM erp_clients WHERE company_id=${u.company_id} AND client_code=${clientCode} AND id<>${clientId} LIMIT 1`;
+      if(duplicate[0])return res.status(409).json({error:'Customer code already exists'});
+      if(Math.abs(number(current[0].opening_balance)-openingBalance)>0.000001){
+        const used=await sql`SELECT
+          EXISTS(SELECT 1 FROM erp_client_invoices WHERE company_id=${u.company_id} AND client_id=${clientId}) has_invoice,
+          EXISTS(SELECT 1 FROM erp_client_receipts WHERE company_id=${u.company_id} AND client_id=${clientId}) has_payment,
+          EXISTS(SELECT 1 FROM erp_client_returns WHERE company_id=${u.company_id} AND client_id=${clientId}) has_return`;
+        if(used[0]?.has_invoice||used[0]?.has_payment||used[0]?.has_return)return res.status(409).json({error:'Opening balance cannot be changed after customer transactions exist'});
+      }
+      const rows=await sql`UPDATE erp_clients SET client_code=${clientCode},business_name=${name},contact_person=${clean(b.contact_person)||null},mobile_number=${clean(b.mobile_number)||null},credit_limit=${creditLimit},opening_balance=${openingBalance},updated_at=now()
+        WHERE id=${clientId} AND company_id=${u.company_id}
+        RETURNING id,client_code,business_name,contact_person,mobile_number,credit_limit,opening_balance,status,created_at,updated_at`;
+      await companyAudit(sql,u,'CLIENT_UPDATED',{entityType:'client',entityId:String(clientId)});
+      return res.status(200).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='set_client_status'){
+      const clientId=positiveInt(b.client_id,0),status=clean(b.status).toLowerCase();
+      if(!clientId||!['active','inactive'].includes(status))return res.status(400).json({error:'Valid customer and status required'});
+      const rows=await sql`UPDATE erp_clients SET status=${status},updated_at=now() WHERE id=${clientId} AND company_id=${u.company_id}
+        RETURNING id,client_code,business_name,status`;
+      if(!rows[0])return res.status(404).json({error:'Customer not found'});
+      await companyAudit(sql,u,'CLIENT_STATUS_CHANGED',{entityType:'client',entityId:String(clientId),metadata:{status}});
       return res.status(200).json({record:rows[0]});
     }
 
@@ -926,15 +986,72 @@ export default async function handler(req,res){
       return res.status(200).json({record:rows[0]});
     }
 
+    if(req.method==='POST'&&action==='update_product'){
+      const productId=positiveInt(b.product_id,0),sku=code(b.sku),barcode=clean(b.barcode)||null,name=clean(b.product_name),unit=clean(b.unit)||'pcs',purchasePrice=number(b.purchase_price),salePrice=number(b.sale_price);
+      if(!productId||!sku||!name||purchasePrice<0||salePrice<0)return res.status(400).json({error:'Valid SKU, product name and prices required'});
+      const current=await sql`SELECT id FROM erp_products WHERE id=${productId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!current[0])return res.status(404).json({error:'Product not found'});
+      const duplicate=await sql`SELECT id FROM erp_products WHERE company_id=${u.company_id} AND id<>${productId} AND (sku=${sku} OR (${barcode}::text IS NOT NULL AND barcode=${barcode})) LIMIT 1`;
+      if(duplicate[0])return res.status(409).json({error:'SKU or barcode already exists'});
+      const rows=await sql`UPDATE erp_products SET sku=${sku},barcode=${barcode},product_name=${name},unit=${unit},purchase_price=${purchasePrice},sale_price=${salePrice},updated_at=now()
+        WHERE id=${productId} AND company_id=${u.company_id}
+        RETURNING id,sku,barcode,product_name,unit,purchase_price,sale_price,active,created_at,updated_at`;
+      await companyAudit(sql,u,'PRODUCT_UPDATED',{entityType:'product',entityId:String(productId)});
+      return res.status(200).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='set_product_status'){
+      const productId=positiveInt(b.product_id,0),active=Boolean(b.active);
+      if(!productId)return res.status(400).json({error:'Valid product required'});
+      const current=await sql`SELECT id,active FROM erp_products WHERE id=${productId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!current[0])return res.status(404).json({error:'Product not found'});
+      if(!active){
+        const stock=await sql`SELECT COALESCE(SUM(qty_in-qty_out),0)::numeric quantity FROM erp_inventory_movements WHERE company_id=${u.company_id} AND product_id=${productId}`;
+        if(Math.abs(number(stock[0]?.quantity))>0.000001)return res.status(409).json({error:'Product cannot be deactivated while warehouse stock is not zero'});
+      }
+      const rows=await sql`UPDATE erp_products SET active=${active},updated_at=now() WHERE id=${productId} AND company_id=${u.company_id}
+        RETURNING id,sku,product_name,active`;
+      await companyAudit(sql,u,'PRODUCT_STATUS_CHANGED',{entityType:'product',entityId:String(productId),metadata:{active}});
+      return res.status(200).json({record:rows[0]});
+    }
+
     if(req.method==='POST'&&action==='create_product'){
       const sku=code(b.sku),name=clean(b.product_name),barcode=clean(b.barcode)||null;
       if(!sku||!name)return res.status(400).json({error:'SKU and product name required'});
+      const PRODUCT_DUPLICATE_CHECK_CREATE=await sql`SELECT id FROM erp_products WHERE company_id=${u.company_id} AND (sku=${sku} OR (${barcode}::text IS NOT NULL AND barcode=${barcode})) LIMIT 1`;
+      if(PRODUCT_DUPLICATE_CHECK_CREATE[0])return res.status(409).json({error:'SKU or barcode already exists'});
       const rows=await sql`INSERT INTO erp_products(company_id,sku,barcode,product_name,unit,purchase_price,sale_price,created_by_user_id)
         VALUES(${u.company_id},${sku},${barcode},${name},${clean(b.unit)||'pcs'},${number(b.purchase_price)},${number(b.sale_price)},${u.id})
         RETURNING id,sku,barcode,product_name,unit,purchase_price,sale_price,active,created_at`;
       await companyAudit(sql,u,'PRODUCT_CREATED',{entityType:'product',entityId:String(rows[0].id)});
       return res.status(201).json({record:rows[0]});
     }
+    if(req.method==='POST'&&action==='update_warehouse'){
+      const warehouseId=positiveInt(b.warehouse_id,0),warehouseCode=code(b.warehouse_code),name=clean(b.warehouse_name);
+      if(!warehouseId||!warehouseCode||!name)return res.status(400).json({error:'Valid warehouse code and name required'});
+      const duplicate=await sql`SELECT id FROM erp_warehouses WHERE company_id=${u.company_id} AND warehouse_code=${warehouseCode} AND id<>${warehouseId} LIMIT 1`;
+      if(duplicate[0])return res.status(409).json({error:'Warehouse code already exists'});
+      const rows=await sql`UPDATE erp_warehouses SET warehouse_code=${warehouseCode},warehouse_name=${name},address=${clean(b.address)||null},updated_at=now()
+        WHERE id=${warehouseId} AND company_id=${u.company_id}
+        RETURNING id,warehouse_code,warehouse_name,address,active,created_at,updated_at`;
+      if(!rows[0])return res.status(404).json({error:'Warehouse not found'});
+      await companyAudit(sql,u,'WAREHOUSE_UPDATED',{entityType:'warehouse',entityId:String(warehouseId)});
+      return res.status(200).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='set_warehouse_status'){
+      const warehouseId=positiveInt(b.warehouse_id,0),active=Boolean(b.active);
+      if(!warehouseId)return res.status(400).json({error:'Valid warehouse required'});
+      const current=await sql`SELECT id,active FROM erp_warehouses WHERE id=${warehouseId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!current[0])return res.status(404).json({error:'Warehouse not found'});
+      if(!active){
+        const stock=await sql`SELECT COALESCE(SUM(qty_in-qty_out),0)::numeric quantity FROM erp_inventory_movements WHERE company_id=${u.company_id} AND warehouse_id=${warehouseId}`;
+        if(Math.abs(number(stock[0]?.quantity))>0.000001)return res.status(409).json({error:'Warehouse cannot be deactivated while stock is not zero'});
+      }
+      const rows=await sql`UPDATE erp_warehouses SET active=${active},updated_at=now() WHERE id=${warehouseId} AND company_id=${u.company_id}
+        RETURNING id,warehouse_code,warehouse_name,active`;
+      await companyAudit(sql,u,'WAREHOUSE_STATUS_CHANGED',{entityType:'warehouse',entityId:String(warehouseId),metadata:{active}});
+      return res.status(200).json({record:rows[0]});
+    }
+
     if(req.method==='POST'&&action==='create_warehouse'){
       const warehouseCode=code(b.warehouse_code),name=clean(b.warehouse_name);
       if(!warehouseCode||!name)return res.status(400).json({error:'Warehouse code and name required'});

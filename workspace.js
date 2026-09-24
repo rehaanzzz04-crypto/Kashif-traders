@@ -7,14 +7,14 @@ const date=v=>v?String(v).slice(0,10):'—';
 async function json(url,options){const r=await fetch(url,{cache:'no-store',...options}),j=await r.json().catch(()=>({}));if(r.status===401){location.replace('/company-login.html');throw new Error('Login required')}if(!r.ok)throw new Error(j.error||'Request failed');return j}
 const defs={
   users:{title:'Users',action:'users',create:'create_user',cols:[['user_code','User ID'],['full_name','Name'],['email','Email'],['role','Role'],['active','Status']],fields:[['user_code','User ID','text'],['full_name','Full Name','text'],['email','Email','email'],['role','Role','select:company_admin,manager,accountant,salesman,cashier'],['password','Temporary Password','password']]},
-  suppliers:{title:'Suppliers',action:'suppliers',create:'create_supplier',cols:[['supplier_code','Code'],['business_name','Business'],['contact_person','Contact'],['mobile_number','Mobile'],['opening_balance','Opening Balance']],fields:[['supplier_code','Supplier Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['opening_balance','Opening Balance','number']]},
+  suppliers:{title:'Suppliers',action:'suppliers',create:'create_supplier',cols:[['supplier_code','Code'],['business_name','Business'],['contact_person','Contact'],['mobile_number','Mobile'],['opening_balance','Opening Balance'],['status','Status']],fields:[['supplier_code','Supplier Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['opening_balance','Opening Balance','number']]},
   'supplier-bills':{title:'Supplier Invoices',action:'supplier_invoices',create:'create_supplier_invoice',cols:[['invoice_number','Invoice'],['business_name','Supplier'],['invoice_date','Date'],['due_date','Due'],['amount','Amount'],['grn_status','GRN Status'],['status','Payment Status']],fields:[['supplier_id','Supplier','supplier'],['invoice_number','Invoice Number','text'],['invoice_date','Invoice Date','date'],['due_date','Due Date','date'],['amount','Amount','number'],['notes','Notes','textarea']]},
   'supplier-payments':{title:'Supplier Payments',action:'supplier_payments',create:'create_supplier_payment',cols:[['payment_date','Date'],['business_name','Supplier'],['amount','Amount'],['allocated_amount','Allocated'],['payment_method','Method'],['reference_number','Reference'],['status','Status']],fields:[['supplier_id','Supplier','supplier'],['payment_date','Payment Date','date'],['amount','Amount','number'],['payment_method','Method','select:CASH,BANK,ONLINE,CHEQUE,EASYPAISA,JAZZCASH'],['reference_number','Reference','text'],['notes','Notes','textarea']]},
-  clients:{title:'Customers',action:'clients',create:'create_client',cols:[['client_code','Code'],['business_name','Business'],['contact_person','Contact'],['mobile_number','Mobile'],['credit_limit','Credit Limit'],['opening_balance','Opening Balance']],fields:[['client_code','Customer Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['credit_limit','Credit Limit','number'],['opening_balance','Opening Balance','number']]},
+  clients:{title:'Customers',action:'clients',create:'create_client',cols:[['client_code','Code'],['business_name','Business'],['contact_person','Contact'],['mobile_number','Mobile'],['credit_limit','Credit Limit'],['opening_balance','Opening Balance'],['status','Status']],fields:[['client_code','Customer Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['credit_limit','Credit Limit','number'],['opening_balance','Opening Balance','number']]},
   'client-bills':{title:'Customer Invoices',action:'client_invoices',create:'create_client_invoice',cols:[['invoice_number','Invoice'],['business_name','Customer'],['invoice_date','Date'],['due_date','Due'],['warehouse_name','Warehouse'],['item_count','Items'],['total_quantity','Quantity'],['amount','Amount'],['status','Status']]},
   'client-payments':{title:'Customer Payments',action:'client_receipts',create:'create_client_receipt',cols:[['receipt_date','Date'],['business_name','Customer'],['amount','Amount'],['allocated_amount','Allocated'],['payment_method','Method'],['reference_number','Reference'],['status','Status']],fields:[['client_id','Customer','client'],['receipt_date','Receipt Date','date'],['amount','Amount','number'],['payment_method','Method','select:CASH,BANK,ONLINE,CHEQUE,EASYPAISA,JAZZCASH'],['reference_number','Reference','text'],['notes','Notes','textarea']]},
-  products:{title:'Products',action:'products',create:'create_product',cols:[['sku','SKU'],['barcode','Barcode'],['product_name','Product'],['unit','Unit'],['purchase_price','Purchase Price'],['sale_price','Sale Price']],fields:[['sku','SKU','text'],['barcode','Barcode','text'],['product_name','Product Name','text'],['unit','Unit','text'],['purchase_price','Purchase Price','number'],['sale_price','Sale Price','number']]},
-  warehouses:{title:'Warehouses',action:'warehouses',create:'create_warehouse',cols:[['warehouse_code','Code'],['warehouse_name','Warehouse'],['address','Address']],fields:[['warehouse_code','Warehouse Code','text'],['warehouse_name','Warehouse Name','text'],['address','Address','text']]},
+  products:{title:'Products',action:'products',create:'create_product',cols:[['sku','SKU'],['barcode','Barcode'],['product_name','Product'],['unit','Unit'],['purchase_price','Purchase Price'],['sale_price','Sale Price'],['active','Status']],fields:[['sku','SKU','text'],['barcode','Barcode','text'],['product_name','Product Name','text'],['unit','Unit','text'],['purchase_price','Purchase Price','number'],['sale_price','Sale Price','number']]},
+  warehouses:{title:'Warehouses',action:'warehouses',create:'create_warehouse',cols:[['warehouse_code','Code'],['warehouse_name','Warehouse'],['address','Address'],['active','Status']],fields:[['warehouse_code','Warehouse Code','text'],['warehouse_name','Warehouse Name','text'],['address','Address','text']]},
   grns:{title:'Goods Receiving (GRN)',action:'grns',create:'create_grn',cols:[['grn_number','GRN'],['received_date','Date'],['supplier_name','Supplier'],['supplier_invoice_number','Supplier Invoice'],['warehouse_name','Warehouse'],['item_count','Items'],['total_quantity','Quantity'],['status','Status']],fields:[['supplier_id','Supplier','supplier'],['supplier_invoice_id','Supplier Invoice','supplier_invoice'],['warehouse_id','Warehouse','warehouse'],['product_id','Product','product'],['quantity','Quantity','number'],['unit_cost','Unit Cost','number'],['received_date','Received Date','date'],['notes','Notes','textarea']]},
   'inventory-stock':{title:'Warehouse Stock',action:'inventory_stock',cols:[['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['unit','Unit'],['quantity','Quantity'],['stock_value','Stock Value']]},
   'inventory-ledger':{title:'Inventory Ledger',action:'inventory_ledger',cols:[['movement_date','Date / Time'],['movement_type','Type'],['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['qty_in','Qty In'],['qty_out','Qty Out'],['unit_cost','Unit Cost'],['reference_number','Reference']]},
@@ -86,6 +86,9 @@ async function show(view){
   const userActions=view==='users'?'<th>Action</th>':'';
   $('workspaceBody').innerHTML='<div class="card">'+(view==='users'&&j.limit?'<p class="limitnote">Plan user limit: '+esc(j.limit)+' active users</p>':'')+'<div class="tablewrap"><table><thead><tr>'+d.cols.map(c=>'<th>'+c[1]+'</th>').join('')+userActions+'</tr></thead><tbody>'+(rows.length?rows.map(r=>'<tr>'+d.cols.map(c=>'<td>'+cell(c[0],r[c[0]])+'</td>').join('')+(view==='users'?'<td><button class="secondary userStatusBtn" data-id="'+r.id+'" data-active="'+(r.active?'0':'1')+'">'+(r.active?'Deactivate':'Activate')+'</button></td>':'')+'</tr>').join(''):'<tr><td colspan="'+(d.cols.length+(view==='users'?1:0))+'">No records yet</td></tr>')+'</tbody></table></div></div>';
   if(view==='users')document.querySelectorAll('.userStatusBtn').forEach(b=>b.onclick=()=>setUserStatus(Number(b.dataset.id),b.dataset.active==='1'));
+  if(['suppliers','clients','products','warehouses'].includes(view)){
+    document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openMasterRecord(view,row)}});
+  }
   if(view==='supplier-bills'){
     document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openSupplierInvoiceDetail(row)}});
   }
@@ -100,6 +103,43 @@ async function show(view){
   }
   if(view==='inventory-stock'||view==='inventory-ledger')await installWarehouseFilter(view,rows);
 }
+async function openMasterRecord(view,row){
+  const config={
+    suppliers:{title:'Supplier',id:'supplier_id',update:'update_supplier',status:'set_supplier_status',active:String(row.status||'active')==='active',
+      fields:[['supplier_code','Supplier Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['opening_balance','Opening Balance','number']]},
+    clients:{title:'Customer',id:'client_id',update:'update_client',status:'set_client_status',active:String(row.status||'active')==='active',
+      fields:[['client_code','Customer Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['credit_limit','Credit Limit','number'],['opening_balance','Opening Balance','number']]},
+    products:{title:'Product',id:'product_id',update:'update_product',status:'set_product_status',active:row.active!==false,
+      fields:[['sku','SKU','text'],['barcode','Barcode','text'],['product_name','Product Name','text'],['unit','Unit','text'],['purchase_price','Purchase Price','number'],['sale_price','Sale Price','number']]},
+    warehouses:{title:'Warehouse',id:'warehouse_id',update:'update_warehouse',status:'set_warehouse_status',active:row.active!==false,
+      fields:[['warehouse_code','Warehouse Code','text'],['warehouse_name','Warehouse Name','text'],['address','Address','textarea']]}
+  }[view];
+  if(!config)return;
+  $('workspaceTitle').textContent=config.title+' Details';
+  $('workspaceSubtitle').textContent=model.company.name+' · Master Data';
+  $('addRecord').classList.add('hidden');
+  const fieldHtml=config.fields.map(([name,label,type])=>{
+    const v=row[name]??'',min=type==='number'?' min="0" step="0.01"':'';
+    if(type==='textarea')return '<label>'+label+'<textarea name="'+name+'">'+esc(v)+'</textarea></label>';
+    return '<label>'+label+'<input name="'+name+'" type="'+type+'" value="'+esc(v)+'"'+min+(name.endsWith('_code')||name==='sku'||name==='product_name'||name==='business_name'||name==='warehouse_name'?' required':'')+'></label>';
+  }).join('');
+  $('workspaceBody').innerHTML=
+    '<div class="masterToolbar"><button id="masterBack" class="secondary">← '+esc(defs[view].title)+'</button><span class="masterState '+(config.active?'active':'inactive')+'">'+(config.active?'Active':'Inactive')+'</span></div>'+
+    '<form id="masterEditForm" class="card masterEditCard"><div class="masterEditHead"><div><span class="capEyebrow">MASTER DATA</span><h2>Edit '+esc(config.title)+'</h2><p>Historical invoices and transactions remain unchanged.</p></div></div><div class="formGrid">'+fieldHtml+'</div>'+
+    '<div class="masterActions"><button id="masterToggle" type="button" class="'+(config.active?'dangerAction':'secondary')+'">'+(config.active?'Deactivate':'Activate')+'</button><button id="masterSave" class="primary">Save Changes</button></div></form>';
+  $('masterBack').onclick=()=>show(view);
+  $('masterEditForm').onsubmit=async e=>{
+    e.preventDefault();const btn=$('masterSave');btn.disabled=true;btn.textContent='Saving…';
+    try{const data=Object.fromEntries(new FormData(e.currentTarget));await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:config.update,[config.id]:row.id,...data})});optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(view)}
+    catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save Changes'}
+  };
+  $('masterToggle').onclick=async()=>{
+    const next=!config.active;if(!confirm((next?'Activate ':'Deactivate ')+config.title+'?'))return;
+    try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:config.status,[config.id]:row.id,...((view==='suppliers'||view==='clients')?{status:next?'active':'inactive'}:{active:next})})});optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(view)}
+    catch(err){alert(err.message)}
+  };
+}
+
 async function openSupplierInvoiceDetail(row){
   $('workspaceTitle').textContent='Supplier Invoice';
   $('workspaceSubtitle').textContent=row.invoice_number+' · '+row.business_name;
@@ -144,7 +184,12 @@ async function partyOptions(kind){
   const actionMap={supplier:'suppliers',client:'clients',product:'products',warehouse:'warehouses',supplier_invoice:'supplier_invoices'};
   const action=actionMap[kind];
   if(!optionCache[action])optionCache[action]=(await json('/api/bizora-company?action='+action)).records||[];
-  return optionCache[action].map(r=>{
+  const source=(optionCache[action]||[]).filter(r=>{
+    if(kind==='supplier'||kind==='client')return String(r.status||'active')==='active';
+    if(kind==='product'||kind==='warehouse')return r.active!==false;
+    return true;
+  });
+  return source.map(r=>{
     if(kind==='supplier')return {value:r.id,label:r.business_name+' · '+(r.supplier_code||'')};
     if(kind==='client')return {value:r.id,label:r.business_name+' · '+(r.client_code||'')};
     if(kind==='product')return {value:r.id,label:r.product_name+' · '+(r.sku||'')};

@@ -794,3 +794,11 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
   body.payment-print .paymentPrintable{display:block!important;box-shadow:none!important;border:0!important;padding:0!important}
   body.payment-print .paymentPrintable .tablewrap{overflow:visible!important}
 }
+
+
+/* Master data edit and safe activation controls */
+.masterToolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.masterState{display:inline-flex;padding:6px 10px;border-radius:999px;font-size:9px;font-weight:900;text-transform:uppercase;border:1px solid #dce4ef}.masterState.active{background:#e9fbf2;color:#087f58;border-color:#bce7d4}.masterState.inactive{background:#fff0f2;color:#b4233c;border-color:#f0c9d0}
+.masterEditCard{padding-top:18px!important}.masterEditHead{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #e2e8f0}.masterEditHead h2{margin:4px 0;color:#14213d;font-size:21px}.masterEditHead p{margin:0;color:#74829a;font-size:10px}
+.masterActions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:15px}.masterActions button{min-width:130px}
+@media(max-width:520px){.masterToolbar{align-items:stretch;flex-direction:column}.masterToolbar button{align-self:flex-start}.masterActions{display:grid;grid-template-columns:1fr 1fr}.masterActions button{min-width:0}}
