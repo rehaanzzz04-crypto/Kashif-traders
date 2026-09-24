@@ -604,3 +604,12 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
   .featureItem b{font-size:11px}.featureItem small{font-size:8px}
 }
 @media(max-width:420px){.featureGrid{grid-template-columns:1fr}}
+
+
+/* Inventory / GRN polish */
+.inventoryHint{margin:0 0 12px;color:#667085;font-size:12px}
+@media(max-width:620px){
+  .sidenav .navSection>button[data-view="grns"] .navLabel,
+  .sidenav .navSection>button[data-view="inventory-stock"] .navLabel,
+  .sidenav .navSection>button[data-view="inventory-ledger"] .navLabel{font-size:11px}
+}
