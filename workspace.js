@@ -8,7 +8,7 @@ async function json(url,options){const r=await fetch(url,{cache:'no-store',...op
 const defs={
   users:{title:'Users',action:'users',create:'create_user',cols:[['user_code','User ID'],['full_name','Name'],['email','Email'],['role','Role'],['active','Status']],fields:[['user_code','User ID','text'],['full_name','Full Name','text'],['email','Email','email'],['role','Role','select:company_admin,manager,accountant,salesman,cashier'],['password','Temporary Password','password']]},
   suppliers:{title:'Suppliers',action:'suppliers',create:'create_supplier',cols:[['supplier_code','Code'],['business_name','Business'],['contact_person','Contact'],['mobile_number','Mobile'],['opening_balance','Opening Balance']],fields:[['supplier_code','Supplier Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['opening_balance','Opening Balance','number']]},
-  'supplier-bills':{title:'Supplier Invoices',action:'supplier_invoices',create:'create_supplier_invoice',cols:[['invoice_number','Invoice'],['business_name','Supplier'],['invoice_date','Date'],['due_date','Due'],['amount','Amount'],['status','Status']],fields:[['supplier_id','Supplier','supplier'],['invoice_number','Invoice Number','text'],['invoice_date','Invoice Date','date'],['due_date','Due Date','date'],['amount','Amount','number'],['notes','Notes','textarea']]},
+  'supplier-bills':{title:'Supplier Invoices',action:'supplier_invoices',create:'create_supplier_invoice',cols:[['invoice_number','Invoice'],['business_name','Supplier'],['invoice_date','Date'],['due_date','Due'],['amount','Amount'],['grn_status','GRN Status'],['status','Payment Status']],fields:[['supplier_id','Supplier','supplier'],['invoice_number','Invoice Number','text'],['invoice_date','Invoice Date','date'],['due_date','Due Date','date'],['amount','Amount','number'],['notes','Notes','textarea']]},
   'supplier-payments':{title:'Supplier Payments',action:'supplier_payments',create:'create_supplier_payment',cols:[['payment_date','Date'],['business_name','Supplier'],['amount','Amount'],['payment_method','Method'],['reference_number','Reference']],fields:[['supplier_id','Supplier','supplier'],['payment_date','Payment Date','date'],['amount','Amount','number'],['payment_method','Method','select:CASH,BANK,ONLINE,CHEQUE,EASYPAISA,JAZZCASH'],['reference_number','Reference','text'],['notes','Notes','textarea']]},
   clients:{title:'Customers',action:'clients',create:'create_client',cols:[['client_code','Code'],['business_name','Business'],['contact_person','Contact'],['mobile_number','Mobile'],['credit_limit','Credit Limit'],['opening_balance','Opening Balance']],fields:[['client_code','Customer Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['credit_limit','Credit Limit','number'],['opening_balance','Opening Balance','number']]},
   'client-bills':{title:'Customer Invoices',action:'client_invoices',create:'create_client_invoice',cols:[['invoice_number','Invoice'],['business_name','Customer'],['invoice_date','Date'],['due_date','Due'],['amount','Amount'],['status','Status']],fields:[['client_id','Customer','client'],['invoice_number','Invoice Number','text'],['invoice_date','Invoice Date','date'],['due_date','Due Date','date'],['amount','Amount','number'],['notes','Notes','textarea']]},
@@ -50,6 +50,7 @@ function dashboard(){
 }
 function cell(key,value){
   if(key==='active')return value?'<span class="pill active">Active</span>':'<span class="pill inactive">Inactive</span>';
+  if(key==='grn_status'){const v=String(value||'').toLowerCase();return '<span class="grnPill '+esc(v)+'">'+esc(v==='not_itemized'?'Not Itemized':v||'—')+'</span>';}
   if(key==='status')return '<span class="pill '+esc(String(value||'').toLowerCase())+'">'+esc(value??'—')+'</span>';
   if(key==='movement_date')return value?esc(new Date(value).toLocaleString('en-GB')):'—';
   if(/_date$|due_date/.test(key))return esc(date(value));
@@ -73,6 +74,41 @@ async function show(view){
   const userActions=view==='users'?'<th>Action</th>':'';
   $('workspaceBody').innerHTML='<div class="card">'+(view==='users'&&j.limit?'<p class="limitnote">Plan user limit: '+esc(j.limit)+' active users</p>':'')+'<div class="tablewrap"><table><thead><tr>'+d.cols.map(c=>'<th>'+c[1]+'</th>').join('')+userActions+'</tr></thead><tbody>'+(rows.length?rows.map(r=>'<tr>'+d.cols.map(c=>'<td>'+cell(c[0],r[c[0]])+'</td>').join('')+(view==='users'?'<td><button class="secondary userStatusBtn" data-id="'+r.id+'" data-active="'+(r.active?'0':'1')+'">'+(r.active?'Deactivate':'Activate')+'</button></td>':'')+'</tr>').join(''):'<tr><td colspan="'+(d.cols.length+(view==='users'?1:0))+'">No records yet</td></tr>')+'</tbody></table></div></div>';
   if(view==='users')document.querySelectorAll('.userStatusBtn').forEach(b=>b.onclick=()=>setUserStatus(Number(b.dataset.id),b.dataset.active==='1'));
+  if(view==='supplier-bills'){
+    document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openSupplierInvoiceDetail(row)}});
+  }
+  if(view==='inventory-stock'||view==='inventory-ledger')await installWarehouseFilter(view,rows);
+}
+async function openSupplierInvoiceDetail(row){
+  $('workspaceTitle').textContent='Supplier Invoice';
+  $('workspaceSubtitle').textContent=row.invoice_number+' · '+row.business_name;
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card">Loading invoice products…</div>';
+  const data=await json('/api/bizora-company?action=supplier_invoice_items&invoice_id='+row.id),items=data.records||[];
+  const status=String(row.grn_status||'').toLowerCase();
+  $('workspaceBody').innerHTML=
+    '<div class="detailToolbar"><button id="backToInvoices" class="secondary">← Back</button><span class="grnPill '+esc(status)+'">'+esc(status==='not_itemized'?'Not Itemized':status)+'</span></div>'+
+    '<div class="card invoiceDetailCard">'+
+      '<div class="invoiceDetailHead"><div><span>Supplier</span><b>'+esc(row.business_name)+'</b></div><div><span>Invoice</span><b>'+esc(row.invoice_number)+'</b></div><div><span>Date</span><b>'+date(row.invoice_date)+'</b></div><div><span>Amount</span><b>'+money(row.amount)+'</b></div></div>'+
+      '<div class="tablewrap"><table><thead><tr><th>SKU</th><th>Product</th><th>Unit</th><th>Ordered</th><th>Received</th><th>Remaining</th><th>Purchase Price</th><th>Line Total</th></tr></thead><tbody>'+
+      (items.length?items.map(x=>'<tr><td>'+esc(x.sku)+'</td><td><b>'+esc(x.product_name)+'</b></td><td>'+esc(x.unit)+'</td><td>'+esc(x.quantity)+'</td><td>'+esc(x.received_quantity)+'</td><td>'+esc(x.remaining_quantity)+'</td><td>'+money(x.unit_price)+'</td><td>'+money(Number(x.quantity||0)*Number(x.unit_price||0))+'</td></tr>').join(''):'<tr><td colspan="8">No product lines found.</td></tr>')+
+      '</tbody></table></div>'+
+    '</div>';
+  $('backToInvoices').onclick=()=>show('supplier-bills');
+}
+async function installWarehouseFilter(view,rows){
+  let warehouses=optionCache.warehouses;
+  if(!warehouses)warehouses=(await json('/api/bizora-company?action=warehouses')).records||[],optionCache.warehouses=warehouses;
+  const card=$('workspaceBody').querySelector('.card');if(!card)return;
+  const bar=document.createElement('div');bar.className='warehouseFilter';
+  bar.innerHTML='<label>Warehouse<select id="warehouseFilterSelect"><option value="">All Warehouses</option>'+warehouses.map(w=>'<option value="'+w.id+'">'+esc(w.warehouse_name)+'</option>').join('')+'</select></label>';
+  card.prepend(bar);
+  $('warehouseFilterSelect').onchange=async e=>{
+    const id=e.target.value,url='/api/bizora-company?action='+(view==='inventory-stock'?'inventory_stock':'inventory_ledger')+(id?'&warehouse_id='+encodeURIComponent(id):'');
+    const j=await json(url),d=defs[view],filtered=j.records||[];
+    const tbody=card.querySelector('tbody');
+    tbody.innerHTML=filtered.length?filtered.map(r=>'<tr>'+d.cols.map(c=>'<td>'+cell(c[0],r[c[0]])+'</td>').join('')+'</tr>').join(''):'<tr><td colspan="'+d.cols.length+'">No records for this warehouse</td></tr>';
+  };
 }
 async function partyOptions(kind){
   const actionMap={supplier:'suppliers',client:'clients',product:'products',warehouse:'warehouses',supplier_invoice:'supplier_invoices'};
