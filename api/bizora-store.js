@@ -7,7 +7,7 @@ const methods=new Set(['COD','CASH','BANK','ONLINE','EASYPAISA','JAZZCASH']);
 async function storeFor(sql,companyCode){
   const rows=await sql`SELECT c.id,c.company_code,c.company_name,c.logo_url,p.plan_code,p.plan_name,
     COALESCE((p.features->>'ecommerce')::boolean,false) ecommerce_enabled,
-    COALESCE(st.store_name,c.company_name) store_name,st.contact_phone,st.whatsapp_number,st.address,
+    COALESCE(st.store_name,c.company_name) store_name,COALESCE(st.store_logo_url,c.logo_url) store_logo_url,st.announcement_text,COALESCE(st.show_announcement,false) show_announcement,st.contact_phone,st.whatsapp_number,st.address,
     COALESCE(st.delivery_charge,0)::numeric delivery_charge,COALESCE(st.active,true) active,COALESCE(st.published,true) published,
     COALESCE(st.theme_code,'modern') theme_code,COALESCE(st.header_layout,'logo_name') header_layout,
     st.hero_title,st.hero_subtitle,st.hero_media_url,COALESCE(st.hero_media_type,'image') hero_media_type,
@@ -59,7 +59,7 @@ export default async function handler(req,res){
       ]);
       return res.status(200).json({
         store:{
-          company_code:store.company_code,company_name:store.company_name,store_name:store.store_name,logo_url:store.logo_url,
+          company_code:store.company_code,company_name:store.company_name,store_name:store.store_name,logo_url:store.store_logo_url,announcement_text:store.announcement_text,show_announcement:store.show_announcement,
           contact_phone:store.contact_phone,whatsapp_number:store.whatsapp_number,address:store.address,delivery_charge:store.delivery_charge,
           theme_code:store.theme_code,header_layout:store.header_layout,hero_title:store.hero_title,hero_subtitle:store.hero_subtitle,
           hero_media_url:store.hero_media_url,hero_media_type:store.hero_media_type,primary_color:store.primary_color,
