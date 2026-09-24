@@ -613,3 +613,28 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
   .sidenav .navSection>button[data-view="inventory-stock"] .navLabel,
   .sidenav .navSection>button[data-view="inventory-ledger"] .navLabel{font-size:11px}
 }
+
+
+/* Bizora product-wise invoice + multi-line GRN forms */
+.formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.lineHead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 9px;padding-top:14px;border-top:1px solid #e5ebf3}
+.lineHead b{display:block;color:#17213a;font-size:14px}.lineHead small{display:block;margin-top:2px;color:#7a879e;font-size:9px}
+.lineItems{display:grid;gap:9px}.lineItem{position:relative;display:grid;gap:8px;padding:12px;border:1px solid #dfe7f2;border-radius:16px;background:#f9fbfe}
+.invoiceLine{grid-template-columns:minmax(180px,2fr) 100px 120px minmax(140px,1.5fr) 38px;align-items:end}
+.grnLine{grid-template-columns:minmax(180px,2fr) repeat(5,minmax(90px,1fr));align-items:end}
+.lineItem label{margin:0}.removeLine{width:38px;height:40px;padding:0!important;border-radius:11px!important;font-size:18px!important}
+.lineProductName{align-self:center}.lineProductName b{display:block;color:#17213a;font-size:12px}.lineProductName small{display:block;margin-top:3px;color:#68758d;font-size:9px;line-height:1.35}
+.invoiceTotalBox{display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#eef6ff,#f5f0ff);border:1px solid #d8e6fa}
+.invoiceTotalBox span{color:#566581;font-size:11px;font-weight:800}.invoiceTotalBox b{color:#0d2e75;font-size:18px}
+.emptyLines{padding:18px;border:1px dashed #cad7e8;border-radius:14px;text-align:center;color:#7b879c;font-size:11px;background:#fbfdff}
+@media(max-width:760px){
+  .formGrid{grid-template-columns:1fr}
+  .invoiceLine,.grnLine{grid-template-columns:1fr 1fr}
+  .invoiceLine .removeLine{position:absolute;right:9px;top:9px}
+  .invoiceLine>label:first-child,.invoiceLine>label:nth-child(4),.grnLine .lineProductName{grid-column:1/-1}
+}
+@media(max-width:430px){
+  .invoiceLine,.grnLine{grid-template-columns:1fr}
+  .invoiceLine>label:first-child,.invoiceLine>label:nth-child(4),.grnLine .lineProductName{grid-column:auto}
+  .lineHead{align-items:flex-start}.lineHead button{font-size:10px!important}
+}
