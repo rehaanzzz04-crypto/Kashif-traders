@@ -41,7 +41,9 @@ export default async function handler(req,res){
       products:'products',create_product:'products',
       warehouses:'warehouses',create_warehouse:'warehouses',
       grns:'grn',create_grn:'grn',
-      inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger'
+      inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger',
+      stock_transfers:'inventory_ledger',create_stock_transfer:'inventory_ledger',
+      stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger'
     };
     const requiredFeature=featureByAction[action];
     if(requiredFeature&&!requireFeature(u,res,requiredFeature))return;
@@ -169,6 +171,29 @@ export default async function handler(req,res){
         WHERE m.company_id=${u.company_id} AND (${warehouseId}=0 OR m.warehouse_id=${warehouseId})
         ORDER BY m.movement_date DESC,m.id DESC LIMIT 2000`;
       return res.status(200).json({records:rows,warehouse_id:warehouseId||null});
+    }
+    if(req.method==='GET'&&action==='stock_transfers'){
+      const rows=await sql`SELECT t.id,t.transfer_number,t.transfer_date,t.status,t.notes,
+        fw.warehouse_name from_warehouse,tw.warehouse_name to_warehouse,
+        COUNT(i.id)::int item_count,COALESCE(SUM(i.quantity),0)::numeric total_quantity
+        FROM erp_stock_transfers t
+        JOIN erp_warehouses fw ON fw.id=t.from_warehouse_id AND fw.company_id=t.company_id
+        JOIN erp_warehouses tw ON tw.id=t.to_warehouse_id AND tw.company_id=t.company_id
+        LEFT JOIN erp_stock_transfer_items i ON i.stock_transfer_id=t.id AND i.company_id=t.company_id
+        WHERE t.company_id=${u.company_id}
+        GROUP BY t.id,fw.warehouse_name,tw.warehouse_name
+        ORDER BY t.transfer_date DESC,t.id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='stock_adjustments'){
+      const rows=await sql`SELECT a.id,a.adjustment_number,a.adjustment_date,a.adjustment_type,a.quantity,a.unit_cost,a.reason,a.notes,
+        w.warehouse_name,p.sku,p.product_name,p.unit
+        FROM erp_stock_adjustments a
+        JOIN erp_warehouses w ON w.id=a.warehouse_id AND w.company_id=a.company_id
+        JOIN erp_products p ON p.id=a.product_id AND p.company_id=a.company_id
+        WHERE a.company_id=${u.company_id}
+        ORDER BY a.adjustment_date DESC,a.id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
     }
 
     if(req.method==='POST'&&action==='create_user'){
@@ -345,6 +370,55 @@ export default async function handler(req,res){
       }
       await companyAudit(sql,u,'GRN_POSTED',{entityType:'grn',entityId:String(g[0].id),metadata:{grn_number:grnNumber,invoice_id:supplierInvoiceId,item_count:items.filter(x=>x.quantity>0).length}});
       return res.status(201).json({record:g[0]});
+    }
+    if(req.method==='POST'&&action==='create_stock_transfer'){
+      const fromWarehouseId=positiveInt(b.from_warehouse_id,0),toWarehouseId=positiveInt(b.to_warehouse_id,0);
+      const transferDate=clean(b.transfer_date)||new Date().toISOString().slice(0,10),notes=clean(b.notes)||null;
+      const items=Array.isArray(b.items)?b.items.map(x=>({product_id:positiveInt(x.product_id,0),quantity:number(x.quantity),unit_cost:number(x.unit_cost),notes:clean(x.notes)||null})):[];
+      if(!fromWarehouseId||!toWarehouseId||fromWarehouseId===toWarehouseId||!items.length)return res.status(400).json({error:'Different source and destination warehouses with products required'});
+      if(items.some(x=>!x.product_id||x.quantity<=0||x.unit_cost<0))return res.status(400).json({error:'Valid transfer products and quantities required'});
+      const warehouses=await sql`SELECT id FROM erp_warehouses WHERE company_id=${u.company_id} AND active=true AND id IN (${fromWarehouseId},${toWarehouseId})`;
+      if(warehouses.length!==2)return res.status(400).json({error:'Valid active warehouses required'});
+      for(const item of items){
+        const stock=await sql`SELECT COALESCE(SUM(qty_in-qty_out),0)::numeric quantity
+          FROM erp_inventory_movements WHERE company_id=${u.company_id} AND warehouse_id=${fromWarehouseId} AND product_id=${item.product_id}`;
+        if(Number(stock[0]?.quantity||0)+1e-9<item.quantity)return res.status(400).json({error:'Insufficient stock for one or more transfer products'});
+      }
+      const seq=await sql`SELECT COALESCE(MAX(id),0)::bigint+1 next_id FROM erp_stock_transfers WHERE company_id=${u.company_id}`;
+      const transferNumber='TRF-'+String(seq[0]?.next_id||1).padStart(6,'0');
+      const tr=await sql`INSERT INTO erp_stock_transfers(company_id,transfer_number,from_warehouse_id,to_warehouse_id,transfer_date,status,notes,created_by_user_id)
+        VALUES(${u.company_id},${transferNumber},${fromWarehouseId},${toWarehouseId},${transferDate}::date,'posted',${notes},${u.id}) RETURNING *`;
+      for(const item of items){
+        await sql`INSERT INTO erp_stock_transfer_items(company_id,stock_transfer_id,product_id,quantity,unit_cost,notes)
+          VALUES(${u.company_id},${tr[0].id},${item.product_id},${item.quantity},${item.unit_cost},${item.notes})`;
+        await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+          VALUES(${u.company_id},${item.product_id},${fromWarehouseId},'TRANSFER_OUT',0,${item.quantity},${item.unit_cost},'TRANSFER',${tr[0].id},${transferNumber},${item.notes},${u.id})`;
+        await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+          VALUES(${u.company_id},${item.product_id},${toWarehouseId},'TRANSFER_IN',${item.quantity},0,${item.unit_cost},'TRANSFER',${tr[0].id},${transferNumber},${item.notes},${u.id})`;
+      }
+      await companyAudit(sql,u,'STOCK_TRANSFER_POSTED',{entityType:'stock_transfer',entityId:String(tr[0].id),metadata:{transfer_number:transferNumber,item_count:items.length}});
+      return res.status(201).json({record:tr[0]});
+    }
+    if(req.method==='POST'&&action==='create_stock_adjustment'){
+      const warehouseId=positiveInt(b.warehouse_id,0),productId=positiveInt(b.product_id,0),type=clean(b.adjustment_type).toLowerCase();
+      const quantity=number(b.quantity),unitCost=number(b.unit_cost),adjustmentDate=clean(b.adjustment_date)||new Date().toISOString().slice(0,10);
+      if(!warehouseId||!productId||!['in','out'].includes(type)||quantity<=0||unitCost<0)return res.status(400).json({error:'Warehouse, product, adjustment type and positive quantity required'});
+      const valid=await sql`SELECT
+        EXISTS(SELECT 1 FROM erp_warehouses WHERE id=${warehouseId} AND company_id=${u.company_id} AND active=true) warehouse_ok,
+        EXISTS(SELECT 1 FROM erp_products WHERE id=${productId} AND company_id=${u.company_id} AND active=true) product_ok`;
+      if(!valid[0]?.warehouse_ok||!valid[0]?.product_ok)return res.status(400).json({error:'Valid warehouse and product required'});
+      if(type==='out'){
+        const stock=await sql`SELECT COALESCE(SUM(qty_in-qty_out),0)::numeric quantity FROM erp_inventory_movements WHERE company_id=${u.company_id} AND warehouse_id=${warehouseId} AND product_id=${productId}`;
+        if(Number(stock[0]?.quantity||0)+1e-9<quantity)return res.status(400).json({error:'Adjustment quantity exceeds available stock'});
+      }
+      const seq=await sql`SELECT COALESCE(MAX(id),0)::bigint+1 next_id FROM erp_stock_adjustments WHERE company_id=${u.company_id}`;
+      const adjustmentNumber='ADJ-'+String(seq[0]?.next_id||1).padStart(6,'0'),reason=clean(b.reason)||null,notes=clean(b.notes)||null;
+      const a=await sql`INSERT INTO erp_stock_adjustments(company_id,adjustment_number,warehouse_id,product_id,adjustment_date,adjustment_type,quantity,unit_cost,reason,notes,created_by_user_id)
+        VALUES(${u.company_id},${adjustmentNumber},${warehouseId},${productId},${adjustmentDate}::date,${type},${quantity},${unitCost},${reason},${notes},${u.id}) RETURNING *`;
+      await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+        VALUES(${u.company_id},${productId},${warehouseId},${type==='in'?'ADJUSTMENT_IN':'ADJUSTMENT_OUT'},${type==='in'?quantity:0},${type==='out'?quantity:0},${unitCost},'ADJUSTMENT',${a[0].id},${adjustmentNumber},${notes},${u.id})`;
+      await companyAudit(sql,u,'STOCK_ADJUSTMENT_POSTED',{entityType:'stock_adjustment',entityId:String(a[0].id),metadata:{adjustment_number:adjustmentNumber,type,quantity}});
+      return res.status(201).json({record:a[0]});
     }
     return res.status(405).json({error:'Method not allowed'});
   }catch(e){
