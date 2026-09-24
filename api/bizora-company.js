@@ -8,17 +8,17 @@ const ecommerceOrderStatuses=new Set(['pending','confirmed','packed','shipped','
 const ecommercePaymentStatuses=new Set(['unpaid','paid','refunded']);
 const userRoles=new Set(['company_admin','manager','accountant','salesman','cashier']);
 
-const allWorkspaceViews=['users','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','ocr-drafts','automation-center','communications','support-center','reports','advanced-reports','audit-center'];
+const allWorkspaceViews=['users','company-settings','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','ocr-drafts','automation-center','communications','support-center','reports','advanced-reports','audit-center'];
 const roleViews={
   company_admin:allWorkspaceViews,
-  manager:allWorkspaceViews.filter(x=>x!=='users'),
+  manager:allWorkspaceViews.filter(x=>x!=='users'&&x!=='company-settings'),
   accountant:['suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','supplier-returns','client-returns','ocr-drafts','communications','reports','advanced-reports'],
   salesman:['clients','client-bills','client-payments','client-statement','products','warehouses','inventory-stock','client-returns','cashier','communications','reports'],
   cashier:['clients','products','warehouses','inventory-stock','cashier']
 };
 const roleWriteViews={
   company_admin:allWorkspaceViews,
-  manager:allWorkspaceViews.filter(x=>x!=='users'),
+  manager:allWorkspaceViews.filter(x=>x!=='users'&&x!=='company-settings'),
   accountant:['suppliers','supplier-bills','supplier-payments','clients','client-bills','client-payments','supplier-returns','client-returns','ocr-drafts','communications'],
   salesman:['clients','client-bills','client-payments','client-returns','cashier','communications'],
   cashier:['cashier']
@@ -174,7 +174,8 @@ async function overview(sql,u){
       - COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND status='posted'),0)
     )::numeric client_receivable`;
   const auditPriceRows=await sql`SELECT asp.per_audit_price,asp.active FROM audit_service_prices asp WHERE asp.plan_id=${u.plan_id} LIMIT 1`;
-  return {company:{id:u.company_id,code:u.company_code,name:u.company_name,logo_url:u.logo_url,status:u.company_status},user:{id:u.id,user_code:u.user_code,full_name:u.full_name,email:u.email,role:u.role},subscription:{status:u.subscription_status,expires_on:u.expires_on,plan_code:u.plan_code,plan_name:u.plan_name,features:u.features,access_mode:u.access_mode},limits:{user_limit:u.user_limit,warehouse_limit:u.warehouse_limit},stats:stats[0]||{},audit_service:{per_audit_price:auditPriceRows[0]?.per_audit_price||null,active:auditPriceRows[0]?.active===true},role_access:roleAccessFor(u.role)};
+  const profileRows=await sql`SELECT address,phone,email,tax_number,currency_code,invoice_footer,statement_footer FROM company_profile_settings WHERE company_id=${u.company_id} LIMIT 1`;
+  return {company:{id:u.company_id,code:u.company_code,name:u.company_name,logo_url:u.logo_url,status:u.company_status},company_profile:profileRows[0]||{address:null,phone:null,email:null,tax_number:null,currency_code:'PKR',invoice_footer:null,statement_footer:null},user:{id:u.id,user_code:u.user_code,full_name:u.full_name,email:u.email,role:u.role},subscription:{status:u.subscription_status,expires_on:u.expires_on,plan_code:u.plan_code,plan_name:u.plan_name,features:u.features,access_mode:u.access_mode},limits:{user_limit:u.user_limit,warehouse_limit:u.warehouse_limit},stats:stats[0]||{},audit_service:{per_audit_price:auditPriceRows[0]?.per_audit_price||null,active:auditPriceRows[0]?.active===true},role_access:roleAccessFor(u.role)};
 }
 
 export default async function handler(req,res){
@@ -185,7 +186,7 @@ export default async function handler(req,res){
     const u=await requireCompanyUser(sql,req,res,{write});if(!u)return;
 
     const featureByAction={
-      users:'core_erp',create_user:'core_erp',update_user:'core_erp',set_user_status:'core_erp',notification_summary:'core_erp',
+      users:'core_erp',create_user:'core_erp',update_user:'core_erp',set_user_status:'core_erp',notification_summary:'core_erp',company_settings:'core_erp',save_company_settings:'core_erp',
       suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',supplier_payment_detail:'supplier_management',supplier_statement:'supplier_management',
       create_supplier:'supplier_management',update_supplier:'supplier_management',set_supplier_status:'supplier_management',create_supplier_invoice:'supplier_management',update_supplier_invoice:'supplier_management',cancel_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',cancel_supplier_payment:'supplier_management',
       clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',client_receipt_detail:'customer_management',client_statement:'customer_management',
@@ -209,6 +210,14 @@ export default async function handler(req,res){
 
     if(req.method==='GET'&&action==='overview')return res.status(200).json(await overview(sql,u));
     if(['audit_service','audit_events','request_audit'].includes(action)&&!['company_admin','manager'].includes(u.role))return res.status(403).json({error:'Company Admin or Manager role required for Audit Service'});
+
+    if(req.method==='GET'&&action==='company_settings'){
+      if(u.role!=='company_admin')return res.status(403).json({error:'Company Admin only'});
+      const rows=await sql`SELECT c.company_code,c.company_name,c.logo_url,p.address,p.phone,p.email,p.tax_number,p.currency_code,p.invoice_footer,p.statement_footer,p.updated_at
+        FROM companies c LEFT JOIN company_profile_settings p ON p.company_id=c.id
+        WHERE c.id=${u.company_id} LIMIT 1`;
+      return res.status(200).json({record:rows[0]||{}});
+    }
 
     if(req.method==='GET'&&action==='notification_summary'){
       const items=[];
@@ -1200,6 +1209,24 @@ export default async function handler(req,res){
       }
       await companyAudit(sql,u,'COMPANY_USER_UPDATED',{entityType:'company_user',entityId:String(userId),metadata:{from_role:current[0].role,to_role:role,password_reset:Boolean(password)}});
       return res.status(200).json({record:rows[0]});
+    }
+
+    if(req.method==='POST'&&action==='save_company_settings'){
+      if(u.role!=='company_admin')return res.status(403).json({error:'Company Admin only'});
+      const companyName=clean(b.company_name),logoRaw=clean(b.logo_url),address=clean(b.address)||null,phone=clean(b.phone)||null,
+        email=clean(b.email).toLowerCase()||null,taxNumber=clean(b.tax_number)||null,currency=clean(b.currency_code||'PKR').toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)||'PKR',
+        invoiceFooter=String(b.invoice_footer||'').trim().slice(0,1000)||null,statementFooter=String(b.statement_footer||'').trim().slice(0,1000)||null;
+      if(!companyName||companyName.length>160)return res.status(400).json({error:'Valid company name required'});
+      if(logoRaw&&!/^https?:\/\//i.test(logoRaw))return res.status(400).json({error:'Logo URL must start with http:// or https://'});
+      if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'Valid email required'});
+      await sql`UPDATE companies SET company_name=${companyName},logo_url=${logoRaw||null},updated_at=now() WHERE id=${u.company_id}`;
+      const rows=await sql`INSERT INTO company_profile_settings(company_id,address,phone,email,tax_number,currency_code,invoice_footer,statement_footer,updated_by_user_id)
+        VALUES(${u.company_id},${address},${phone},${email},${taxNumber},${currency},${invoiceFooter},${statementFooter},${u.id})
+        ON CONFLICT(company_id) DO UPDATE SET address=EXCLUDED.address,phone=EXCLUDED.phone,email=EXCLUDED.email,tax_number=EXCLUDED.tax_number,
+          currency_code=EXCLUDED.currency_code,invoice_footer=EXCLUDED.invoice_footer,statement_footer=EXCLUDED.statement_footer,updated_by_user_id=EXCLUDED.updated_by_user_id,updated_at=now()
+        RETURNING *`;
+      await companyAudit(sql,u,'COMPANY_SETTINGS_UPDATED',{entityType:'company',entityId:String(u.company_id),metadata:{company_name:companyName,currency_code:currency}});
+      return res.status(200).json({record:{...rows[0],company_name:companyName,logo_url:logoRaw||null}});
     }
 
     if(req.method==='POST'&&action==='create_user'){

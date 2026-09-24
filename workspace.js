@@ -25,7 +25,7 @@ function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
 const roleCanView=view=>view==='dashboard'||model?.role_access?.views?.includes(view)===true;
 const roleCanWrite=view=>model?.subscription?.access_mode==='write'&&model?.role_access?.write_views?.includes(view)===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce','ocr-drafts':'ocr','automation-center':'automation',communications:'automation','support-center':'priority_support',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
+const viewFeatures={users:'core_erp','company-settings':'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce','ocr-drafts':'ocr','automation-center':'automation',communications:'automation','support-center':'priority_support',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
 let notificationTimer=null;
 async function refreshNotifications(){
   if(!$('notificationBell'))return;
@@ -98,6 +98,7 @@ function cell(key,value){
 async function show(view){
   currentView=view;document.querySelectorAll('#workspaceNav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   if(view==='dashboard')return dashboard();
+  if(view==='company-settings')return openCompanySettings();
   if(!roleCanView(view))return dashboard();
   const needed=viewFeatures[view];
   if(needed&&!featureOn(needed)){
@@ -827,6 +828,42 @@ async function openCommunications(){
   if(canEdit)$('communicationForm').onsubmit=async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button'),data=Object.fromEntries(new FormData(e.currentTarget));btn.disabled=true;btn.textContent='Saving…';try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save_communication_settings',active:true,...data})});await openCommunications()}catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save Settings'}};
 }
 
+function installCompanySettingsModule(){
+  if(model?.user?.role!=='company_admin'||document.querySelector('[data-view="company-settings"]'))return;
+  const overview=[...document.querySelectorAll('#workspaceNav .navSection')].find(x=>/^Overview$/i.test((x.querySelector('.navSectionTitle')?.textContent||'').trim()));
+  if(!overview)return;
+  const b=document.createElement('button');b.type='button';b.dataset.view='company-settings';b.dataset.feature='core_erp';
+  b.innerHTML='<span class="navIcon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a7 7 0 0 0-1.8-1L14.4 3h-4.8l-.4 3.1a7 7 0 0 0-1.8 1l-2.4-1-2 3.4L5.1 11a7 7 0 0 0 0 2L3 14.5l2 3.4 2.4-1a7 7 0 0 0 1.8 1l.4 3.1h4.8l.4-3.1a7 7 0 0 0 1.8-1l2.4 1 2-3.4-2.1-1.5a7 7 0 0 0 .1-1z"/></svg></span><span class="navLabel">Company Settings</span><span class="navChevron">›</span>';
+  overview.appendChild(b);
+}
+async function openCompanySettings(){
+  if(model.user.role!=='company_admin')return dashboard();
+  $('workspaceTitle').textContent='Company Settings';$('workspaceSubtitle').textContent=model.company.name+' · Business Profile & Documents';$('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading company settings…</div></div>';
+  const d=await json('/api/bizora-company?action=company_settings'),r=d.record||{};
+  $('workspaceBody').innerHTML=
+    '<div class="companySettingsHead"><div><span class="capEyebrow">COMPANY PROFILE</span><h2>Business Identity & Documents</h2><p>Yeh details company workspace aur future printable documents ke liye central profile hain.</p></div><div class="companyCodeCard"><small>Company Code</small><b>'+esc(r.company_code||model.company.code)+'</b></div></div>'+
+    '<form id="companySettingsForm" class="card companySettingsCard">'+
+      '<div class="companyBrandPreview"><div id="companyLogoPreview" class="companyLogoPreview">'+(r.logo_url?'<img src="'+esc(r.logo_url)+'" alt="">':'<span>'+esc((r.company_name||model.company.name||'B').charAt(0).toUpperCase())+'</span>')+'</div><div><b>'+esc(r.company_name||model.company.name)+'</b><small>Bizora tenant branding</small></div></div>'+
+      '<div class="formGrid"><label>Company Name<input name="company_name" value="'+esc(r.company_name||model.company.name)+'" required maxlength="160"></label><label>Logo URL<input name="logo_url" value="'+esc(r.logo_url||'')+'" placeholder="https://..."></label><label>Phone<input name="phone" value="'+esc(r.phone||'')+'"></label><label>Email<input name="email" type="email" value="'+esc(r.email||'')+'"></label><label>Tax / NTN Number<input name="tax_number" value="'+esc(r.tax_number||'')+'"></label><label>Currency Code<input name="currency_code" value="'+esc(r.currency_code||'PKR')+'" maxlength="3"></label></div>'+
+      '<label>Business Address<textarea name="address">'+esc(r.address||'')+'</textarea></label>'+
+      '<div class="companyDocumentGrid"><label>Invoice Footer<textarea name="invoice_footer" placeholder="Thank you / payment terms / bank note">'+esc(r.invoice_footer||'')+'</textarea></label><label>Statement Footer<textarea name="statement_footer" placeholder="Statement note / contact information">'+esc(r.statement_footer||'')+'</textarea></label></div>'+
+      '<div class="companySettingsNote">Company code tenant identity hai aur yahan change nahi hota. Company name/logo/profile update se ERP transaction history delete ya alter nahi hoti.</div>'+
+      '<div class="masterActions"><button id="saveCompanySettings" class="primary">Save Company Settings</button></div>'+
+    '</form>';
+  const form=$('companySettingsForm'),logoInput=form.elements.logo_url,nameInput=form.elements.company_name;
+  const preview=()=>{const url=logoInput.value.trim(),box=$('companyLogoPreview');box.innerHTML=url&&/^https?:\/\//i.test(url)?'<img src="'+esc(url)+'" alt="">':'<span>'+esc((nameInput.value.trim()||'B').charAt(0).toUpperCase())+'</span>'};
+  logoInput.oninput=preview;nameInput.oninput=preview;
+  form.onsubmit=async e=>{e.preventDefault();const btn=$('saveCompanySettings'),data=Object.fromEntries(new FormData(form));btn.disabled=true;btn.textContent='Saving…';try{
+    const out=await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save_company_settings',...data})});
+    model=await json('/api/bizora-company?action=overview');setHeader();messageBox('Company settings saved');await openCompanySettings();
+  }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save Company Settings'}};
+}
+function messageBox(text){
+  let b=document.getElementById('workspaceToast');if(!b){b=document.createElement('div');b.id='workspaceToast';b.className='workspaceToast';document.body.appendChild(b)}
+  b.textContent=text;b.classList.add('show');clearTimeout(messageBox.t);messageBox.t=setTimeout(()=>b.classList.remove('show'),2200);
+}
+
 function installSupportModule(){
   if(document.querySelector('[data-view="support-center"]'))return;
   const nav=document.querySelector('#workspaceNav .navScroll');if(!nav)return;
@@ -1340,4 +1377,4 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
   $('recordDialog').close();e.currentTarget.reset();invoiceEditContext=null;optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
-(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();installCommunicationModule();installSupportModule();installNotificationCenter();setHeader();dashboard();automationPulse()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
+(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();installCompanySettingsModule();installCommunicationModule();installSupportModule();installNotificationCenter();setHeader();dashboard();automationPulse()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});

@@ -506,6 +506,20 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
 
+  await sql`CREATE TABLE IF NOT EXISTS company_profile_settings(
+    company_id BIGINT PRIMARY KEY REFERENCES companies(id) ON DELETE RESTRICT,
+    address TEXT,
+    phone TEXT,
+    email TEXT,
+    tax_number TEXT,
+    currency_code TEXT NOT NULL DEFAULT 'PKR',
+    invoice_footer TEXT,
+    statement_footer TEXT,
+    updated_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+
   await sql`CREATE TABLE IF NOT EXISTS communication_settings(
     company_id BIGINT PRIMARY KEY REFERENCES companies(id) ON DELETE RESTRICT,
     whatsapp_number TEXT,
