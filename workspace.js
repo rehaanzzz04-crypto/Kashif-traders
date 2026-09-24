@@ -17,11 +17,13 @@ const defs={
   warehouses:{title:'Warehouses',action:'warehouses',create:'create_warehouse',cols:[['warehouse_code','Code'],['warehouse_name','Warehouse'],['address','Address']],fields:[['warehouse_code','Warehouse Code','text'],['warehouse_name','Warehouse Name','text'],['address','Address','text']]},
   grns:{title:'Goods Receiving (GRN)',action:'grns',create:'create_grn',cols:[['grn_number','GRN'],['received_date','Date'],['supplier_name','Supplier'],['supplier_invoice_number','Supplier Invoice'],['warehouse_name','Warehouse'],['item_count','Items'],['total_quantity','Quantity'],['status','Status']],fields:[['supplier_id','Supplier','supplier'],['supplier_invoice_id','Supplier Invoice','supplier_invoice'],['warehouse_id','Warehouse','warehouse'],['product_id','Product','product'],['quantity','Quantity','number'],['unit_cost','Unit Cost','number'],['received_date','Received Date','date'],['notes','Notes','textarea']]},
   'inventory-stock':{title:'Warehouse Stock',action:'inventory_stock',cols:[['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['unit','Unit'],['quantity','Quantity'],['stock_value','Stock Value']]},
-  'inventory-ledger':{title:'Inventory Ledger',action:'inventory_ledger',cols:[['movement_date','Date / Time'],['movement_type','Type'],['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['qty_in','Qty In'],['qty_out','Qty Out'],['unit_cost','Unit Cost'],['reference_number','Reference']]}
+  'inventory-ledger':{title:'Inventory Ledger',action:'inventory_ledger',cols:[['movement_date','Date / Time'],['movement_type','Type'],['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['qty_in','Qty In'],['qty_out','Qty Out'],['unit_cost','Unit Cost'],['reference_number','Reference']]},
+  'stock-transfers':{title:'Stock Transfers',action:'stock_transfers',create:'create_stock_transfer',cols:[['transfer_number','Transfer'],['transfer_date','Date'],['from_warehouse','From'],['to_warehouse','To'],['item_count','Items'],['total_quantity','Quantity'],['status','Status']]},
+  'stock-adjustments':{title:'Stock Adjustments',action:'stock_adjustments',create:'create_stock_adjustment',cols:[['adjustment_number','Adjustment'],['adjustment_date','Date'],['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['adjustment_type','Type'],['quantity','Quantity'],['reason','Reason']]}
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -206,10 +208,27 @@ async function openGrnForm(){
   };
   $('recordDialog').showModal();
 }
+async function openTransferForm(){
+  const warehouses=await partyOptions('warehouse'),products=optionCache.products||(await json('/api/bizora-company?action=products')).records||[];
+  optionCache.products=products;const today=new Date().toISOString().slice(0,10);
+  $('recordTitle').textContent='Post Stock Transfer';$('recordHint').textContent='Move stock between Bizora warehouses';
+  $('recordFields').innerHTML='<div class="formGrid"><label>From Warehouse<select name="from_warehouse_id" required><option value="">Select Warehouse</option>'+warehouses.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label><label>To Warehouse<select name="to_warehouse_id" required><option value="">Select Warehouse</option>'+warehouses.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label><label>Transfer Date<input name="transfer_date" type="date" value="'+today+'" required></label></div><div class="lineHead"><div><b>Transfer Products</b><small>Add one or more products</small></div><button id="addTransferLine" type="button" class="secondary">+ Add Product</button></div><div id="transferItems" class="lineItems"></div><label>Notes<textarea name="notes"></textarea></label>';
+  const row=()=>'<div class="lineItem transferLine"><label>Product<select class="transferProduct" required>'+productOptionsHtml(products)+'</select></label><label>Quantity<input class="transferQty" type="number" min="0.001" step="0.001" value="1" required></label><label>Unit Cost<input class="transferCost" type="number" min="0" step="0.01" value="0"></label><label>Notes<input class="transferNotes" type="text"></label><button type="button" class="removeLine secondary">×</button></div>';
+  const holder=$('transferItems');holder.innerHTML=row();$('addTransferLine').onclick=()=>holder.insertAdjacentHTML('beforeend',row());holder.onclick=e=>{if(e.target.closest('.removeLine')&&holder.querySelectorAll('.transferLine').length>1)e.target.closest('.transferLine').remove()};holder.onchange=e=>{if(e.target.classList.contains('transferProduct')){const opt=e.target.selectedOptions[0],line=e.target.closest('.transferLine');line.querySelector('.transferCost').value=Number(opt?.dataset.price||0)}};
+  $('recordDialog').showModal();
+}
+async function openAdjustmentForm(){
+  const warehouses=await partyOptions('warehouse'),products=optionCache.products||(await json('/api/bizora-company?action=products')).records||[];optionCache.products=products;const today=new Date().toISOString().slice(0,10);
+  $('recordTitle').textContent='Stock Adjustment';$('recordHint').textContent='Manual stock correction with audit trail';
+  $('recordFields').innerHTML='<div class="formGrid"><label>Warehouse<select name="warehouse_id" required><option value="">Select Warehouse</option>'+warehouses.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label><label>Product<select name="product_id" id="adjustmentProduct" required>'+productOptionsHtml(products)+'</select></label><label>Type<select name="adjustment_type" required><option value="in">Stock In</option><option value="out">Stock Out</option></select></label><label>Quantity<input name="quantity" type="number" min="0.001" step="0.001" required></label><label>Unit Cost<input name="unit_cost" id="adjustmentCost" type="number" min="0" step="0.01" value="0"></label><label>Date<input name="adjustment_date" type="date" value="'+today+'" required></label></div><label>Reason<input name="reason" placeholder="Damage, count correction, opening correction..."></label><label>Notes<textarea name="notes"></textarea></label>';
+  $('adjustmentProduct').onchange=e=>$('adjustmentCost').value=Number(e.target.selectedOptions[0]?.dataset.price||0);$('recordDialog').showModal();
+}
 async function openForm(){
   const d=defs[currentView];if(!d)return;
   if(currentView==='supplier-bills')return openSupplierInvoiceForm();
   if(currentView==='grns')return openGrnForm();
+  if(currentView==='stock-transfers')return openTransferForm();
+  if(currentView==='stock-adjustments')return openAdjustmentForm();
   $('recordTitle').textContent='Add '+d.title.replace(/s$/,'');$('recordHint').textContent=model.company.name+' only';
   const parts=[];for(const f of d.fields)parts.push(await renderField(f));$('recordFields').innerHTML=parts.join('');$('recordDialog').showModal();
 }
@@ -246,6 +265,10 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
       expiry_date:row.querySelector('.grnExpiry').value||''
     })).filter(x=>x.received_qty>0);
     if(!data.items.length)throw new Error('At least one received product quantity is required');
+  }
+  if(currentView==='stock-transfers'){
+    data.items=[...document.querySelectorAll('#transferItems .transferLine')].map(row=>({product_id:Number(row.querySelector('.transferProduct').value||0),quantity:Number(row.querySelector('.transferQty').value||0),unit_cost:Number(row.querySelector('.transferCost').value||0),notes:row.querySelector('.transferNotes').value||''}));
+    if(!data.items.length||data.items.some(x=>!x.product_id||x.quantity<=0||x.unit_cost<0))throw new Error('Valid transfer products required');
   }
   await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:d.create,...data})});
   $('recordDialog').close();e.currentTarget.reset();optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
