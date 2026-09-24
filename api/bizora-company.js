@@ -36,7 +36,7 @@ export default async function handler(req,res){
       users:'core_erp',create_user:'core_erp',set_user_status:'core_erp',
       suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',
       create_supplier:'supplier_management',create_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',
-      clients:'customer_management',client_invoices:'customer_management',client_receipts:'customer_management',
+      clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',
       create_client:'customer_management',create_client_invoice:'customer_management',create_client_receipt:'customer_management',
       products:'products',create_product:'products',
       warehouses:'warehouses',create_warehouse:'warehouses',
@@ -112,9 +112,33 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='client_invoices'){
-      const rows=await sql`SELECT i.id,i.client_id,c.business_name,i.invoice_number,i.invoice_date,i.due_date,i.amount,i.status,i.notes,i.created_at
-        FROM erp_client_invoices i JOIN erp_clients c ON c.id=i.client_id AND c.company_id=i.company_id
-        WHERE i.company_id=${u.company_id} ORDER BY i.invoice_date DESC,i.id DESC LIMIT 1000`;
+      const rows=await sql`SELECT i.id,i.client_id,c.business_name,i.invoice_number,i.invoice_date,i.due_date,i.amount,i.status,i.notes,i.created_at,
+        w.warehouse_name,
+        COALESCE(q.item_count,0)::int item_count,
+        COALESCE(q.total_quantity,0)::numeric total_quantity
+        FROM erp_client_invoices i
+        JOIN erp_clients c ON c.id=i.client_id AND c.company_id=i.company_id
+        LEFT JOIN erp_warehouses w ON w.id=i.warehouse_id AND w.company_id=i.company_id
+        LEFT JOIN LATERAL(
+          SELECT COUNT(*)::int item_count,COALESCE(SUM(ii.quantity),0)::numeric total_quantity
+          FROM erp_client_invoice_items ii
+          WHERE ii.company_id=i.company_id AND ii.client_invoice_id=i.id
+        ) q ON true
+        WHERE i.company_id=${u.company_id}
+        ORDER BY i.invoice_date DESC,i.id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='client_invoice_items'){
+      const invoiceId=positiveInt(req.query?.invoice_id,0);
+      if(!invoiceId)return res.status(400).json({error:'Valid invoice required'});
+      const rows=await sql`SELECT ii.id,ii.product_id,p.sku,p.product_name,p.unit,ii.description,ii.quantity,ii.unit_price,ii.unit_cost,
+        w.warehouse_name
+        FROM erp_client_invoice_items ii
+        JOIN erp_client_invoices i ON i.id=ii.client_invoice_id AND i.company_id=ii.company_id
+        JOIN erp_products p ON p.id=ii.product_id AND p.company_id=ii.company_id
+        LEFT JOIN erp_warehouses w ON w.id=ii.warehouse_id AND w.company_id=ii.company_id
+        WHERE ii.company_id=${u.company_id} AND ii.client_invoice_id=${invoiceId}
+        ORDER BY ii.id`;
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='client_receipts'){
@@ -279,14 +303,41 @@ export default async function handler(req,res){
       return res.status(201).json({record:rows[0]});
     }
     if(req.method==='POST'&&action==='create_client_invoice'){
-      const clientId=positiveInt(b.client_id,0),invoiceNumber=clean(b.invoice_number),amount=number(b.amount),invoiceDate=clean(b.invoice_date)||new Date().toISOString().slice(0,10),dueDate=clean(b.due_date)||null;
-      if(!clientId||!invoiceNumber||amount<0)return res.status(400).json({error:'Client, invoice number and valid amount required'});
-      const rows=await sql`INSERT INTO erp_client_invoices(company_id,client_id,invoice_number,invoice_date,due_date,amount,notes,created_by_user_id)
-        SELECT ${u.company_id},c.id,${invoiceNumber},${invoiceDate}::date,${dueDate}::date,${amount},${clean(b.notes)||null},${u.id}
+      const clientId=positiveInt(b.client_id,0),invoiceNumber=clean(b.invoice_number),invoiceDate=clean(b.invoice_date)||new Date().toISOString().slice(0,10),dueDate=clean(b.due_date)||null;
+      const warehouseId=positiveInt(b.warehouse_id,0)||null;
+      const items=Array.isArray(b.items)?b.items.map(x=>({product_id:positiveInt(x.product_id,0),description:clean(x.description)||null,quantity:number(x.quantity),unit_price:number(x.unit_price),unit_cost:number(x.unit_cost)})):[];
+      if(!clientId||!invoiceNumber)return res.status(400).json({error:'Customer and invoice number required'});
+      if(items.length&&items.some(x=>!x.product_id||x.quantity<=0||x.unit_price<0||x.unit_cost<0))return res.status(400).json({error:'Valid product, quantity and sale price required'});
+      if(items.length&&!warehouseId)return res.status(400).json({error:'Warehouse required for product invoice'});
+      if(warehouseId){
+        const wh=await sql`SELECT id FROM erp_warehouses WHERE id=${warehouseId} AND company_id=${u.company_id} AND active=true`;
+        if(!wh[0])return res.status(400).json({error:'Warehouse not found'});
+      }
+      for(const item of items){
+        const product=await sql`SELECT id,purchase_price FROM erp_products WHERE id=${item.product_id} AND company_id=${u.company_id} AND active=true`;
+        if(!product[0])return res.status(400).json({error:'Invalid product in customer invoice'});
+        if(!item.unit_cost)item.unit_cost=number(product[0].purchase_price);
+        if(u.features?.inventory_ledger===true){
+          const stock=await sql`SELECT COALESCE(SUM(qty_in-qty_out),0)::numeric quantity FROM erp_inventory_movements WHERE company_id=${u.company_id} AND warehouse_id=${warehouseId} AND product_id=${item.product_id}`;
+          if(Number(stock[0]?.quantity||0)+1e-9<item.quantity)return res.status(400).json({error:'Insufficient warehouse stock for one or more products'});
+        }
+      }
+      const itemTotal=items.reduce((n,x)=>n+x.quantity*x.unit_price,0),amount=items.length?Number(itemTotal.toFixed(2)):number(b.amount);
+      if(amount<0)return res.status(400).json({error:'Valid invoice amount required'});
+      const rows=await sql`INSERT INTO erp_client_invoices(company_id,client_id,warehouse_id,invoice_number,invoice_date,due_date,amount,notes,created_by_user_id)
+        SELECT ${u.company_id},c.id,${warehouseId},${invoiceNumber},${invoiceDate}::date,${dueDate}::date,${amount},${clean(b.notes)||null},${u.id}
         FROM erp_clients c WHERE c.id=${clientId} AND c.company_id=${u.company_id}
-        RETURNING id,client_id,invoice_number,invoice_date,due_date,amount,status,notes,created_at`;
-      if(!rows[0])return res.status(404).json({error:'Client not found'});
-      await companyAudit(sql,u,'CLIENT_INVOICE_CREATED',{entityType:'client_invoice',entityId:String(rows[0].id),metadata:{amount}});
+        RETURNING *`;
+      if(!rows[0])return res.status(404).json({error:'Customer not found'});
+      for(const item of items){
+        await sql`INSERT INTO erp_client_invoice_items(company_id,client_invoice_id,product_id,warehouse_id,description,quantity,unit_price,unit_cost)
+          VALUES(${u.company_id},${rows[0].id},${item.product_id},${warehouseId},${item.description},${item.quantity},${item.unit_price},${item.unit_cost})`;
+        if(u.features?.inventory_ledger===true){
+          await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+            VALUES(${u.company_id},${item.product_id},${warehouseId},'SALE',0,${item.quantity},${item.unit_cost},'CUSTOMER_INVOICE',${rows[0].id},${invoiceNumber},${item.description},${u.id})`;
+        }
+      }
+      await companyAudit(sql,u,'CLIENT_INVOICE_CREATED',{entityType:'client_invoice',entityId:String(rows[0].id),metadata:{amount,item_count:items.length,warehouse_id:warehouseId}});
       return res.status(201).json({record:rows[0]});
     }
     if(req.method==='POST'&&action==='create_client_receipt'){
