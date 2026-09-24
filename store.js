@@ -17,6 +17,7 @@ function applyTheme(){
 function renderBrand(){
   const name=store.store_name||store.company_name;
   $('brandName').textContent=name;$('footerCompany').textContent=name;
+  const bar=$('announcementBar');if(store.show_announcement&&store.announcement_text){bar.textContent=store.announcement_text;bar.classList.remove('hidden')}else bar.classList.add('hidden');
   if(store.logo_url){$('brandLogo').src=store.logo_url;$('brandLogo').classList.remove('hidden')}
   if(store.header_layout==='name_only')$('brandLogo').classList.add('hidden');
   document.querySelector('.publicHeaderInner').classList.toggle('centerBrand',store.header_layout==='centered');
