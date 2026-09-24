@@ -25,7 +25,7 @@ function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
 const roleCanView=view=>view==='dashboard'||model?.role_access?.views?.includes(view)===true;
 const roleCanWrite=view=>model?.subscription?.access_mode==='write'&&model?.role_access?.write_views?.includes(view)===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce','ocr-drafts':'ocr',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce','ocr-drafts':'ocr','automation-center':'automation',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -83,6 +83,7 @@ async function show(view){
   if(view==='cashier')return openCashier();
   if(view==='ecommerce')return openEcommerce();
   if(view==='ocr-drafts')return openOcrDrafts();
+  if(view==='automation-center')return openAutomationCenter();
   if(view==='reports')return openReports(false);
   if(view==='advanced-reports')return openReports(true);
   if(view==='audit-center')return openAuditCenter();
@@ -719,6 +720,48 @@ async function openOcrDraftReview(draftId=null,seed=null){
   $('rejectOcrDraft').onclick=async()=>{if(!draftId||!confirm('Reject this OCR draft?'))return;try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reject_ocr_draft',draft_id:draftId})});await openOcrDrafts()}catch(err){alert(err.message)}};
 }
 
+function installAutomationModule(){
+  if(document.querySelector('[data-view="automation-center"]'))return;
+  const sections=[...document.querySelectorAll('#workspaceNav .navSection')];
+  let section=sections.find(x=>/^Automation$/i.test((x.querySelector('.navSectionTitle')?.textContent||'').trim()));
+  if(!section){section=document.createElement('div');section.className='navSection';section.innerHTML='<div class="navSectionTitle">Automation</div>';document.querySelector('#workspaceNav .navScroll')?.appendChild(section)}
+  const b=document.createElement('button');b.type='button';b.dataset.view='automation-center';b.dataset.feature='automation';
+  b.innerHTML='<span class="navIcon"><svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="4"/><path d="M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg></span><span class="navLabel">Automation Center</span><span class="navChevron">›</span>';
+  section.appendChild(b);
+}
+async function automationPulse(){
+  if(!featureOn('automation')||!roleCanView('automation-center')||model.subscription.access_mode!=='write')return;
+  try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'run_automations',force:false})})}catch{}
+}
+async function openAutomationCenter(){
+  $('workspaceTitle').textContent='Automation Center';
+  $('workspaceSubtitle').textContent=model.company.name+' · Premium Workflow Automation';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading automation…</div></div>';
+  let d=await json('/api/bizora-company?action=automation_center');
+  if(!(d.rules||[]).length&&roleCanWrite('automation-center')){
+    await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'run_automations',force:true})});
+    d=await json('/api/bizora-company?action=automation_center');
+  }
+  const rules=d.rules||[],alerts=d.alerts||[],stats=d.stats||{},open=alerts.filter(x=>x.status==='open');
+  const ruleMeta={
+    LOW_STOCK:{label:'Low Stock',help:'Alert when warehouse stock reaches this quantity or lower.',unit:'Qty threshold'},
+    OVERDUE_CUSTOMER:{label:'Customer Overdue',help:'Alert when customer invoice remains unpaid after due date.',unit:'Grace days'},
+    OVERDUE_SUPPLIER:{label:'Supplier Overdue',help:'Alert when supplier invoice remains unpaid after due date.',unit:'Grace days'},
+    PENDING_GRN:{label:'Pending GRN',help:'Alert when supplier invoice goods are still not fully received.',unit:'After days'}
+  };
+  $('workspaceBody').innerHTML=
+    '<div class="automationHead"><div><span class="capEyebrow">PREMIUM AUTOMATION</span><h2>Workflow Automation Center</h2><p>Rules run automatically when the workspace opens, with a 6-hour throttle. No Vercel Cron is required.</p></div>'+(roleCanWrite('automation-center')?'<button id="runAutomationNow" class="primary">Run Now</button>':'')+'</div>'+
+    '<div class="automationKpis"><div><small>Open Alerts</small><b>'+esc(stats.open_alerts||0)+'</b></div><div><small>Critical</small><b>'+esc(stats.critical_alerts||0)+'</b></div><div><small>Rules</small><b>'+rules.filter(x=>x.active).length+'/'+rules.length+'</b></div><div><small>Resolved</small><b>'+esc(stats.resolved_alerts||0)+'</b></div></div>'+
+    '<div class="automationRules">'+rules.map(r=>{const m=ruleMeta[r.rule_code]||{label:r.rule_name,help:'Automation rule',unit:'Value'},value=r.rule_code==='LOW_STOCK'?(r.parameters?.threshold??5):(r.parameters?.days??0);return '<form class="automationRule" data-code="'+esc(r.rule_code)+'"><div class="automationRuleTop"><div><b>'+esc(m.label)+'</b><p>'+esc(m.help)+'</p></div><label class="automationSwitch"><input class="automationActive" type="checkbox" '+(r.active?'checked':'')+'><span></span></label></div><div class="automationRuleFoot"><label>'+esc(m.unit)+'<input class="automationValue" type="number" min="0" step="1" value="'+esc(value)+'"></label><small>Last run: '+(r.last_run_at?esc(new Date(r.last_run_at).toLocaleString('en-GB')):'Never')+'</small>'+(roleCanWrite('automation-center')?'<button class="secondary">Save</button>':'')+'</div></form>'}).join('')+'</div>'+
+    '<div class="card automationAlerts"><div class="reportSectionTitle"><div><b>Open Alerts</b><span>'+open.length+' action item(s)</span></div></div>'+
+      (open.length?'<div class="automationAlertList">'+open.map(a=>'<div class="automationAlert '+esc(a.severity)+'"><div class="automationAlertIcon">'+(a.severity==='critical'?'!':a.severity==='warning'?'⚠':'i')+'</div><div><b>'+esc(a.title)+'</b><p>'+esc(a.message)+'</p><small>'+esc(a.rule_code.replaceAll('_',' '))+' · '+esc(new Date(a.last_detected_at).toLocaleString('en-GB'))+'</small></div>'+(roleCanWrite('automation-center')?'<button class="secondary dismissAutomation" data-id="'+a.id+'">Dismiss</button>':'')+'</div>').join('')+'</div>':'<div class="automationClear">✓ No open automation alerts right now.</div>')+
+    '</div>';
+  if($('runAutomationNow'))$('runAutomationNow').onclick=async()=>{const b=$('runAutomationNow');b.disabled=true;b.textContent='Running…';try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'run_automations',force:true})});await openAutomationCenter()}catch(e){alert(e.message)}finally{b.disabled=false;b.textContent='Run Now'}};
+  document.querySelectorAll('.automationRule').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const b=form.querySelector('button');if(!b)return;b.disabled=true;b.textContent='Saving…';try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update_automation_rule',rule_code:form.dataset.code,active:form.querySelector('.automationActive').checked,value:Number(form.querySelector('.automationValue').value||0)})});await openAutomationCenter()}catch(err){alert(err.message)}finally{b.disabled=false;b.textContent='Save'}});
+  document.querySelectorAll('.dismissAutomation').forEach(b=>b.onclick=async()=>{try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'dismiss_automation_alert',alert_id:Number(b.dataset.id)})});await openAutomationCenter()}catch(e){alert(e.message)}});
+}
+
 function installEcommerceModule(){
   if(document.querySelector('[data-view="ecommerce"]'))return;
   const nav=document.querySelector('#workspaceNav .navScroll');if(!nav)return;
@@ -1208,4 +1251,4 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
   $('recordDialog').close();e.currentTarget.reset();invoiceEditContext=null;optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
-(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
+(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();setHeader();dashboard();automationPulse()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});

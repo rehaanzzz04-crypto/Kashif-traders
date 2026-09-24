@@ -448,6 +448,38 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
 
+  await sql`CREATE TABLE IF NOT EXISTS automation_rules(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    rule_code TEXT NOT NULL,
+    rule_name TEXT NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT true,
+    parameters JSONB NOT NULL DEFAULT '{}'::jsonb,
+    last_run_at TIMESTAMPTZ,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,rule_code)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS automation_alerts(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    rule_id BIGINT NOT NULL REFERENCES automation_rules(id) ON DELETE RESTRICT,
+    rule_code TEXT NOT NULL,
+    alert_key TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'warning' CHECK(severity IN ('info','warning','critical')),
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','dismissed','resolved')),
+    last_detected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,rule_code,alert_key)
+  )`;
+
   await sql`CREATE TABLE IF NOT EXISTS ecommerce_store_settings(
     company_id BIGINT PRIMARY KEY REFERENCES companies(id) ON DELETE RESTRICT,
     store_name TEXT NOT NULL,
@@ -590,6 +622,8 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_return_items_invoice_item_idx ON erp_supplier_return_items(company_id,supplier_invoice_item_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_returns_company_idx ON erp_client_returns(company_id,return_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_return_items_invoice_item_idx ON erp_client_return_items(company_id,client_invoice_item_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS automation_rules_company_idx ON automation_rules(company_id,active,updated_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS automation_alerts_company_idx ON automation_alerts(company_id,status,last_detected_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ocr_supplier_drafts_company_idx ON ocr_supplier_drafts(company_id,status,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ocr_supplier_draft_items_draft_idx ON ocr_supplier_draft_items(company_id,draft_id,sort_order)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_products_company_idx ON ecommerce_products(company_id,active,created_at DESC)`;

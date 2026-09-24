@@ -8,7 +8,7 @@ const ecommerceOrderStatuses=new Set(['pending','confirmed','packed','shipped','
 const ecommercePaymentStatuses=new Set(['unpaid','paid','refunded']);
 const userRoles=new Set(['company_admin','manager','accountant','salesman','cashier']);
 
-const allWorkspaceViews=['users','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','ocr-drafts','reports','advanced-reports','audit-center'];
+const allWorkspaceViews=['users','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','ocr-drafts','automation-center','reports','advanced-reports','audit-center'];
 const roleViews={
   company_admin:allWorkspaceViews,
   manager:allWorkspaceViews.filter(x=>x!=='users'),
@@ -52,6 +52,104 @@ function roleAllowsAction(role,action){
 }
 function roleAccessFor(role){
   return {views:roleViews[role]||[],write_views:roleWriteViews[role]||[],can_manage_users:role==='company_admin'};
+}
+
+const automationRuleCodes=new Set(['LOW_STOCK','OVERDUE_CUSTOMER','OVERDUE_SUPPLIER','PENDING_GRN']);
+async function ensureAutomationRules(sql,u){
+  const defaults=[
+    ['LOW_STOCK','Low Stock Alert',{threshold:5}],
+    ['OVERDUE_CUSTOMER','Overdue Customer Invoices',{days:0}],
+    ['OVERDUE_SUPPLIER','Overdue Supplier Invoices',{days:0}],
+    ['PENDING_GRN','Pending Goods Receiving',{days:2}]
+  ];
+  for(const [ruleCode,ruleName,parameters] of defaults)await sql`INSERT INTO automation_rules(company_id,rule_code,rule_name,active,parameters,created_by_user_id)
+    VALUES(${u.company_id},${ruleCode},${ruleName},true,${JSON.stringify(parameters)}::jsonb,${u.id})
+    ON CONFLICT(company_id,rule_code) DO NOTHING`;
+}
+async function runAutomationRules(sql,u,{force=false}={}){
+  await ensureAutomationRules(sql,u);
+  const last=await sql`SELECT MAX(last_run_at) last_run_at FROM automation_rules WHERE company_id=${u.company_id} AND active=true`;
+  if(!force&&last[0]?.last_run_at&&Date.now()-new Date(last[0].last_run_at).getTime()<6*60*60*1000){
+    const count=await sql`SELECT COUNT(*)::int count FROM automation_alerts WHERE company_id=${u.company_id} AND status='open'`;
+    return {ran:false,open_alerts:Number(count[0]?.count||0),last_run_at:last[0].last_run_at};
+  }
+  const rules=await sql`SELECT id,rule_code,rule_name,active,parameters FROM automation_rules WHERE company_id=${u.company_id} AND active=true ORDER BY id`;
+  let detectedTotal=0;
+  for(const rule of rules){
+    const found=[];
+    if(rule.rule_code==='LOW_STOCK'){
+      const threshold=Math.max(0,number(rule.parameters?.threshold??5));
+      const rows=await sql`SELECT p.id product_id,p.sku,p.product_name,w.id warehouse_id,w.warehouse_name,
+          COALESCE(SUM(m.qty_in-m.qty_out),0)::numeric quantity
+        FROM erp_inventory_movements m
+        JOIN erp_products p ON p.id=m.product_id AND p.company_id=m.company_id AND p.active=true
+        JOIN erp_warehouses w ON w.id=m.warehouse_id AND w.company_id=m.company_id AND w.active=true
+        WHERE m.company_id=${u.company_id}
+        GROUP BY p.id,p.sku,p.product_name,w.id,w.warehouse_name
+        HAVING COALESCE(SUM(m.qty_in-m.qty_out),0)<=${threshold}
+        ORDER BY quantity,p.product_name LIMIT 250`;
+      for(const x of rows)found.push({key:`${x.warehouse_id}:${x.product_id}`,severity:number(x.quantity)<=0?'critical':'warning',title:'Low Stock · '+x.product_name,message:`${x.warehouse_name}: ${number(x.quantity)} ${x.sku||''} remaining (threshold ${threshold})`,entity_type:'product',entity_id:String(x.product_id)});
+    }
+    if(rule.rule_code==='OVERDUE_CUSTOMER'){
+      const days=Math.max(0,Math.floor(number(rule.parameters?.days??0)));
+      const rows=await sql`SELECT i.id,i.invoice_number,i.due_date,c.business_name,
+          GREATEST(i.amount
+            -COALESCE((SELECT SUM(r.amount) FROM erp_client_returns r WHERE r.company_id=i.company_id AND r.client_invoice_id=i.id AND r.status='posted'),0)
+            -COALESCE((SELECT SUM(a.amount) FROM erp_client_receipt_allocations a WHERE a.company_id=i.company_id AND a.client_invoice_id=i.id),0),0)::numeric balance
+        FROM erp_client_invoices i JOIN erp_clients c ON c.id=i.client_id AND c.company_id=i.company_id
+        WHERE i.company_id=${u.company_id} AND i.status<>'cancelled' AND i.due_date IS NOT NULL
+          AND i.due_date < CURRENT_DATE-${days}::int
+          AND i.amount
+            -COALESCE((SELECT SUM(r.amount) FROM erp_client_returns r WHERE r.company_id=i.company_id AND r.client_invoice_id=i.id AND r.status='posted'),0)
+            -COALESCE((SELECT SUM(a.amount) FROM erp_client_receipt_allocations a WHERE a.company_id=i.company_id AND a.client_invoice_id=i.id),0) > 0.01
+        ORDER BY i.due_date LIMIT 250`;
+      for(const x of rows)found.push({key:String(x.id),severity:'warning',title:'Customer Payment Overdue · '+x.business_name,message:`${x.invoice_number} · due ${String(x.due_date).slice(0,10)} · balance PKR ${number(x.balance).toLocaleString('en-PK')}`,entity_type:'client_invoice',entity_id:String(x.id)});
+    }
+    if(rule.rule_code==='OVERDUE_SUPPLIER'){
+      const days=Math.max(0,Math.floor(number(rule.parameters?.days??0)));
+      const rows=await sql`SELECT i.id,i.invoice_number,i.due_date,s.business_name,
+          GREATEST(i.amount
+            -COALESCE((SELECT SUM(r.amount) FROM erp_supplier_returns r WHERE r.company_id=i.company_id AND r.supplier_invoice_id=i.id AND r.status='posted'),0)
+            -COALESCE((SELECT SUM(a.amount) FROM erp_supplier_payment_allocations a WHERE a.company_id=i.company_id AND a.supplier_invoice_id=i.id),0),0)::numeric balance
+        FROM erp_supplier_invoices i JOIN erp_suppliers s ON s.id=i.supplier_id AND s.company_id=i.company_id
+        WHERE i.company_id=${u.company_id} AND i.status<>'cancelled' AND i.due_date IS NOT NULL
+          AND i.due_date < CURRENT_DATE-${days}::int
+          AND i.amount
+            -COALESCE((SELECT SUM(r.amount) FROM erp_supplier_returns r WHERE r.company_id=i.company_id AND r.supplier_invoice_id=i.id AND r.status='posted'),0)
+            -COALESCE((SELECT SUM(a.amount) FROM erp_supplier_payment_allocations a WHERE a.company_id=i.company_id AND a.supplier_invoice_id=i.id),0) > 0.01
+        ORDER BY i.due_date LIMIT 250`;
+      for(const x of rows)found.push({key:String(x.id),severity:'warning',title:'Supplier Payment Overdue · '+x.business_name,message:`${x.invoice_number} · due ${String(x.due_date).slice(0,10)} · balance PKR ${number(x.balance).toLocaleString('en-PK')}`,entity_type:'supplier_invoice',entity_id:String(x.id)});
+    }
+    if(rule.rule_code==='PENDING_GRN'){
+      const days=Math.max(0,Math.floor(number(rule.parameters?.days??2)));
+      const rows=await sql`SELECT i.id,i.invoice_number,i.invoice_date,s.business_name,
+          COALESCE(q.ordered_qty,0)::numeric ordered_qty,COALESCE(g.received_qty,0)::numeric received_qty
+        FROM erp_supplier_invoices i
+        JOIN erp_suppliers s ON s.id=i.supplier_id AND s.company_id=i.company_id
+        JOIN LATERAL(SELECT COALESCE(SUM(x.quantity),0)::numeric ordered_qty FROM erp_supplier_invoice_items x WHERE x.company_id=i.company_id AND x.supplier_invoice_id=i.id) q ON true
+        LEFT JOIN LATERAL(SELECT COALESCE(SUM(gi.quantity),0)::numeric received_qty
+          FROM erp_grn_items gi
+          JOIN erp_grns gr ON gr.id=gi.grn_id AND gr.company_id=gi.company_id AND gr.status='posted'
+          JOIN erp_supplier_invoice_items ii ON ii.id=gi.supplier_invoice_item_id AND ii.company_id=gi.company_id
+          WHERE gi.company_id=i.company_id AND ii.supplier_invoice_id=i.id) g ON true
+        WHERE i.company_id=${u.company_id} AND i.status<>'cancelled' AND q.ordered_qty>COALESCE(g.received_qty,0)
+          AND i.invoice_date <= CURRENT_DATE-${days}::int
+        ORDER BY i.invoice_date LIMIT 250`;
+      for(const x of rows)found.push({key:String(x.id),severity:'info',title:'GRN Pending · '+x.business_name,message:`${x.invoice_number} · received ${number(x.received_qty)} of ${number(x.ordered_qty)}`,entity_type:'supplier_invoice',entity_id:String(x.id)});
+    }
+    await sql`UPDATE automation_alerts SET status='resolved',resolved_at=now(),updated_at=now()
+      WHERE company_id=${u.company_id} AND rule_id=${rule.id} AND status='open'`;
+    for(const a of found)await sql`INSERT INTO automation_alerts(company_id,rule_id,rule_code,alert_key,severity,title,message,entity_type,entity_id,status,last_detected_at,resolved_at)
+      VALUES(${u.company_id},${rule.id},${rule.rule_code},${a.key},${a.severity},${a.title},${a.message},${a.entity_type},${a.entity_id},'open',now(),NULL)
+      ON CONFLICT(company_id,rule_code,alert_key) DO UPDATE SET
+        rule_id=EXCLUDED.rule_id,severity=EXCLUDED.severity,title=EXCLUDED.title,message=EXCLUDED.message,entity_type=EXCLUDED.entity_type,entity_id=EXCLUDED.entity_id,
+        status=CASE WHEN automation_alerts.status='dismissed' THEN 'dismissed' ELSE 'open' END,last_detected_at=now(),resolved_at=NULL,updated_at=now()`;
+    await sql`UPDATE automation_rules SET last_run_at=now(),updated_at=now() WHERE id=${rule.id} AND company_id=${u.company_id}`;
+    detectedTotal+=found.length;
+  }
+  const count=await sql`SELECT COUNT(*)::int count FROM automation_alerts WHERE company_id=${u.company_id} AND status='open'`;
+  await companyAudit(sql,u,'AUTOMATION_RULES_RUN',{entityType:'automation',entityId:String(u.company_id),metadata:{detected:detectedTotal,open_alerts:Number(count[0]?.count||0),force}});
+  return {ran:true,detected:detectedTotal,open_alerts:Number(count[0]?.count||0),last_run_at:new Date().toISOString()};
 }
 
 async function overview(sql,u){
@@ -98,6 +196,7 @@ export default async function handler(req,res){
       stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',cancel_stock_adjustment:'inventory_ledger',supplier_returns:'inventory_ledger',supplier_return_items:'inventory_ledger',supplier_return_detail:'inventory_ledger',create_supplier_return:'inventory_ledger',cancel_supplier_return:'inventory_ledger',client_returns:'inventory_ledger',client_return_items:'inventory_ledger',client_return_detail:'inventory_ledger',create_client_return:'inventory_ledger',cancel_client_return:'inventory_ledger',
       ecommerce_dashboard:'ecommerce',ecommerce_products:'ecommerce',ecommerce_orders:'ecommerce',ecommerce_order_detail:'ecommerce',ecommerce_sales_report:'ecommerce',save_ecommerce_product:'ecommerce',set_ecommerce_product_status:'ecommerce',save_ecommerce_settings:'ecommerce',create_ecommerce_order:'ecommerce',set_ecommerce_order_status:'ecommerce',set_ecommerce_payment_status:'ecommerce',
       ocr_drafts:'ocr',ocr_draft_detail:'ocr',save_ocr_draft:'ocr',post_ocr_draft:'ocr',reject_ocr_draft:'ocr',
+      automation_center:'automation',run_automations:'automation',update_automation_rule:'automation',dismiss_automation_alert:'automation',
       reports_summary:'basic_reports',advanced_reports:'advanced_reports'
     };
     const requiredFeature=featureByAction[action];
@@ -549,6 +648,20 @@ export default async function handler(req,res){
         GROUP BY payment_method ORDER BY amount DESC`;
       return res.status(200).json({date_from:from,date_to:to,summary:summary[0]||{},daily,payment_methods:methods});
     }
+    if(req.method==='GET'&&action==='automation_center'){
+      const rules=await sql`SELECT id,rule_code,rule_name,active,parameters,last_run_at,updated_at
+        FROM automation_rules WHERE company_id=${u.company_id} ORDER BY id`;
+      const alerts=await sql`SELECT a.id,a.rule_id,a.rule_code,a.alert_key,a.severity,a.title,a.message,a.entity_type,a.entity_id,a.status,a.last_detected_at,a.resolved_at,a.created_at
+        FROM automation_alerts a WHERE a.company_id=${u.company_id}
+        ORDER BY CASE a.status WHEN 'open' THEN 0 WHEN 'dismissed' THEN 1 ELSE 2 END,a.last_detected_at DESC LIMIT 500`;
+      const stats=await sql`SELECT
+        COUNT(*) FILTER(WHERE status='open')::int open_alerts,
+        COUNT(*) FILTER(WHERE status='open' AND severity='critical')::int critical_alerts,
+        COUNT(*) FILTER(WHERE status='dismissed')::int dismissed_alerts,
+        COUNT(*) FILTER(WHERE status='resolved')::int resolved_alerts
+        FROM automation_alerts WHERE company_id=${u.company_id}`;
+      return res.status(200).json({rules,alerts,stats:stats[0]||{}});
+    }
     if(req.method==='GET'&&action==='ocr_drafts'){
       const rows=await sql`SELECT d.id,d.draft_number,d.source_file_name,d.ocr_confidence,d.invoice_number,d.invoice_date,d.detected_total,d.calculated_total,d.status,d.created_at,d.updated_at,
         s.business_name supplier_name,i.invoice_number posted_invoice_number
@@ -792,6 +905,37 @@ export default async function handler(req,res){
       }
       const rows=await sql`UPDATE ecommerce_orders SET status=${status},updated_at=now() WHERE id=${orderId} AND company_id=${u.company_id} RETURNING *`;
       await companyAudit(sql,u,'ECOM_ORDER_STATUS_CHANGED',{entityType:'ecommerce_order',entityId:String(orderId),metadata:{from:current[0].status,to:status}});
+      return res.status(200).json({record:rows[0]});
+    }
+
+    if(req.method==='POST'&&action==='run_automations'){
+      if(!['company_admin','manager'].includes(u.role))return res.status(403).json({error:'Company Admin or Manager role required'});
+      const result=await runAutomationRules(sql,u,{force:b.force===true});
+      return res.status(200).json(result);
+    }
+    if(req.method==='POST'&&action==='update_automation_rule'){
+      if(!['company_admin','manager'].includes(u.role))return res.status(403).json({error:'Company Admin or Manager role required'});
+      const ruleCode=clean(b.rule_code).toUpperCase();
+      if(!automationRuleCodes.has(ruleCode))return res.status(400).json({error:'Valid automation rule required'});
+      await ensureAutomationRules(sql,u);
+      let parameters={};
+      if(ruleCode==='LOW_STOCK')parameters={threshold:Math.max(0,number(b.value))};
+      else parameters={days:Math.max(0,Math.floor(number(b.value)))};
+      const rows=await sql`UPDATE automation_rules SET active=${b.active!==false},parameters=${JSON.stringify(parameters)}::jsonb,updated_at=now()
+        WHERE company_id=${u.company_id} AND rule_code=${ruleCode}
+        RETURNING id,rule_code,rule_name,active,parameters,last_run_at,updated_at`;
+      await companyAudit(sql,u,'AUTOMATION_RULE_UPDATED',{entityType:'automation_rule',entityId:String(rows[0]?.id||''),metadata:{rule_code:ruleCode,active:b.active!==false,parameters}});
+      return res.status(200).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='dismiss_automation_alert'){
+      if(!['company_admin','manager'].includes(u.role))return res.status(403).json({error:'Company Admin or Manager role required'});
+      const alertId=positiveInt(b.alert_id,0);
+      if(!alertId)return res.status(400).json({error:'Valid automation alert required'});
+      const rows=await sql`UPDATE automation_alerts SET status='dismissed',updated_at=now()
+        WHERE id=${alertId} AND company_id=${u.company_id} AND status='open'
+        RETURNING *`;
+      if(!rows[0])return res.status(404).json({error:'Open automation alert not found'});
+      await companyAudit(sql,u,'AUTOMATION_ALERT_DISMISSED',{entityType:'automation_alert',entityId:String(alertId),metadata:{rule_code:rows[0].rule_code}});
       return res.status(200).json({record:rows[0]});
     }
 
