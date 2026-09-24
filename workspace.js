@@ -53,7 +53,7 @@ function installNotificationCenter(){
   $('notificationRefresh').onclick=()=>refreshNotifications();
   $('notificationOpenAutomation').onclick=()=>{closeNotificationPanel();show('automation-center').catch(e=>alert(e.message))};
   document.addEventListener('click',closeNotificationPanel);
-  refreshNotifications();
+  setTimeout(refreshNotifications,8000);
   clearInterval(notificationTimer);notificationTimer=setInterval(refreshNotifications,180000);
 }
 
@@ -1377,4 +1377,4 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
   $('recordDialog').close();e.currentTarget.reset();invoiceEditContext=null;optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
-(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();installCompanySettingsModule();installCommunicationModule();installSupportModule();installNotificationCenter();setHeader();dashboard();automationPulse()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
+(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();installCompanySettingsModule();installCommunicationModule();installSupportModule();installNotificationCenter();setHeader();dashboard();setTimeout(automationPulse,12000)})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});

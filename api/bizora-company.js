@@ -155,26 +155,28 @@ async function runAutomationRules(sql,u,{force=false}={}){
 }
 
 async function overview(sql,u){
-  const stats=await sql`SELECT
-    (SELECT COUNT(*) FROM company_users WHERE company_id=${u.company_id} AND active=true)::int users,
-    (SELECT COUNT(*) FROM erp_suppliers WHERE company_id=${u.company_id} AND status='active')::int suppliers,
-    (SELECT COUNT(*) FROM erp_clients WHERE company_id=${u.company_id} AND status='active')::int clients,
-    (SELECT COUNT(*) FROM erp_products WHERE company_id=${u.company_id} AND active=true)::int products,
-    (SELECT COUNT(*) FROM erp_warehouses WHERE company_id=${u.company_id} AND active=true)::int warehouses,
-    (
-      COALESCE((SELECT SUM(opening_balance) FROM erp_suppliers WHERE company_id=${u.company_id}),0)
-      + COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
-      - COALESCE((SELECT SUM(amount) FROM erp_supplier_returns WHERE company_id=${u.company_id} AND status='posted'),0)
-      - COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id} AND status='posted'),0)
-    )::numeric supplier_payable,
-    (
-      COALESCE((SELECT SUM(opening_balance) FROM erp_clients WHERE company_id=${u.company_id}),0)
-      + COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
-      - COALESCE((SELECT SUM(amount) FROM erp_client_returns WHERE company_id=${u.company_id} AND status='posted'),0)
-      - COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND status='posted'),0)
-    )::numeric client_receivable`;
-  const auditPriceRows=await sql`SELECT asp.per_audit_price,asp.active FROM audit_service_prices asp WHERE asp.plan_id=${u.plan_id} LIMIT 1`;
-  const profileRows=await sql`SELECT address,phone,email,tax_number,currency_code,invoice_footer,statement_footer FROM company_profile_settings WHERE company_id=${u.company_id} LIMIT 1`;
+  const [stats,auditPriceRows,profileRows]=await Promise.all([
+    sql`SELECT
+      (SELECT COUNT(*) FROM company_users WHERE company_id=${u.company_id} AND active=true)::int users,
+      (SELECT COUNT(*) FROM erp_suppliers WHERE company_id=${u.company_id} AND status='active')::int suppliers,
+      (SELECT COUNT(*) FROM erp_clients WHERE company_id=${u.company_id} AND status='active')::int clients,
+      (SELECT COUNT(*) FROM erp_products WHERE company_id=${u.company_id} AND active=true)::int products,
+      (SELECT COUNT(*) FROM erp_warehouses WHERE company_id=${u.company_id} AND active=true)::int warehouses,
+      (
+        COALESCE((SELECT SUM(opening_balance) FROM erp_suppliers WHERE company_id=${u.company_id}),0)
+        + COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
+        - COALESCE((SELECT SUM(amount) FROM erp_supplier_returns WHERE company_id=${u.company_id} AND status='posted'),0)
+        - COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id} AND status='posted'),0)
+      )::numeric supplier_payable,
+      (
+        COALESCE((SELECT SUM(opening_balance) FROM erp_clients WHERE company_id=${u.company_id}),0)
+        + COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
+        - COALESCE((SELECT SUM(amount) FROM erp_client_returns WHERE company_id=${u.company_id} AND status='posted'),0)
+        - COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND status='posted'),0)
+      )::numeric client_receivable`,
+    sql`SELECT asp.per_audit_price,asp.active FROM audit_service_prices asp WHERE asp.plan_id=${u.plan_id} LIMIT 1`,
+    sql`SELECT address,phone,email,tax_number,currency_code,invoice_footer,statement_footer FROM company_profile_settings WHERE company_id=${u.company_id} LIMIT 1`
+  ]);
   return {company:{id:u.company_id,code:u.company_code,name:u.company_name,logo_url:u.logo_url,status:u.company_status},company_profile:profileRows[0]||{address:null,phone:null,email:null,tax_number:null,currency_code:'PKR',invoice_footer:null,statement_footer:null},user:{id:u.id,user_code:u.user_code,full_name:u.full_name,email:u.email,role:u.role},subscription:{status:u.subscription_status,expires_on:u.expires_on,plan_code:u.plan_code,plan_name:u.plan_name,features:u.features,access_mode:u.access_mode},limits:{user_limit:u.user_limit,warehouse_limit:u.warehouse_limit},stats:stats[0]||{},audit_service:{per_audit_price:auditPriceRows[0]?.per_audit_price||null,active:auditPriceRows[0]?.active===true},role_access:roleAccessFor(u.role)};
 }
 

@@ -4,6 +4,8 @@ import { neon } from '@neondatabase/serverless';
 const ADMIN_COOKIE='bizora_session';
 const COMPANY_COOKIE='bizora_company_session';
 const HOURS=12;
+const BIZORA_SCHEMA_VERSION=2026092401;
+const schemaState=globalThis.__bizoraSchemaState||(globalThis.__bizoraSchemaState={version:0,lastChecked:0,promise:null});
 const enc=v=>Buffer.from(v).toString('base64url');
 const dec=v=>Buffer.from(v,'base64url').toString('utf8');
 
@@ -67,6 +69,23 @@ export const clean=v=>String(v??'').trim();
 export const positiveInt=(v,fallback=1)=>{const n=Math.trunc(Number(v));return Number.isFinite(n)&&n>0?n:fallback};
 
 export async function ensureBizoraSchema(sql){
+  const now=Date.now();
+  if(schemaState.version>=BIZORA_SCHEMA_VERSION&&now-schemaState.lastChecked<30*60*1000)return;
+  if(schemaState.promise)return schemaState.promise;
+  schemaState.promise=(async()=>{
+    try{
+      const meta=await sql`SELECT schema_version FROM bizora_schema_meta WHERE id=1 LIMIT 1`;
+      if(Number(meta[0]?.schema_version||0)>=BIZORA_SCHEMA_VERSION){
+        schemaState.version=BIZORA_SCHEMA_VERSION;
+        schemaState.lastChecked=Date.now();
+        return;
+      }
+    }catch{}
+    await sql`CREATE TABLE IF NOT EXISTS bizora_schema_meta(
+      id INT PRIMARY KEY,
+      schema_version BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`;
   await sql`CREATE TABLE IF NOT EXISTS bizora_admins(
     id BIGSERIAL PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
@@ -733,6 +752,15 @@ export async function ensureBizoraSchema(sql){
       await sql`INSERT INTO bizora_admins(email,full_name,password_hash) VALUES(${email},'Bizora Super Admin',${hashPassword(password)}) ON CONFLICT(email) DO NOTHING`;
     }
   }
+  await sql`INSERT INTO bizora_schema_meta(id,schema_version,updated_at)
+    VALUES(1,${BIZORA_SCHEMA_VERSION},now())
+    ON CONFLICT(id) DO UPDATE SET schema_version=EXCLUDED.schema_version,updated_at=now()`;
+  schemaState.version=BIZORA_SCHEMA_VERSION;
+  schemaState.lastChecked=Date.now();
+  })();
+  try{return await schemaState.promise}
+  catch(e){schemaState.version=0;schemaState.lastChecked=0;throw e}
+  finally{schemaState.promise=null}
 }
 
 export async function getCompanyAccess(sql,req){
