@@ -59,20 +59,28 @@ export default async function handler(req,res){
     }
     if(req.method==='GET'&&action==='supplier_invoices'){
       const rows=await sql`SELECT i.id,i.supplier_id,s.business_name,i.invoice_number,i.invoice_date,i.due_date,i.amount,i.status,i.notes,i.created_at,
-        COALESCE(SUM(ii.quantity),0)::numeric ordered_quantity,
-        COALESCE(SUM(gi.quantity),0)::numeric received_quantity,
+        COALESCE(q.ordered_quantity,0)::numeric ordered_quantity,
+        COALESCE(r.received_quantity,0)::numeric received_quantity,
         CASE
-          WHEN COUNT(ii.id)=0 THEN 'not_itemized'
-          WHEN COALESCE(SUM(gi.quantity),0)<=0 THEN 'pending'
-          WHEN COALESCE(SUM(gi.quantity),0)<COALESCE(SUM(ii.quantity),0) THEN 'partial'
+          WHEN COALESCE(q.item_count,0)=0 THEN 'not_itemized'
+          WHEN COALESCE(r.received_quantity,0)<=0 THEN 'pending'
+          WHEN COALESCE(r.received_quantity,0)<COALESCE(q.ordered_quantity,0) THEN 'partial'
           ELSE 'complete'
         END grn_status
         FROM erp_supplier_invoices i
         JOIN erp_suppliers s ON s.id=i.supplier_id AND s.company_id=i.company_id
-        LEFT JOIN erp_supplier_invoice_items ii ON ii.supplier_invoice_id=i.id AND ii.company_id=i.company_id
-        LEFT JOIN erp_grn_items gi ON gi.supplier_invoice_item_id=ii.id AND gi.company_id=i.company_id
+        LEFT JOIN LATERAL(
+          SELECT COUNT(*)::int item_count,COALESCE(SUM(ii.quantity),0)::numeric ordered_quantity
+          FROM erp_supplier_invoice_items ii
+          WHERE ii.company_id=i.company_id AND ii.supplier_invoice_id=i.id
+        ) q ON true
+        LEFT JOIN LATERAL(
+          SELECT COALESCE(SUM(gi.quantity),0)::numeric received_quantity
+          FROM erp_grn_items gi
+          JOIN erp_supplier_invoice_items ii ON ii.id=gi.supplier_invoice_item_id AND ii.company_id=gi.company_id
+          WHERE gi.company_id=i.company_id AND ii.supplier_invoice_id=i.id
+        ) r ON true
         WHERE i.company_id=${u.company_id}
-        GROUP BY i.id,s.business_name
         ORDER BY i.invoice_date DESC,i.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
     }
@@ -138,27 +146,29 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='inventory_stock'){
+      const warehouseId=positiveInt(req.query?.warehouse_id,0);
       const rows=await sql`SELECT p.id product_id,p.sku,p.product_name,p.unit,w.id warehouse_id,w.warehouse_name,
         COALESCE(SUM(m.qty_in-m.qty_out),0)::numeric quantity,
         COALESCE(SUM((m.qty_in-m.qty_out)*m.unit_cost),0)::numeric stock_value
         FROM erp_inventory_movements m
         JOIN erp_products p ON p.id=m.product_id AND p.company_id=m.company_id
         JOIN erp_warehouses w ON w.id=m.warehouse_id AND w.company_id=m.company_id
-        WHERE m.company_id=${u.company_id}
+        WHERE m.company_id=${u.company_id} AND (${warehouseId}=0 OR m.warehouse_id=${warehouseId})
         GROUP BY p.id,p.sku,p.product_name,p.unit,w.id,w.warehouse_name
         HAVING COALESCE(SUM(m.qty_in-m.qty_out),0)<>0
         ORDER BY w.warehouse_name,p.product_name`;
-      return res.status(200).json({records:rows});
+      return res.status(200).json({records:rows,warehouse_id:warehouseId||null});
     }
     if(req.method==='GET'&&action==='inventory_ledger'){
+      const warehouseId=positiveInt(req.query?.warehouse_id,0);
       const rows=await sql`SELECT m.id,m.movement_date,m.movement_type,m.qty_in,m.qty_out,m.unit_cost,m.reference_number,m.notes,
-        p.sku,p.product_name,p.unit,w.warehouse_name
+        p.sku,p.product_name,p.unit,w.id warehouse_id,w.warehouse_name
         FROM erp_inventory_movements m
         JOIN erp_products p ON p.id=m.product_id AND p.company_id=m.company_id
         JOIN erp_warehouses w ON w.id=m.warehouse_id AND w.company_id=m.company_id
-        WHERE m.company_id=${u.company_id}
+        WHERE m.company_id=${u.company_id} AND (${warehouseId}=0 OR m.warehouse_id=${warehouseId})
         ORDER BY m.movement_date DESC,m.id DESC LIMIT 2000`;
-      return res.status(200).json({records:rows});
+      return res.status(200).json({records:rows,warehouse_id:warehouseId||null});
     }
 
     if(req.method==='POST'&&action==='create_user'){
