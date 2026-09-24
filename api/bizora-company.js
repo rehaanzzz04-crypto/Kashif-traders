@@ -39,9 +39,9 @@ export default async function handler(req,res){
     const featureByAction={
       users:'core_erp',create_user:'core_erp',set_user_status:'core_erp',
       suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',supplier_statement:'supplier_management',
-      create_supplier:'supplier_management',create_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',
+      create_supplier:'supplier_management',create_supplier_invoice:'supplier_management',cancel_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',
       clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',client_statement:'customer_management',
-      create_client:'customer_management',create_client_invoice:'customer_management',create_client_receipt:'customer_management',
+      create_client:'customer_management',create_client_invoice:'customer_management',cancel_client_invoice:'customer_management',create_client_receipt:'customer_management',
       products:'products',create_product:'products',
       warehouses:'warehouses',create_warehouse:'warehouses',
       grns:'grn',create_grn:'grn',
@@ -605,6 +605,22 @@ export default async function handler(req,res){
       await companyAudit(sql,u,'SUPPLIER_CREATED',{entityType:'supplier',entityId:String(rows[0].id)});
       return res.status(201).json({record:rows[0]});
     }
+    if(req.method==='POST'&&action==='cancel_supplier_invoice'){
+      const invoiceId=positiveInt(b.invoice_id,0);
+      if(!invoiceId)return res.status(400).json({error:'Valid supplier invoice required'});
+      const inv=await sql`SELECT id,invoice_number,status FROM erp_supplier_invoices WHERE id=${invoiceId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!inv[0])return res.status(404).json({error:'Supplier invoice not found'});
+      if(inv[0].status==='cancelled')return res.status(200).json({record:inv[0]});
+      const deps=await sql`SELECT
+        EXISTS(SELECT 1 FROM erp_grns WHERE company_id=${u.company_id} AND supplier_invoice_id=${invoiceId} AND status<>'cancelled') has_grn,
+        EXISTS(SELECT 1 FROM erp_supplier_payment_allocations WHERE company_id=${u.company_id} AND supplier_invoice_id=${invoiceId}) has_payment`;
+      if(deps[0]?.has_grn)return res.status(409).json({error:'Invoice cannot be cancelled because GRN/stock receiving is linked'});
+      if(deps[0]?.has_payment)return res.status(409).json({error:'Invoice cannot be cancelled because supplier payment is allocated'});
+      const rows=await sql`UPDATE erp_supplier_invoices SET status='cancelled',updated_at=now() WHERE id=${invoiceId} AND company_id=${u.company_id} RETURNING *`;
+      await companyAudit(sql,u,'SUPPLIER_INVOICE_CANCELLED',{entityType:'supplier_invoice',entityId:String(invoiceId),metadata:{invoice_number:inv[0].invoice_number}});
+      return res.status(200).json({record:rows[0]});
+    }
+
     if(req.method==='POST'&&action==='create_supplier_invoice'){
       const supplierId=positiveInt(b.supplier_id,0),invoiceNumber=clean(b.invoice_number),invoiceDate=clean(b.invoice_date)||new Date().toISOString().slice(0,10),dueDate=clean(b.due_date)||null;
       const items=Array.isArray(b.items)?b.items.map(x=>({product_id:positiveInt(x.product_id,0),description:clean(x.description)||null,quantity:number(x.quantity),unit_price:number(x.unit_price)})):[];
@@ -668,6 +684,31 @@ export default async function handler(req,res){
       await companyAudit(sql,u,'CLIENT_CREATED',{entityType:'client',entityId:String(rows[0].id)});
       return res.status(201).json({record:rows[0]});
     }
+    if(req.method==='POST'&&action==='cancel_client_invoice'){
+      const invoiceId=positiveInt(b.invoice_id,0);
+      if(!invoiceId)return res.status(400).json({error:'Valid customer invoice required'});
+      const inv=await sql`SELECT id,invoice_number,status FROM erp_client_invoices WHERE id=${invoiceId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!inv[0])return res.status(404).json({error:'Customer invoice not found'});
+      if(inv[0].status==='cancelled')return res.status(200).json({record:inv[0]});
+      const paid=await sql`SELECT EXISTS(SELECT 1 FROM erp_client_receipt_allocations WHERE company_id=${u.company_id} AND client_invoice_id=${invoiceId}) has_payment`;
+      if(paid[0]?.has_payment)return res.status(409).json({error:'Invoice cannot be cancelled because customer payment is allocated'});
+      const sold=await sql`SELECT m.product_id,m.warehouse_id,COALESCE(SUM(m.qty_out),0)::numeric sold_qty,MAX(m.unit_cost)::numeric unit_cost
+        FROM erp_inventory_movements m
+        WHERE m.company_id=${u.company_id} AND m.reference_type='CUSTOMER_INVOICE' AND m.reference_id=${invoiceId} AND m.movement_type='SALE'
+        GROUP BY m.product_id,m.warehouse_id`;
+      for(const x of sold){
+        const already=await sql`SELECT COALESCE(SUM(qty_in),0)::numeric returned_qty FROM erp_inventory_movements
+          WHERE company_id=${u.company_id} AND reference_type='CUSTOMER_INVOICE_CANCEL' AND reference_id=${invoiceId}
+            AND movement_type='RETURN_IN' AND product_id=${x.product_id} AND warehouse_id=${x.warehouse_id}`;
+        const restore=Math.max(0,number(x.sold_qty)-number(already[0]?.returned_qty));
+        if(restore>0)await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+          VALUES(${u.company_id},${x.product_id},${x.warehouse_id},'RETURN_IN',${restore},0,${number(x.unit_cost)},'CUSTOMER_INVOICE_CANCEL',${invoiceId},${inv[0].invoice_number},'Stock restored after invoice cancellation',${u.id})`;
+      }
+      const rows=await sql`UPDATE erp_client_invoices SET status='cancelled',updated_at=now() WHERE id=${invoiceId} AND company_id=${u.company_id} RETURNING *`;
+      await companyAudit(sql,u,'CLIENT_INVOICE_CANCELLED',{entityType:'client_invoice',entityId:String(invoiceId),metadata:{invoice_number:inv[0].invoice_number,stock_groups_restored:sold.length}});
+      return res.status(200).json({record:rows[0]});
+    }
+
     if(req.method==='POST'&&action==='create_client_invoice'){
       const clientId=positiveInt(b.client_id,0),invoiceNumber=clean(b.invoice_number),invoiceDate=clean(b.invoice_date)||new Date().toISOString().slice(0,10),dueDate=clean(b.due_date)||null;
       const warehouseId=positiveInt(b.warehouse_id,0)||null;

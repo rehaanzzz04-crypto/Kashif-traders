@@ -745,3 +745,24 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
   .auditReportPrint .auditControlGrid{grid-template-columns:repeat(5,1fr)!important}
   .auditReportPrint .reportKpis>div,.auditReportPrint .auditControlGrid>div,.auditReportBadge{box-shadow:none!important}
 }
+
+
+/* Safe invoice cancellation and printable invoice documents */
+.invoiceDetailActions>div{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.invoiceStatus{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:9px;font-weight:900;text-transform:uppercase;border:1px solid #dce4ef;background:#f4f6f9;color:#667085}
+.invoiceStatus.paid{background:#e9fbf2;color:#087f58;border-color:#bce7d4}.invoiceStatus.partial{background:#eef3ff;color:#365cc5;border-color:#ccd8fb}.invoiceStatus.unpaid{background:#fff7df;color:#946200;border-color:#f0dda6}.invoiceStatus.cancelled{background:#fff0f2;color:#b4233c;border-color:#f0c9d0}
+.dangerAction{border:1px solid #edb5c1;border-radius:11px;padding:8px 11px;background:#fff0f2;color:#b4233c;font-weight:900}
+.invoicePrintTitle{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid #e2e8f0}
+.invoicePrintTitle h2{margin:4px 0 2px;color:#14213d;font-size:24px}.invoicePrintTitle p{margin:0;color:#74829a;font-size:10px}.invoicePrintTitle>div:last-child{text-align:right}.invoicePrintTitle>div:last-child b{display:block;color:#10265a;font-size:16px}.invoicePrintTitle>div:last-child span{display:block;margin-top:3px;color:#7b879b;font-size:9px}
+.invoicePrintTotal{display:flex;justify-content:flex-end;gap:18px;margin:14px 0 0 auto;padding-top:10px;border-top:1px solid #e1e8f2;color:#55657d;font-size:12px}.invoicePrintTotal b{min-width:130px;text-align:right;color:#10265a;font-size:17px}
+@media(max-width:560px){.invoiceDetailActions{align-items:stretch;flex-direction:column}.invoiceDetailActions>div{width:100%}.invoiceDetailActions>div button{flex:1}.invoicePrintTitle{flex-direction:column}.invoicePrintTitle>div:last-child{text-align:left}}
+@media print{
+  body.invoice-print{background:#fff!important}
+  body.invoice-print .topbar,body.invoice-print .sidenav,body.invoice-print .navbackdrop,body.invoice-print .hero,body.invoice-print #readOnlyNote,body.invoice-print .detailToolbar{display:none!important}
+  body.invoice-print .shell{padding:0!important;margin:0!important;max-width:none!important}
+  body.invoice-print #workspaceBody>*:not(.invoicePrintable){display:none!important}
+  body.invoice-print .invoicePrintable{display:block!important;box-shadow:none!important;border:0!important;padding:0!important}
+  body.invoice-print .invoicePrintable .tablewrap{overflow:visible!important}
+  body.invoice-print .invoicePrintable table{min-width:0!important}
+  body.invoice-print .invoicePrintable th,body.invoice-print .invoicePrintable td{font-size:8px!important;padding:6px!important;color:#111!important;border-color:#d9dee7!important}
+}

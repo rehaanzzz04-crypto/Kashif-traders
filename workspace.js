@@ -98,16 +98,25 @@ async function openSupplierInvoiceDetail(row){
   $('addRecord').classList.add('hidden');
   $('workspaceBody').innerHTML='<div class="card">Loading invoice products…</div>';
   const data=await json('/api/bizora-company?action=supplier_invoice_items&invoice_id='+row.id),items=data.records||[];
-  const status=String(row.grn_status||'').toLowerCase();
+  const grnStatus=String(row.grn_status||'').toLowerCase(),payStatus=String(row.status||'unpaid').toLowerCase();
+  const canCancel=payStatus!=='cancelled'&&model.subscription.access_mode==='write';
   $('workspaceBody').innerHTML=
-    '<div class="detailToolbar"><button id="backToInvoices" class="secondary">← Back</button><span class="grnPill '+esc(status)+'">'+esc(status==='not_itemized'?'Not Itemized':status)+'</span></div>'+
-    '<div class="card invoiceDetailCard">'+
+    '<div class="detailToolbar invoiceDetailActions"><button id="backToInvoices" class="secondary">← Back</button><div><span class="grnPill '+esc(grnStatus)+'">'+esc(grnStatus==='not_itemized'?'Not Itemized':grnStatus)+'</span><span class="invoiceStatus '+esc(payStatus)+'">'+esc(payStatus)+'</span><button id="printSupplierInvoice" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="cancelSupplierInvoice" class="dangerAction">Cancel Invoice</button>':'')+'</div></div>'+
+    '<div id="invoicePrintable" class="card invoiceDetailCard invoicePrintable">'+
+      '<div class="invoicePrintTitle"><div><span class="capEyebrow">SUPPLIER INVOICE</span><h2>'+esc(model.company.name)+'</h2><p>'+esc(row.business_name)+'</p></div><div><b>'+esc(row.invoice_number)+'</b><span>'+date(row.invoice_date)+'</span></div></div>'+
       '<div class="invoiceDetailHead"><div><span>Supplier</span><b>'+esc(row.business_name)+'</b></div><div><span>Invoice</span><b>'+esc(row.invoice_number)+'</b></div><div><span>Date</span><b>'+date(row.invoice_date)+'</b></div><div><span>Amount</span><b>'+money(row.amount)+'</b></div></div>'+
       '<div class="tablewrap"><table><thead><tr><th>SKU</th><th>Product</th><th>Unit</th><th>Ordered</th><th>Received</th><th>Remaining</th><th>Purchase Price</th><th>Line Total</th></tr></thead><tbody>'+
       (items.length?items.map(x=>'<tr><td>'+esc(x.sku)+'</td><td><b>'+esc(x.product_name)+'</b></td><td>'+esc(x.unit)+'</td><td>'+esc(x.quantity)+'</td><td>'+esc(x.received_quantity)+'</td><td>'+esc(x.remaining_quantity)+'</td><td>'+money(x.unit_price)+'</td><td>'+money(Number(x.quantity||0)*Number(x.unit_price||0))+'</td></tr>').join(''):'<tr><td colspan="8">No product lines found.</td></tr>')+
       '</tbody></table></div>'+
+      '<div class="invoicePrintTotal"><span>Invoice Total</span><b>'+money(row.amount)+'</b></div>'+
     '</div>';
   $('backToInvoices').onclick=()=>show('supplier-bills');
+  $('printSupplierInvoice').onclick=()=>{document.body.classList.add('invoice-print');window.print();setTimeout(()=>document.body.classList.remove('invoice-print'),500)};
+  if($('cancelSupplierInvoice'))$('cancelSupplierInvoice').onclick=async()=>{
+    if(!confirm('Cancel this supplier invoice? GRN ya allocated payment ho to system cancellation block karega.'))return;
+    try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancel_supplier_invoice',invoice_id:row.id})});optionCache={};await show('supplier-bills')}
+    catch(e){alert(e.message)}
+  };
 }
 async function installWarehouseFilter(view,rows){
   let warehouses=optionCache.warehouses;
@@ -214,13 +223,25 @@ async function openCustomerInvoiceDetail(row){
   $('workspaceTitle').textContent='Customer Invoice';
   $('workspaceSubtitle').textContent=row.invoice_number+' · '+row.business_name;
   $('addRecord').classList.add('hidden');$('workspaceBody').innerHTML='<div class="card">Loading invoice products…</div>';
-  const data=await json('/api/bizora-company?action=client_invoice_items&invoice_id='+row.id),items=data.records||[];
-  $('workspaceBody').innerHTML='<div class="detailToolbar"><button id="backToCustomerInvoices" class="secondary">← Back</button></div><div class="card invoiceDetailCard">'+
-    '<div class="invoiceDetailHead"><div><span>Customer</span><b>'+esc(row.business_name)+'</b></div><div><span>Invoice</span><b>'+esc(row.invoice_number)+'</b></div><div><span>Warehouse</span><b>'+esc(row.warehouse_name||'—')+'</b></div><div><span>Amount</span><b>'+money(row.amount)+'</b></div></div>'+
-    '<div class="tablewrap"><table><thead><tr><th>SKU</th><th>Product</th><th>Unit</th><th>Quantity</th><th>Sale Price</th><th>Line Total</th></tr></thead><tbody>'+
-    (items.length?items.map(x=>'<tr><td>'+esc(x.sku)+'</td><td><b>'+esc(x.product_name)+'</b></td><td>'+esc(x.unit)+'</td><td>'+esc(x.quantity)+'</td><td>'+money(x.unit_price)+'</td><td>'+money(Number(x.quantity||0)*Number(x.unit_price||0))+'</td></tr>').join(''):'<tr><td colspan="6">No product lines found.</td></tr>')+
-    '</tbody></table></div></div>';
+  const data=await json('/api/bizora-company?action=client_invoice_items&invoice_id='+row.id),items=data.records||[],payStatus=String(row.status||'unpaid').toLowerCase();
+  const canCancel=payStatus!=='cancelled'&&model.subscription.access_mode==='write';
+  $('workspaceBody').innerHTML=
+    '<div class="detailToolbar invoiceDetailActions"><button id="backToCustomerInvoices" class="secondary">← Back</button><div><span class="invoiceStatus '+esc(payStatus)+'">'+esc(payStatus)+'</span><button id="printCustomerInvoice" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="cancelCustomerInvoice" class="dangerAction">Cancel Invoice</button>':'')+'</div></div>'+
+    '<div id="invoicePrintable" class="card invoiceDetailCard invoicePrintable">'+
+      '<div class="invoicePrintTitle"><div><span class="capEyebrow">CUSTOMER INVOICE</span><h2>'+esc(model.company.name)+'</h2><p>'+esc(row.business_name)+'</p></div><div><b>'+esc(row.invoice_number)+'</b><span>'+date(row.invoice_date)+'</span></div></div>'+
+      '<div class="invoiceDetailHead"><div><span>Customer</span><b>'+esc(row.business_name)+'</b></div><div><span>Invoice</span><b>'+esc(row.invoice_number)+'</b></div><div><span>Warehouse</span><b>'+esc(row.warehouse_name||'—')+'</b></div><div><span>Amount</span><b>'+money(row.amount)+'</b></div></div>'+
+      '<div class="tablewrap"><table><thead><tr><th>SKU</th><th>Product</th><th>Unit</th><th>Quantity</th><th>Sale Price</th><th>Line Total</th></tr></thead><tbody>'+
+      (items.length?items.map(x=>'<tr><td>'+esc(x.sku)+'</td><td><b>'+esc(x.product_name)+'</b></td><td>'+esc(x.unit)+'</td><td>'+esc(x.quantity)+'</td><td>'+money(x.unit_price)+'</td><td>'+money(Number(x.quantity||0)*Number(x.unit_price||0))+'</td></tr>').join(''):'<tr><td colspan="6">No product lines found.</td></tr>')+
+      '</tbody></table></div>'+
+      '<div class="invoicePrintTotal"><span>Invoice Total</span><b>'+money(row.amount)+'</b></div>'+
+    '</div>';
   $('backToCustomerInvoices').onclick=()=>show('client-bills');
+  $('printCustomerInvoice').onclick=()=>{document.body.classList.add('invoice-print');window.print();setTimeout(()=>document.body.classList.remove('invoice-print'),500)};
+  if($('cancelCustomerInvoice'))$('cancelCustomerInvoice').onclick=async()=>{
+    if(!confirm('Cancel this customer invoice? Allocated payment ho to cancellation block hogi. Stock sale hui ho to system automatically restore karega.'))return;
+    try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancel_client_invoice',invoice_id:row.id})});optionCache={};await show('client-bills')}
+    catch(e){alert(e.message)}
+  };
 }
 function reportDateControls(title){
   const today=new Date().toISOString().slice(0,10),month=today.slice(0,8)+'01';
