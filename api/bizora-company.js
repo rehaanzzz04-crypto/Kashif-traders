@@ -22,7 +22,8 @@ async function overview(sql,u){
       + COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
       - COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id}),0)
     )::numeric client_receivable`;
-  return {company:{id:u.company_id,code:u.company_code,name:u.company_name,logo_url:u.logo_url,status:u.company_status},user:{id:u.id,user_code:u.user_code,full_name:u.full_name,email:u.email,role:u.role},subscription:{status:u.subscription_status,expires_on:u.expires_on,plan_code:u.plan_code,plan_name:u.plan_name,features:u.features,access_mode:u.access_mode},limits:{user_limit:u.user_limit,warehouse_limit:u.warehouse_limit},stats:stats[0]||{}};
+  const auditPriceRows=await sql`SELECT asp.per_audit_price,asp.active FROM audit_service_prices asp WHERE asp.plan_id=${u.plan_id} LIMIT 1`;
+  return {company:{id:u.company_id,code:u.company_code,name:u.company_name,logo_url:u.logo_url,status:u.company_status},user:{id:u.id,user_code:u.user_code,full_name:u.full_name,email:u.email,role:u.role},subscription:{status:u.subscription_status,expires_on:u.expires_on,plan_code:u.plan_code,plan_name:u.plan_name,features:u.features,access_mode:u.access_mode},limits:{user_limit:u.user_limit,warehouse_limit:u.warehouse_limit},stats:stats[0]||{},audit_service:{per_audit_price:auditPriceRows[0]?.per_audit_price||null,active:auditPriceRows[0]?.active===true}};
 }
 
 export default async function handler(req,res){
@@ -44,7 +45,7 @@ export default async function handler(req,res){
       inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger',
       stock_transfers:'inventory_ledger',create_stock_transfer:'inventory_ledger',
       stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',
-      reports_summary:'basic_reports',advanced_reports:'advanced_reports',audit_events:'audit_reports'
+      reports_summary:'basic_reports',advanced_reports:'advanced_reports'
     };
     const requiredFeature=featureByAction[action];
     if(requiredFeature&&!requireFeature(u,res,requiredFeature))return;
@@ -285,6 +286,33 @@ export default async function handler(req,res){
       FROM d GROUP BY day ORDER BY day DESC`;
       return res.status(200).json({date_from:from,date_to:to,summary:rows[0]||{},daily});
     }
+    if(req.method==='GET'&&action==='audit_service'){
+      const price=await sql`SELECT asp.per_audit_price,asp.active,p.plan_code,p.plan_name
+        FROM audit_service_prices asp JOIN plans p ON p.id=asp.plan_id
+        WHERE asp.plan_id=${u.plan_id} LIMIT 1`;
+      const requests=await sql`SELECT id,price,period_from,period_to,payment_method,payment_reference,payment_status,status,notes,requested_at,reviewed_at,completed_at
+        FROM audit_requests WHERE company_id=${u.company_id} ORDER BY requested_at DESC,id DESC LIMIT 100`;
+      return res.status(200).json({price:price[0]||null,requests});
+    }
+    if(req.method==='GET'&&action==='audit_events'){
+      const requestId=positiveInt(req.query?.request_id,0);
+      if(!requestId)return res.status(400).json({error:'Approved audit request required'});
+      const request=await sql`SELECT * FROM audit_requests WHERE id=${requestId} AND company_id=${u.company_id} AND payment_status='verified' AND status IN('approved','completed') LIMIT 1`;
+      if(!request[0])return res.status(403).json({error:'This audit has not been approved yet'});
+      const rows=await sql`SELECT e.id,e.created_at,e.event_type,e.entity_type,e.entity_id,e.metadata,
+        COALESCE(cu.full_name,ba.full_name,'System') actor_name
+        FROM audit_events e
+        LEFT JOIN company_users cu ON cu.id=e.actor_company_user_id AND cu.company_id=e.company_id
+        LEFT JOIN bizora_admins ba ON ba.id=e.actor_admin_id
+        WHERE e.company_id=${u.company_id}
+          AND e.created_at>=${request[0].period_from}::date
+          AND e.created_at<(${request[0].period_to}::date+INTERVAL '1 day')
+        ORDER BY e.created_at DESC,e.id DESC LIMIT 5000`;
+      if(request[0].status==='approved'){
+        await sql`UPDATE audit_requests SET status='completed',completed_at=now() WHERE id=${requestId} AND company_id=${u.company_id}`;
+      }
+      return res.status(200).json({request:{...request[0],status:'completed'},records:rows});
+    }
     if(req.method==='GET'&&action==='advanced_reports'){
       const today=new Date().toISOString().slice(0,10),monthStart=today.slice(0,8)+'01';
       const from=clean(req.query?.date_from)||monthStart,to=clean(req.query?.date_to)||today;
@@ -318,6 +346,22 @@ export default async function handler(req,res){
         WHERE e.company_id=${u.company_id} AND e.created_at>=${from}::date AND e.created_at<(${to}::date+INTERVAL '1 day')
         ORDER BY e.created_at DESC,e.id DESC LIMIT 1000`;
       return res.status(200).json({date_from:from,date_to:to,records:rows});
+    }
+
+    if(req.method==='POST'&&action==='request_audit'){
+      const from=clean(b.period_from),to=clean(b.period_to),method=clean(b.payment_method).toUpperCase(),reference=clean(b.payment_reference);
+      if(!from||!to||to<from)return res.status(400).json({error:'Valid audit period required'});
+      if(!paymentMethods.has(method))return res.status(400).json({error:'Valid payment method required'});
+      if(!reference)return res.status(400).json({error:'Payment reference required'});
+      const price=await sql`SELECT asp.per_audit_price,asp.active FROM audit_service_prices asp WHERE asp.plan_id=${u.plan_id} LIMIT 1`;
+      if(!price[0]?.active||Number(price[0]?.per_audit_price||0)<=0)return res.status(403).json({error:'Audit service is not available for this plan right now'});
+      const duplicate=await sql`SELECT id FROM audit_requests WHERE company_id=${u.company_id} AND period_from=${from}::date AND period_to=${to}::date AND status IN('submitted','approved') LIMIT 1`;
+      if(duplicate[0])return res.status(409).json({error:'An audit request for this period is already pending or approved'});
+      const rows=await sql`INSERT INTO audit_requests(company_id,subscription_id,plan_id,price,period_from,period_to,payment_method,payment_reference,payment_status,status,notes,created_by_user_id)
+        VALUES(${u.company_id},${u.subscription_id},${u.plan_id},${price[0].per_audit_price},${from}::date,${to}::date,${method},${reference},'submitted','submitted',${clean(b.notes)||null},${u.id})
+        RETURNING *`;
+      await companyAudit(sql,u,'AUDIT_REQUEST_SUBMITTED',{entityType:'audit_request',entityId:String(rows[0].id),metadata:{price:rows[0].price,period_from:from,period_to:to,payment_method:method}});
+      return res.status(201).json({audit_request:rows[0]});
     }
 
     if(req.method==='POST'&&action==='create_user'){
