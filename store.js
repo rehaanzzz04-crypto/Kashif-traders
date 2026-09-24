@@ -36,7 +36,7 @@ function renderNav(){
 function renderCategories(){
   if(store.show_categories===false||!categories.length){$('categorySection').classList.add('hidden');return}
   $('categorySection').classList.remove('hidden');
-  $('categoryCards').innerHTML=categories.map(c=>'<button class="categoryCard" data-category="'+c.id+'>'+(c.image_url?'<img src="'+esc(c.image_url)+'" alt="">':'<span>'+esc(c.category_name.charAt(0))+'</span>')+'<b>'+esc(c.category_name)+'</b></button>').join('');
+  $('categoryCards').innerHTML=categories.map(c=>'<button class="categoryCard" data-category="'+c.id+'">'+(c.image_url?'<img src="'+esc(c.image_url)+'" alt="">':'<span>'+esc(c.category_name.charAt(0))+'</span>')+'<b>'+esc(c.category_name)+'</b></button>').join('');
   $('categoryFilter').innerHTML='<option value="">All Categories</option>'+categories.map(c=>'<option value="'+c.id+'">'+esc(c.category_name)+'</option>').join('');
   document.querySelectorAll('.categoryCard').forEach(b=>b.onclick=()=>{activeCategory=b.dataset.category;$('categoryFilter').value=activeCategory;renderProducts();$('productsSection').scrollIntoView({behavior:'smooth'})});
 }
@@ -81,7 +81,7 @@ function addProduct(id){
 }
 function renderCart(){
   $('cartCount').textContent=cart.reduce((n,x)=>n+Number(x.qty||0),0).toLocaleString('en-PK',{maximumFractionDigits:3});
-  $('cartItems').innerHTML=cart.length?cart.map((x,i)=>'<div class="cartItem" data-index="'+i+'><div><b>'+esc(x.product_name)+'</b><small>'+money(x.price)+' each</small></div><div class="qtyControl"><button type="button" data-step="-1">−</button><input value="'+x.qty+'" inputmode="decimal"><button type="button" data-step="1">+</button></div><button type="button" class="removeCart">×</button></div>').join(''):'<div class="storeEmpty">Your cart is empty.</div>';
+  $('cartItems').innerHTML=cart.length?cart.map((x,i)=>'<div class="cartItem" data-index="'+i+'"><div><b>'+esc(x.product_name)+'</b><small>'+money(x.price)+' each</small></div><div class="qtyControl"><button type="button" data-step="-1">−</button><input value="'+x.qty+'" inputmode="decimal"><button type="button" data-step="1">+</button></div><button type="button" class="removeCart">×</button></div>').join(''):'<div class="storeEmpty">Your cart is empty.</div>';
   const subtotal=cart.reduce((n,x)=>n+Number(x.qty)*Number(x.price),0),delivery=Number(store?.delivery_charge||0);
   $('cartSubtotal').textContent=money(subtotal);$('cartDelivery').textContent=money(delivery);$('cartTotal').textContent=money(subtotal+(cart.length?delivery:0));
   $('cartItems').querySelectorAll('.cartItem').forEach(row=>{const i=Number(row.dataset.index),x=cart[i],input=row.querySelector('input');row.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{const next=Math.max(.001,Number(x.qty)+Number(b.dataset.step));if(next>Number(x.stock_qty))return alert('Available stock '+x.stock_qty);x.qty=next;renderCart()});input.onchange=()=>{const next=Math.max(.001,Number(input.value||0));x.qty=Math.min(next,Number(x.stock_qty));renderCart()};row.querySelector('.removeCart').onclick=()=>{cart.splice(i,1);renderCart()}});
