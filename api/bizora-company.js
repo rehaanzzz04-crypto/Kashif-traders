@@ -43,7 +43,8 @@ export default async function handler(req,res){
       grns:'grn',create_grn:'grn',
       inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger',
       stock_transfers:'inventory_ledger',create_stock_transfer:'inventory_ledger',
-      stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger'
+      stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',
+      reports_summary:'basic_reports',advanced_reports:'advanced_reports',audit_events:'audit_reports'
     };
     const requiredFeature=featureByAction[action];
     if(requiredFeature&&!requireFeature(u,res,requiredFeature))return;
@@ -258,6 +259,65 @@ export default async function handler(req,res){
         WHERE a.company_id=${u.company_id}
         ORDER BY a.adjustment_date DESC,a.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='reports_summary'){
+      const today=new Date().toISOString().slice(0,10),monthStart=today.slice(0,8)+'01';
+      const from=clean(req.query?.date_from)||monthStart,to=clean(req.query?.date_to)||today;
+      const rows=await sql`SELECT
+        COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_purchases,
+        COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id} AND payment_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_payments,
+        COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_sales,
+        COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND receipt_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_receipts,
+        (COALESCE((SELECT SUM(opening_balance) FROM erp_suppliers WHERE company_id=${u.company_id}),0)
+          +COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
+          -COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id}),0))::numeric supplier_payable,
+        (COALESCE((SELECT SUM(opening_balance) FROM erp_clients WHERE company_id=${u.company_id}),0)
+          +COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
+          -COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id}),0))::numeric customer_receivable,
+        COALESCE((SELECT SUM((qty_in-qty_out)*unit_cost) FROM erp_inventory_movements WHERE company_id=${u.company_id}),0)::numeric stock_value`;
+      const daily=await sql`WITH d AS(
+        SELECT invoice_date::date day,SUM(amount)::numeric sales,0::numeric receipts,0::numeric purchases,0::numeric payments FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date GROUP BY invoice_date
+        UNION ALL SELECT receipt_date::date,0,SUM(amount),0,0 FROM erp_client_receipts WHERE company_id=${u.company_id} AND receipt_date BETWEEN ${from}::date AND ${to}::date GROUP BY receipt_date
+        UNION ALL SELECT invoice_date::date,0,0,SUM(amount),0 FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date GROUP BY invoice_date
+        UNION ALL SELECT payment_date::date,0,0,0,SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id} AND payment_date BETWEEN ${from}::date AND ${to}::date GROUP BY payment_date
+      )
+      SELECT day,SUM(sales)::numeric sales,SUM(receipts)::numeric receipts,SUM(purchases)::numeric purchases,SUM(payments)::numeric payments
+      FROM d GROUP BY day ORDER BY day DESC`;
+      return res.status(200).json({date_from:from,date_to:to,summary:rows[0]||{},daily});
+    }
+    if(req.method==='GET'&&action==='advanced_reports'){
+      const today=new Date().toISOString().slice(0,10),monthStart=today.slice(0,8)+'01';
+      const from=clean(req.query?.date_from)||monthStart,to=clean(req.query?.date_to)||today;
+      const totals=await sql`SELECT
+        COALESCE(SUM(ii.quantity*ii.unit_price),0)::numeric revenue,
+        COALESCE(SUM(ii.quantity*ii.unit_cost),0)::numeric cogs,
+        COALESCE(SUM(ii.quantity*(ii.unit_price-ii.unit_cost)),0)::numeric gross_profit
+        FROM erp_client_invoice_items ii
+        JOIN erp_client_invoices i ON i.id=ii.client_invoice_id AND i.company_id=ii.company_id
+        WHERE ii.company_id=${u.company_id} AND i.status<>'cancelled' AND i.invoice_date BETWEEN ${from}::date AND ${to}::date`;
+      const products=await sql`SELECT p.sku,p.product_name,p.unit,
+        COALESCE(SUM(ii.quantity),0)::numeric sold_quantity,
+        COALESCE(SUM(ii.quantity*ii.unit_price),0)::numeric sales_value,
+        COALESCE(SUM(ii.quantity*(ii.unit_price-ii.unit_cost)),0)::numeric gross_profit
+        FROM erp_client_invoice_items ii
+        JOIN erp_client_invoices i ON i.id=ii.client_invoice_id AND i.company_id=ii.company_id
+        JOIN erp_products p ON p.id=ii.product_id AND p.company_id=ii.company_id
+        WHERE ii.company_id=${u.company_id} AND i.status<>'cancelled' AND i.invoice_date BETWEEN ${from}::date AND ${to}::date
+        GROUP BY p.id,p.sku,p.product_name,p.unit
+        ORDER BY sales_value DESC LIMIT 20`;
+      return res.status(200).json({date_from:from,date_to:to,summary:totals[0]||{},top_products:products});
+    }
+    if(req.method==='GET'&&action==='audit_events'){
+      const today=new Date().toISOString().slice(0,10),monthStart=today.slice(0,8)+'01';
+      const from=clean(req.query?.date_from)||monthStart,to=clean(req.query?.date_to)||today;
+      const rows=await sql`SELECT e.id,e.created_at,e.event_type,e.entity_type,e.entity_id,e.metadata,
+        COALESCE(cu.full_name,ba.full_name,'System') actor_name
+        FROM audit_events e
+        LEFT JOIN company_users cu ON cu.id=e.actor_company_user_id AND cu.company_id=e.company_id
+        LEFT JOIN bizora_admins ba ON ba.id=e.actor_admin_id
+        WHERE e.company_id=${u.company_id} AND e.created_at>=${from}::date AND e.created_at<(${to}::date+INTERVAL '1 day')
+        ORDER BY e.created_at DESC,e.id DESC LIMIT 1000`;
+      return res.status(200).json({date_from:from,date_to:to,records:rows});
     }
 
     if(req.method==='POST'&&action==='create_user'){
