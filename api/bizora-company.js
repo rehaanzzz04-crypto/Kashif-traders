@@ -39,7 +39,9 @@ export default async function handler(req,res){
       clients:'customer_management',client_invoices:'customer_management',client_receipts:'customer_management',
       create_client:'customer_management',create_client_invoice:'customer_management',create_client_receipt:'customer_management',
       products:'products',create_product:'products',
-      warehouses:'warehouses',create_warehouse:'warehouses'
+      warehouses:'warehouses',create_warehouse:'warehouses',
+      grns:'grn',create_grn:'grn',
+      inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger'
     };
     const requiredFeature=featureByAction[action];
     if(requiredFeature&&!requireFeature(u,res,requiredFeature))return;
@@ -89,6 +91,45 @@ export default async function handler(req,res){
     }
     if(req.method==='GET'&&action==='warehouses'){
       const rows=await sql`SELECT id,warehouse_code,warehouse_name,address,active,created_at FROM erp_warehouses WHERE company_id=${u.company_id} ORDER BY created_at,id`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='grns'){
+      const rows=await sql`SELECT g.id,g.grn_number,g.received_date,g.status,g.notes,
+        s.business_name supplier_name,w.warehouse_name,
+        i.invoice_number supplier_invoice_number,
+        COALESCE(SUM(gi.quantity),0)::numeric total_quantity,
+        COUNT(gi.id)::int item_count
+        FROM erp_grns g
+        LEFT JOIN erp_suppliers s ON s.id=g.supplier_id AND s.company_id=g.company_id
+        JOIN erp_warehouses w ON w.id=g.warehouse_id AND w.company_id=g.company_id
+        LEFT JOIN erp_supplier_invoices i ON i.id=g.supplier_invoice_id AND i.company_id=g.company_id
+        LEFT JOIN erp_grn_items gi ON gi.grn_id=g.id AND gi.company_id=g.company_id
+        WHERE g.company_id=${u.company_id}
+        GROUP BY g.id,s.business_name,w.warehouse_name,i.invoice_number
+        ORDER BY g.received_date DESC,g.id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='inventory_stock'){
+      const rows=await sql`SELECT p.id product_id,p.sku,p.product_name,p.unit,w.id warehouse_id,w.warehouse_name,
+        COALESCE(SUM(m.qty_in-m.qty_out),0)::numeric quantity,
+        COALESCE(SUM((m.qty_in-m.qty_out)*m.unit_cost),0)::numeric stock_value
+        FROM erp_inventory_movements m
+        JOIN erp_products p ON p.id=m.product_id AND p.company_id=m.company_id
+        JOIN erp_warehouses w ON w.id=m.warehouse_id AND w.company_id=m.company_id
+        WHERE m.company_id=${u.company_id}
+        GROUP BY p.id,p.sku,p.product_name,p.unit,w.id,w.warehouse_name
+        HAVING COALESCE(SUM(m.qty_in-m.qty_out),0)<>0
+        ORDER BY w.warehouse_name,p.product_name`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='inventory_ledger'){
+      const rows=await sql`SELECT m.id,m.movement_date,m.movement_type,m.qty_in,m.qty_out,m.unit_cost,m.reference_number,m.notes,
+        p.sku,p.product_name,p.unit,w.warehouse_name
+        FROM erp_inventory_movements m
+        JOIN erp_products p ON p.id=m.product_id AND p.company_id=m.company_id
+        JOIN erp_warehouses w ON w.id=m.warehouse_id AND w.company_id=m.company_id
+        WHERE m.company_id=${u.company_id}
+        ORDER BY m.movement_date DESC,m.id DESC LIMIT 2000`;
       return res.status(200).json({records:rows});
     }
 
@@ -202,6 +243,34 @@ export default async function handler(req,res){
         VALUES(${u.company_id},${warehouseCode},${name},${clean(b.address)||null},${u.id})
         RETURNING id,warehouse_code,warehouse_name,address,active,created_at`;
       await companyAudit(sql,u,'WAREHOUSE_CREATED',{entityType:'warehouse',entityId:String(rows[0].id)});
+      return res.status(201).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='create_grn'){
+      const supplierId=positiveInt(b.supplier_id,0),warehouseId=positiveInt(b.warehouse_id,0),productId=positiveInt(b.product_id,0);
+      const supplierInvoiceId=positiveInt(b.supplier_invoice_id,0)||null,qty=number(b.quantity),unitCost=number(b.unit_cost);
+      const receivedDate=clean(b.received_date)||new Date().toISOString().slice(0,10),notes=clean(b.notes)||null;
+      if(!supplierId||!warehouseId||!productId||qty<=0||unitCost<0)return res.status(400).json({error:'Supplier, warehouse, product, positive quantity and valid unit cost required'});
+      const valid=await sql`SELECT
+        EXISTS(SELECT 1 FROM erp_suppliers WHERE id=${supplierId} AND company_id=${u.company_id} AND status='active') supplier_ok,
+        EXISTS(SELECT 1 FROM erp_warehouses WHERE id=${warehouseId} AND company_id=${u.company_id} AND active=true) warehouse_ok,
+        EXISTS(SELECT 1 FROM erp_products WHERE id=${productId} AND company_id=${u.company_id} AND active=true) product_ok,
+        ${supplierInvoiceId}::bigint IS NULL OR EXISTS(SELECT 1 FROM erp_supplier_invoices WHERE id=${supplierInvoiceId} AND company_id=${u.company_id} AND supplier_id=${supplierId}) invoice_ok`;
+      if(!valid[0]?.supplier_ok||!valid[0]?.warehouse_ok||!valid[0]?.product_ok||!valid[0]?.invoice_ok)return res.status(400).json({error:'Selected supplier, invoice, warehouse or product is not valid for this company'});
+      const seq=await sql`SELECT COALESCE(MAX(id),0)::bigint+1 next_id FROM erp_grns WHERE company_id=${u.company_id}`;
+      const grnNumber='GRN-'+String(seq[0]?.next_id||1).padStart(6,'0');
+      const rows=await sql`WITH g AS(
+        INSERT INTO erp_grns(company_id,grn_number,supplier_id,supplier_invoice_id,warehouse_id,received_date,status,notes,created_by_user_id)
+        VALUES(${u.company_id},${grnNumber},${supplierId},${supplierInvoiceId},${warehouseId},${receivedDate}::date,'posted',${notes},${u.id})
+        RETURNING *
+      ), gi AS(
+        INSERT INTO erp_grn_items(company_id,grn_id,product_id,quantity,unit_cost)
+        SELECT ${u.company_id},g.id,${productId},${qty},${unitCost} FROM g RETURNING *
+      ), mv AS(
+        INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+        SELECT ${u.company_id},${productId},${warehouseId},'GRN',${qty},0,${unitCost},'GRN',g.id,g.grn_number,${notes},${u.id} FROM g RETURNING id
+      )
+      SELECT g.* FROM g`;
+      await companyAudit(sql,u,'GRN_POSTED',{entityType:'grn',entityId:String(rows[0].id),metadata:{grn_number:grnNumber,quantity:qty,unit_cost:unitCost}});
       return res.status(201).json({record:rows[0]});
     }
 
