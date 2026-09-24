@@ -23,7 +23,7 @@ const defs={
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'audit_reports'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -72,6 +72,9 @@ async function show(view){
   }
   if(view==='supplier-statement')return openPartyStatement('supplier');
   if(view==='client-statement')return openPartyStatement('client');
+  if(view==='reports')return openReports(false);
+  if(view==='advanced-reports')return openReports(true);
+  if(view==='audit-center')return openAuditCenter();
   const d=defs[view];$('workspaceTitle').textContent=d.title;$('workspaceSubtitle').textContent=model.company.name+' · '+d.title;$('addRecord').classList.toggle('hidden',model.subscription.access_mode!=='write'||!d.create);
   $('workspaceBody').innerHTML='<div class="card">Loading…</div>';
   const j=await json('/api/bizora-company?action='+d.action),rows=j.records||[];optionCache[view]=rows;
@@ -215,6 +218,53 @@ async function openCustomerInvoiceDetail(row){
     (items.length?items.map(x=>'<tr><td>'+esc(x.sku)+'</td><td><b>'+esc(x.product_name)+'</b></td><td>'+esc(x.unit)+'</td><td>'+esc(x.quantity)+'</td><td>'+money(x.unit_price)+'</td><td>'+money(Number(x.quantity||0)*Number(x.unit_price||0))+'</td></tr>').join(''):'<tr><td colspan="6">No product lines found.</td></tr>')+
     '</tbody></table></div></div>';
   $('backToCustomerInvoices').onclick=()=>show('client-bills');
+}
+function reportDateControls(title){
+  const today=new Date().toISOString().slice(0,10),month=today.slice(0,8)+'01';
+  return '<div class="reportHead"><div><span class="capEyebrow">'+esc(title)+'</span><h2>Date Range</h2></div><div class="reportDates"><label>From<input id="reportFrom" type="date" value="'+month+'"></label><label>To<input id="reportTo" type="date" value="'+today+'"></label><button id="runReport" class="primary">Apply</button></div></div>';
+}
+async function openReports(advanced=false){
+  $('workspaceTitle').textContent=advanced?'Advanced Reports':'Business Reports';
+  $('workspaceSubtitle').textContent=model.company.name+' · '+(advanced?'Profit & Product Analysis':'Sales, Purchases & Balances');
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card reportCard">'+reportDateControls(advanced?'ADVANCED REPORTING':'BUSINESS REPORTING')+'<div id="reportContent" class="emptyLines">Loading report…</div></div>';
+  const load=async()=>{
+    const from=$('reportFrom').value,to=$('reportTo').value,box=$('reportContent');
+    box.className='';box.innerHTML='<div class="emptyLines">Loading report…</div>';
+    if(advanced){
+      const d=await json('/api/bizora-company?action=advanced_reports&date_from='+encodeURIComponent(from)+'&date_to='+encodeURIComponent(to)),s=d.summary||{},rows=d.top_products||[];
+      box.innerHTML='<div class="reportKpis"><div><small>Revenue</small><b>'+money(s.revenue)+'</b></div><div><small>COGS</small><b>'+money(s.cogs)+'</b></div><div><small>Gross Profit</small><b>'+money(s.gross_profit)+'</b></div></div>'+
+        '<div class="reportSectionTitle"><b>Top Products</b><span>'+date(d.date_from)+' → '+date(d.date_to)+'</span></div>'+
+        '<div class="tablewrap"><table><thead><tr><th>SKU</th><th>Product</th><th>Unit</th><th>Sold Qty</th><th>Sales Value</th><th>Gross Profit</th></tr></thead><tbody>'+
+        (rows.length?rows.map(x=>'<tr><td>'+esc(x.sku)+'</td><td><b>'+esc(x.product_name)+'</b></td><td>'+esc(x.unit)+'</td><td>'+esc(x.sold_quantity)+'</td><td>'+money(x.sales_value)+'</td><td><b>'+money(x.gross_profit)+'</b></td></tr>').join(''):'<tr><td colspan="6">No sales data for this period</td></tr>')+
+        '</tbody></table></div>';
+    }else{
+      const d=await json('/api/bizora-company?action=reports_summary&date_from='+encodeURIComponent(from)+'&date_to='+encodeURIComponent(to)),s=d.summary||{},rows=d.daily||[];
+      const k=[['Customer Sales',s.customer_sales],['Customer Receipts',s.customer_receipts],['Supplier Purchases',s.supplier_purchases],['Supplier Payments',s.supplier_payments],['Customer Receivable',s.customer_receivable],['Supplier Payable',s.supplier_payable],['Stock Value',s.stock_value]];
+      box.innerHTML='<div class="reportKpis">'+k.map(x=>'<div><small>'+esc(x[0])+'</small><b>'+money(x[1])+'</b></div>').join('')+'</div>'+
+        '<div class="reportSectionTitle"><b>Daily Activity</b><span>'+date(d.date_from)+' → '+date(d.date_to)+'</span></div>'+
+        '<div class="tablewrap"><table><thead><tr><th>Date</th><th>Sales</th><th>Receipts</th><th>Purchases</th><th>Payments</th></tr></thead><tbody>'+
+        (rows.length?rows.map(x=>'<tr><td>'+date(x.day)+'</td><td>'+money(x.sales)+'</td><td>'+money(x.receipts)+'</td><td>'+money(x.purchases)+'</td><td>'+money(x.payments)+'</td></tr>').join(''):'<tr><td colspan="5">No activity for this period</td></tr>')+
+        '</tbody></table></div>';
+    }
+  };
+  $('runReport').onclick=()=>load().catch(e=>alert(e.message));await load();
+}
+async function openAuditCenter(){
+  $('workspaceTitle').textContent='Audit Center';
+  $('workspaceSubtitle').textContent=model.company.name+' · Tenant Audit Trail';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card reportCard">'+reportDateControls('AUDIT CENTER')+'<div id="reportContent" class="emptyLines">Loading audit trail…</div></div>';
+  const load=async()=>{
+    const from=$('reportFrom').value,to=$('reportTo').value,box=$('reportContent');
+    box.className='';box.innerHTML='<div class="emptyLines">Loading audit trail…</div>';
+    const d=await json('/api/bizora-company?action=audit_events&date_from='+encodeURIComponent(from)+'&date_to='+encodeURIComponent(to)),rows=d.records||[];
+    box.innerHTML='<div class="reportSectionTitle"><b>Audit Events</b><span>'+rows.length+' events · '+date(d.date_from)+' → '+date(d.date_to)+'</span></div>'+
+      '<div class="tablewrap"><table><thead><tr><th>Date / Time</th><th>Actor</th><th>Event</th><th>Entity</th><th>ID</th><th>Details</th></tr></thead><tbody>'+
+      (rows.length?rows.map(x=>'<tr><td>'+esc(new Date(x.created_at).toLocaleString('en-GB'))+'</td><td><b>'+esc(x.actor_name)+'</b></td><td>'+esc(x.event_type)+'</td><td>'+esc(x.entity_type||'—')+'</td><td>'+esc(x.entity_id||'—')+'</td><td class="auditMeta">'+esc(JSON.stringify(x.metadata||{}))+'</td></tr>').join(''):'<tr><td colspan="6">No audit events in this period</td></tr>')+
+      '</tbody></table></div>';
+  };
+  $('runReport').onclick=()=>load().catch(e=>alert(e.message));await load();
 }
 async function openPaymentForm(kind){
   const isSupplier=kind==='supplier',parties=await partyOptions(kind),today=new Date().toISOString().slice(0,10);
