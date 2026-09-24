@@ -34,9 +34,9 @@ export default async function handler(req,res){
 
     const featureByAction={
       users:'core_erp',create_user:'core_erp',set_user_status:'core_erp',
-      suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',
+      suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',supplier_statement:'supplier_management',
       create_supplier:'supplier_management',create_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',
-      clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',
+      clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',client_statement:'customer_management',
       create_client:'customer_management',create_client_invoice:'customer_management',create_client_receipt:'customer_management',
       products:'products',create_product:'products',
       warehouses:'warehouses',create_warehouse:'warehouses',
@@ -102,10 +102,30 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='supplier_payments'){
-      const rows=await sql`SELECT p.id,p.supplier_id,s.business_name,p.payment_date,p.amount,p.payment_method,p.reference_number,p.notes,p.created_at
+      const rows=await sql`SELECT p.id,p.supplier_id,s.business_name,p.payment_date,p.amount,p.payment_method,p.reference_number,p.notes,p.created_at,
+        COALESCE(a.allocated_amount,0)::numeric allocated_amount
         FROM erp_supplier_payments p JOIN erp_suppliers s ON s.id=p.supplier_id AND s.company_id=p.company_id
+        LEFT JOIN LATERAL(SELECT COALESCE(SUM(amount),0)::numeric allocated_amount FROM erp_supplier_payment_allocations x WHERE x.company_id=p.company_id AND x.supplier_payment_id=p.id) a ON true
         WHERE p.company_id=${u.company_id} ORDER BY p.payment_date DESC,p.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='supplier_statement'){
+      const supplierId=positiveInt(req.query?.supplier_id,0);
+      if(!supplierId)return res.status(400).json({error:'Valid supplier required'});
+      const supplier=await sql`SELECT id,supplier_code,business_name,opening_balance FROM erp_suppliers WHERE id=${supplierId} AND company_id=${u.company_id}`;
+      if(!supplier[0])return res.status(404).json({error:'Supplier not found'});
+      const rows=await sql`WITH entries AS(
+        SELECT i.invoice_date::date entry_date,'INVOICE'::text entry_type,i.invoice_number reference,i.amount::numeric debit,0::numeric credit,i.notes,i.id sort_id
+        FROM erp_supplier_invoices i WHERE i.company_id=${u.company_id} AND i.supplier_id=${supplierId} AND i.status<>'cancelled'
+        UNION ALL
+        SELECT p.payment_date::date,'PAYMENT',COALESCE(p.reference_number,''),0::numeric,p.amount::numeric,p.notes,1000000000+p.id
+        FROM erp_supplier_payments p WHERE p.company_id=${u.company_id} AND p.supplier_id=${supplierId}
+      )
+      SELECT entry_date,entry_type,reference,debit,credit,notes,
+        ${number(supplier[0].opening_balance)} + SUM(debit-credit) OVER(ORDER BY entry_date,sort_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_balance
+      FROM entries ORDER BY entry_date,sort_id`;
+      const balance=number(supplier[0].opening_balance)+rows.reduce((n,x)=>n+number(x.debit)-number(x.credit),0);
+      return res.status(200).json({party:supplier[0],opening_balance:supplier[0].opening_balance,balance,records:rows});
     }
     if(req.method==='GET'&&action==='clients'){
       const rows=await sql`SELECT id,client_code,business_name,contact_person,mobile_number,credit_limit,opening_balance,status,created_at FROM erp_clients WHERE company_id=${u.company_id} ORDER BY created_at DESC,id DESC LIMIT 500`;
@@ -142,10 +162,30 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='client_receipts'){
-      const rows=await sql`SELECT r.id,r.client_id,c.business_name,r.receipt_date,r.amount,r.payment_method,r.reference_number,r.notes,r.created_at
+      const rows=await sql`SELECT r.id,r.client_id,c.business_name,r.receipt_date,r.amount,r.payment_method,r.reference_number,r.notes,r.created_at,
+        COALESCE(a.allocated_amount,0)::numeric allocated_amount
         FROM erp_client_receipts r JOIN erp_clients c ON c.id=r.client_id AND c.company_id=r.company_id
+        LEFT JOIN LATERAL(SELECT COALESCE(SUM(amount),0)::numeric allocated_amount FROM erp_client_receipt_allocations x WHERE x.company_id=r.company_id AND x.client_receipt_id=r.id) a ON true
         WHERE r.company_id=${u.company_id} ORDER BY r.receipt_date DESC,r.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='client_statement'){
+      const clientId=positiveInt(req.query?.client_id,0);
+      if(!clientId)return res.status(400).json({error:'Valid customer required'});
+      const client=await sql`SELECT id,client_code,business_name,opening_balance FROM erp_clients WHERE id=${clientId} AND company_id=${u.company_id}`;
+      if(!client[0])return res.status(404).json({error:'Customer not found'});
+      const rows=await sql`WITH entries AS(
+        SELECT i.invoice_date::date entry_date,'INVOICE'::text entry_type,i.invoice_number reference,i.amount::numeric debit,0::numeric credit,i.notes,i.id sort_id
+        FROM erp_client_invoices i WHERE i.company_id=${u.company_id} AND i.client_id=${clientId} AND i.status<>'cancelled'
+        UNION ALL
+        SELECT r.receipt_date::date,'PAYMENT',COALESCE(r.reference_number,''),0::numeric,r.amount::numeric,r.notes,1000000000+r.id
+        FROM erp_client_receipts r WHERE r.company_id=${u.company_id} AND r.client_id=${clientId}
+      )
+      SELECT entry_date,entry_type,reference,debit,credit,notes,
+        ${number(client[0].opening_balance)} + SUM(debit-credit) OVER(ORDER BY entry_date,sort_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_balance
+      FROM entries ORDER BY entry_date,sort_id`;
+      const balance=number(client[0].opening_balance)+rows.reduce((n,x)=>n+number(x.debit)-number(x.credit),0);
+      return res.status(200).json({party:client[0],opening_balance:client[0].opening_balance,balance,records:rows});
     }
     if(req.method==='GET'&&action==='products'){
       const rows=await sql`SELECT id,sku,barcode,product_name,unit,purchase_price,sale_price,active,created_at FROM erp_products WHERE company_id=${u.company_id} ORDER BY created_at DESC,id DESC LIMIT 1000`;
@@ -284,14 +324,32 @@ export default async function handler(req,res){
     }
     if(req.method==='POST'&&action==='create_supplier_payment'){
       const supplierId=positiveInt(b.supplier_id,0),amount=number(b.amount),paymentDate=clean(b.payment_date)||new Date().toISOString().slice(0,10),method=clean(b.payment_method||'CASH').toUpperCase();
+      const selectedInvoiceId=positiveInt(b.invoice_id,0)||null;
       if(!supplierId||amount<=0||!paymentMethods.has(method))return res.status(400).json({error:'Supplier, positive amount and valid payment method required'});
       const rows=await sql`INSERT INTO erp_supplier_payments(company_id,supplier_id,payment_date,amount,payment_method,reference_number,notes,created_by_user_id)
         SELECT ${u.company_id},s.id,${paymentDate}::date,${amount},${method},${clean(b.reference_number)||null},${clean(b.notes)||null},${u.id}
         FROM erp_suppliers s WHERE s.id=${supplierId} AND s.company_id=${u.company_id}
         RETURNING id,supplier_id,payment_date,amount,payment_method,reference_number,notes,created_at`;
       if(!rows[0])return res.status(404).json({error:'Supplier not found'});
-      await companyAudit(sql,u,'SUPPLIER_PAYMENT_CREATED',{entityType:'supplier_payment',entityId:String(rows[0].id),metadata:{amount,method}});
-      return res.status(201).json({record:rows[0]});
+      let remaining=amount;
+      const invoices=await sql`SELECT i.id,i.amount,COALESCE(SUM(a.amount),0)::numeric paid
+        FROM erp_supplier_invoices i LEFT JOIN erp_supplier_payment_allocations a ON a.supplier_invoice_id=i.id AND a.company_id=i.company_id
+        WHERE i.company_id=${u.company_id} AND i.supplier_id=${supplierId} AND i.status<>'cancelled'
+          AND (${selectedInvoiceId}::bigint IS NULL OR i.id=${selectedInvoiceId})
+        GROUP BY i.id HAVING i.amount>COALESCE(SUM(a.amount),0)
+        ORDER BY CASE WHEN i.id=${selectedInvoiceId} THEN 0 ELSE 1 END,i.invoice_date,i.id`;
+      for(const inv of invoices){
+        if(remaining<=0)break;
+        const outstanding=number(inv.amount)-number(inv.paid),allocated=Math.min(remaining,outstanding);
+        if(allocated<=0)continue;
+        await sql`INSERT INTO erp_supplier_payment_allocations(company_id,supplier_payment_id,supplier_invoice_id,amount)
+          VALUES(${u.company_id},${rows[0].id},${inv.id},${allocated})`;
+        remaining-=allocated;
+        const newPaid=number(inv.paid)+allocated,newStatus=newPaid+0.000001>=number(inv.amount)?'paid':'partial';
+        await sql`UPDATE erp_supplier_invoices SET status=${newStatus},updated_at=now() WHERE id=${inv.id} AND company_id=${u.company_id}`;
+      }
+      await companyAudit(sql,u,'SUPPLIER_PAYMENT_CREATED',{entityType:'supplier_payment',entityId:String(rows[0].id),metadata:{amount,method,allocated:amount-remaining,unallocated:remaining}});
+      return res.status(201).json({record:rows[0],allocated:amount-remaining,unallocated:remaining});
     }
     if(req.method==='POST'&&action==='create_client'){
       const clientCode=code(b.client_code),name=clean(b.business_name);
@@ -342,14 +400,32 @@ export default async function handler(req,res){
     }
     if(req.method==='POST'&&action==='create_client_receipt'){
       const clientId=positiveInt(b.client_id,0),amount=number(b.amount),receiptDate=clean(b.receipt_date)||new Date().toISOString().slice(0,10),method=clean(b.payment_method||'CASH').toUpperCase();
-      if(!clientId||amount<=0||!paymentMethods.has(method))return res.status(400).json({error:'Client, positive amount and valid payment method required'});
+      const selectedInvoiceId=positiveInt(b.invoice_id,0)||null;
+      if(!clientId||amount<=0||!paymentMethods.has(method))return res.status(400).json({error:'Customer, positive amount and valid payment method required'});
       const rows=await sql`INSERT INTO erp_client_receipts(company_id,client_id,receipt_date,amount,payment_method,reference_number,notes,created_by_user_id)
         SELECT ${u.company_id},c.id,${receiptDate}::date,${amount},${method},${clean(b.reference_number)||null},${clean(b.notes)||null},${u.id}
         FROM erp_clients c WHERE c.id=${clientId} AND c.company_id=${u.company_id}
         RETURNING id,client_id,receipt_date,amount,payment_method,reference_number,notes,created_at`;
-      if(!rows[0])return res.status(404).json({error:'Client not found'});
-      await companyAudit(sql,u,'CLIENT_RECEIPT_CREATED',{entityType:'client_receipt',entityId:String(rows[0].id),metadata:{amount,method}});
-      return res.status(201).json({record:rows[0]});
+      if(!rows[0])return res.status(404).json({error:'Customer not found'});
+      let remaining=amount;
+      const invoices=await sql`SELECT i.id,i.amount,COALESCE(SUM(a.amount),0)::numeric paid
+        FROM erp_client_invoices i LEFT JOIN erp_client_receipt_allocations a ON a.client_invoice_id=i.id AND a.company_id=i.company_id
+        WHERE i.company_id=${u.company_id} AND i.client_id=${clientId} AND i.status<>'cancelled'
+          AND (${selectedInvoiceId}::bigint IS NULL OR i.id=${selectedInvoiceId})
+        GROUP BY i.id HAVING i.amount>COALESCE(SUM(a.amount),0)
+        ORDER BY CASE WHEN i.id=${selectedInvoiceId} THEN 0 ELSE 1 END,i.invoice_date,i.id`;
+      for(const inv of invoices){
+        if(remaining<=0)break;
+        const outstanding=number(inv.amount)-number(inv.paid),allocated=Math.min(remaining,outstanding);
+        if(allocated<=0)continue;
+        await sql`INSERT INTO erp_client_receipt_allocations(company_id,client_receipt_id,client_invoice_id,amount)
+          VALUES(${u.company_id},${rows[0].id},${inv.id},${allocated})`;
+        remaining-=allocated;
+        const newPaid=number(inv.paid)+allocated,newStatus=newPaid+0.000001>=number(inv.amount)?'paid':'partial';
+        await sql`UPDATE erp_client_invoices SET status=${newStatus},updated_at=now() WHERE id=${inv.id} AND company_id=${u.company_id}`;
+      }
+      await companyAudit(sql,u,'CLIENT_RECEIPT_CREATED',{entityType:'client_receipt',entityId:String(rows[0].id),metadata:{amount,method,allocated:amount-remaining,unallocated:remaining}});
+      return res.status(201).json({record:rows[0],allocated:amount-remaining,unallocated:remaining});
     }
     if(req.method==='POST'&&action==='create_product'){
       const sku=code(b.sku),name=clean(b.product_name),barcode=clean(b.barcode)||null;
