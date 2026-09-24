@@ -802,3 +802,22 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
 .masterEditCard{padding-top:18px!important}.masterEditHead{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #e2e8f0}.masterEditHead h2{margin:4px 0;color:#14213d;font-size:21px}.masterEditHead p{margin:0;color:#74829a;font-size:10px}
 .masterActions{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:15px}.masterActions button{min-width:130px}
 @media(max-width:520px){.masterToolbar{align-items:stretch;flex-direction:column}.masterToolbar button{align-self:flex-start}.masterActions{display:grid;grid-template-columns:1fr 1fr}.masterActions button{min-width:0}}
+
+
+/* Inventory document reversal controls */
+.inventoryDocActions{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.inventoryDocActions>div{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.inventoryDocStatus{display:inline-flex;padding:5px 8px;border-radius:999px;font-size:9px;font-weight:900;text-transform:uppercase;border:1px solid #dce4ef}.inventoryDocStatus.posted{background:#e9fbf2;color:#087f58;border-color:#bce7d4}.inventoryDocStatus.cancelled{background:#fff0f2;color:#b4233c;border-color:#f0c9d0}
+.inventoryDocTitle{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid #e2e8f0}.inventoryDocTitle h2{margin:4px 0 2px;color:#14213d;font-size:24px}.inventoryDocTitle p{margin:0;color:#74829a;font-size:10px}.inventoryDocTitle>div:last-child{text-align:right}.inventoryDocTitle>div:last-child b{display:block;color:#10265a;font-size:16px}.inventoryDocTitle>div:last-child span{display:block;margin-top:3px;color:#7b879b;font-size:9px}
+.inventoryDocMeta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px}.inventoryDocMeta>div{padding:10px;border-radius:13px;background:#f7f9fd;border:1px solid #e3eaf2}.inventoryDocMeta small,.inventoryDocNotes small{display:block;color:#7a879d;font-size:8px;text-transform:uppercase}.inventoryDocMeta b{display:block;margin-top:3px;color:#17213a;font-size:11px}
+.inventoryDocNotes{margin-top:14px;padding:10px 12px;border-radius:12px;background:#f8faff;border:1px solid #e3eaf3}.inventoryDocNotes p{margin:4px 0 0;color:#53627a;font-size:10px}
+@media(max-width:620px){.inventoryDocActions{align-items:stretch;flex-direction:column}.inventoryDocActions>div{width:100%}.inventoryDocActions>div button{flex:1}.inventoryDocMeta{grid-template-columns:1fr 1fr}.inventoryDocTitle{flex-direction:column}.inventoryDocTitle>div:last-child{text-align:left}}
+@media(max-width:420px){.inventoryDocMeta{grid-template-columns:1fr}}
+@media print{
+  body.inventory-print{background:#fff!important}
+  body.inventory-print .topbar,body.inventory-print .sidenav,body.inventory-print .navbackdrop,body.inventory-print .hero,body.inventory-print #readOnlyNote,body.inventory-print .inventoryDocActions{display:none!important}
+  body.inventory-print .shell{padding:0!important;margin:0!important;max-width:none!important}
+  body.inventory-print #workspaceBody>*:not(.inventoryPrintable){display:none!important}
+  body.inventory-print .inventoryPrintable{display:block!important;box-shadow:none!important;border:0!important;padding:0!important}
+  body.inventory-print .inventoryPrintable .tablewrap{overflow:visible!important}
+  body.inventory-print .inventoryPrintable table{min-width:0!important}
+}

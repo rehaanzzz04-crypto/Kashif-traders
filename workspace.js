@@ -19,7 +19,7 @@ const defs={
   'inventory-stock':{title:'Warehouse Stock',action:'inventory_stock',cols:[['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['unit','Unit'],['quantity','Quantity'],['stock_value','Stock Value']]},
   'inventory-ledger':{title:'Inventory Ledger',action:'inventory_ledger',cols:[['movement_date','Date / Time'],['movement_type','Type'],['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['qty_in','Qty In'],['qty_out','Qty Out'],['unit_cost','Unit Cost'],['reference_number','Reference']]},
   'stock-transfers':{title:'Stock Transfers',action:'stock_transfers',create:'create_stock_transfer',cols:[['transfer_number','Transfer'],['transfer_date','Date'],['from_warehouse','From'],['to_warehouse','To'],['item_count','Items'],['total_quantity','Quantity'],['status','Status']]},
-  'stock-adjustments':{title:'Stock Adjustments',action:'stock_adjustments',create:'create_stock_adjustment',cols:[['adjustment_number','Adjustment'],['adjustment_date','Date'],['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['adjustment_type','Type'],['quantity','Quantity'],['reason','Reason']]}
+  'stock-adjustments':{title:'Stock Adjustments',action:'stock_adjustments',create:'create_stock_adjustment',cols:[['adjustment_number','Adjustment'],['adjustment_date','Date'],['warehouse_name','Warehouse'],['sku','SKU'],['product_name','Product'],['adjustment_type','Type'],['quantity','Quantity'],['reason','Reason'],['status','Status']]}
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
@@ -101,6 +101,15 @@ async function show(view){
   if(view==='client-payments'){
     document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openPaymentDetail('client',row)}});
   }
+  if(view==='grns'){
+    document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openInventoryDocument('grn',row)}});
+  }
+  if(view==='stock-transfers'){
+    document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openInventoryDocument('transfer',row)}});
+  }
+  if(view==='stock-adjustments'){
+    document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openInventoryDocument('adjustment',row)}});
+  }
   if(view==='inventory-stock'||view==='inventory-ledger')await installWarehouseFilter(view,rows);
 }
 async function openMasterRecord(view,row){
@@ -137,6 +146,47 @@ async function openMasterRecord(view,row){
     const next=!config.active;if(!confirm((next?'Activate ':'Deactivate ')+config.title+'?'))return;
     try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:config.status,[config.id]:row.id,...((view==='suppliers'||view==='clients')?{status:next?'active':'inactive'}:{active:next})})});optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(view)}
     catch(err){alert(err.message)}
+  };
+}
+
+async function openInventoryDocument(kind,row){
+  const isGrn=kind==='grn',isTransfer=kind==='transfer',title=isGrn?'Goods Receiving (GRN)':isTransfer?'Stock Transfer':'Stock Adjustment';
+  $('workspaceTitle').textContent=title;
+  $('workspaceSubtitle').textContent=model.company.name+' · Inventory Control';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading '+esc(title)+'…</div></div>';
+  let record=row,items=[];
+  if(isGrn){const d=await json('/api/bizora-company?action=grn_detail&grn_id='+row.id);record=d.record||row;items=d.items||[]}
+  else if(isTransfer){const d=await json('/api/bizora-company?action=stock_transfer_detail&transfer_id='+row.id);record=d.record||row;items=d.items||[]}
+  else items=[{sku:row.sku,product_name:row.product_name,unit:row.unit,quantity:row.quantity,unit_cost:row.unit_cost,notes:row.reason||row.notes||''}];
+  const status=String(record.status||'posted').toLowerCase(),canCancel=status==='posted'&&model.subscription.access_mode==='write';
+  const numberLabel=isGrn?record.grn_number:isTransfer?record.transfer_number:record.adjustment_number;
+  const docDate=isGrn?record.received_date:isTransfer?record.transfer_date:record.adjustment_date;
+  const meta=isGrn?[
+    ['Supplier',record.supplier_name||'—'],['Supplier Invoice',record.supplier_invoice_number||'—'],['Warehouse',record.warehouse_name||'—'],['Status',status]
+  ]:isTransfer?[
+    ['From',record.from_warehouse||'—'],['To',record.to_warehouse||'—'],['Items',items.length],['Status',status]
+  ]:[
+    ['Warehouse',record.warehouse_name||'—'],['Product',record.product_name||'—'],['Type',record.adjustment_type||'—'],['Status',status]
+  ];
+  $('workspaceBody').innerHTML=
+    '<div class="inventoryDocActions"><button id="inventoryDocBack" class="secondary">← Back</button><div><span class="inventoryDocStatus '+esc(status)+'">'+esc(status)+'</span><button id="printInventoryDoc" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="cancelInventoryDoc" class="dangerAction">Cancel & Reverse</button>':'')+'</div></div>'+
+    '<div class="card inventoryDoc inventoryPrintable">'+
+      '<div class="inventoryDocTitle"><div><span class="capEyebrow">'+esc(title.toUpperCase())+'</span><h2>'+esc(model.company.name)+'</h2><p>'+esc(numberLabel)+'</p></div><div><b>'+esc(numberLabel)+'</b><span>'+date(docDate)+'</span></div></div>'+
+      '<div class="inventoryDocMeta">'+meta.map(x=>'<div><small>'+esc(x[0])+'</small><b>'+esc(x[1])+'</b></div>').join('')+'</div>'+
+      '<div class="tablewrap"><table><thead><tr><th>SKU</th><th>Product</th><th>Qty</th><th>Unit Cost</th>'+(isGrn?'<th>Rejected</th><th>Batch</th><th>Expiry</th>':'')+'<th>Notes</th></tr></thead><tbody>'+
+        (items.length?items.map(x=>'<tr><td>'+esc(x.sku||'—')+'</td><td><b>'+esc(x.product_name||'—')+'</b></td><td>'+esc(x.quantity||0)+' '+esc(x.unit||'')+'</td><td>'+money(x.unit_cost)+'</td>'+(isGrn?'<td>'+esc(x.rejected_qty||0)+'</td><td>'+esc(x.batch_no||'—')+'</td><td>'+date(x.expiry_date)+'</td>':'')+'<td>'+esc(x.notes||'')+'</td></tr>').join(''):'<tr><td colspan="'+(isGrn?8:5)+'">No items</td></tr>')+
+      '</tbody></table></div>'+
+      (record.notes?'<div class="inventoryDocNotes"><small>Notes</small><p>'+esc(record.notes)+'</p></div>':'')+
+    '</div>';
+  $('inventoryDocBack').onclick=()=>show(isGrn?'grns':isTransfer?'stock-transfers':'stock-adjustments');
+  $('printInventoryDoc').onclick=()=>{document.body.classList.add('inventory-print');window.print();setTimeout(()=>document.body.classList.remove('inventory-print'),500)};
+  if($('cancelInventoryDoc'))$('cancelInventoryDoc').onclick=async()=>{
+    const msg=isGrn?'Cancel this GRN and reverse its stock? System will block if stock/returns depend on it.':isTransfer?'Cancel this transfer and move stock back? System will block if destination stock is no longer available.':'Cancel this adjustment and reverse its stock movement?';
+    if(!confirm(msg))return;
+    const action=isGrn?'cancel_grn':isTransfer?'cancel_stock_transfer':'cancel_stock_adjustment',key=isGrn?'grn_id':isTransfer?'transfer_id':'adjustment_id';
+    try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,[key]:record.id})});optionCache={};await show(isGrn?'grns':isTransfer?'stock-transfers':'stock-adjustments')}
+    catch(e){alert(e.message)}
   };
 }
 
