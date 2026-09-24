@@ -41,3 +41,5 @@ Required private environment variables:
 
 ## Deployment safety
 Automatic Vercel Git deployments remain disabled in `vercel.json` while deployment quota is exhausted.
+
+<!-- preview deploy trigger: store-builder-media-upload -->
