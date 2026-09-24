@@ -25,7 +25,7 @@ function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
 const roleCanView=view=>view==='dashboard'||model?.role_access?.views?.includes(view)===true;
 const roleCanWrite=view=>model?.subscription?.access_mode==='write'&&model?.role_access?.write_views?.includes(view)===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce','ocr-drafts':'ocr','automation-center':'automation',communications:'automation',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce','ocr-drafts':'ocr','automation-center':'automation',communications:'automation','support-center':'priority_support',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
 let notificationTimer=null;
 async function refreshNotifications(){
   if(!$('notificationBell'))return;
@@ -116,6 +116,7 @@ async function show(view){
   if(view==='ocr-drafts')return openOcrDrafts();
   if(view==='automation-center')return openAutomationCenter();
   if(view==='communications')return openCommunications();
+  if(view==='support-center')return openSupportCenter();
   if(view==='reports')return openReports(false);
   if(view==='advanced-reports')return openReports(true);
   if(view==='audit-center')return openAuditCenter();
@@ -826,6 +827,29 @@ async function openCommunications(){
   if(canEdit)$('communicationForm').onsubmit=async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button'),data=Object.fromEntries(new FormData(e.currentTarget));btn.disabled=true;btn.textContent='Saving…';try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save_communication_settings',active:true,...data})});await openCommunications()}catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save Settings'}};
 }
 
+function installSupportModule(){
+  if(document.querySelector('[data-view="support-center"]'))return;
+  const nav=document.querySelector('#workspaceNav .navScroll');if(!nav)return;
+  const section=document.createElement('div');section.className='navSection';
+  section.innerHTML='<div class="navSectionTitle">Help & Support</div><button data-view="support-center" data-feature="priority_support"><span class="navLabel">Priority Support</span><span class="navChevron">›</span></button>';nav.appendChild(section);
+}
+async function openSupportCenter(){
+  $('workspaceTitle').textContent='Priority Support';$('workspaceSubtitle').textContent=model.company.name+' · Premium Support';$('addRecord').classList.add('hidden');
+  const d=await json('/api/bizora-company?action=support_tickets'),rows=d.records||[];
+  $('workspaceBody').innerHTML='<div class="supportHead"><div><span class="capEyebrow">PREMIUM PRIORITY SUPPORT</span><h2>Support Center</h2></div><button id="newSupportTicket" class="primary">+ New Ticket</button></div><div class="card"><div class="tablewrap"><table><thead><tr><th>Ticket</th><th>Subject</th><th>Priority</th><th>Status</th></tr></thead><tbody>'+(rows.length?rows.map(x=>'<tr><td><b>'+esc(x.ticket_number)+'</b></td><td>'+esc(x.subject)+'</td><td>'+esc(x.priority)+'</td><td>'+esc(x.status.replaceAll('_',' '))+'</td></tr>').join(''):'<tr><td colspan="4">No support tickets</td></tr>')+'</tbody></table></div></div>';
+  document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{if(rows[i]){tr.classList.add('clickableRow');tr.onclick=()=>openSupportTicket(rows[i].id)}});
+  $('newSupportTicket').onclick=()=>openNewSupportTicket();
+}
+function openNewSupportTicket(){
+  $('workspaceBody').innerHTML='<form id="supportTicketForm" class="card supportForm"><h2>New Priority Ticket</h2><div class="formGrid"><label>Subject<input name="subject" required></label><label>Category<select name="category"><option>technical</option><option>billing</option><option>data</option><option>feature</option><option>general</option></select></label><label>Priority<select name="priority"><option>high</option><option>urgent</option><option>normal</option></select></label></div><label>Message<textarea name="message" required></textarea></label><div class="masterActions"><button class="primary">Submit Ticket</button></div></form>';
+  $('supportTicketForm').onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));const out=await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create_support_ticket',...data})});await openSupportTicket(out.record.id)};
+}
+async function openSupportTicket(id){
+  const d=await json('/api/bizora-company?action=support_ticket_detail&ticket_id='+id),r=d.record,m=d.messages||[],closed=r.status==='closed';
+  $('workspaceBody').innerHTML='<div class="supportHead"><button id="supportBack" class="secondary">← Support Center</button><span>'+esc(r.status.replaceAll('_',' '))+'</span></div><div class="card"><h2>'+esc(r.subject)+'</h2><div class="supportMessages">'+m.map(x=>'<div class="supportMessage '+esc(x.sender_type)+'"><b>'+esc(x.sender_type==='admin'?(x.admin_name||'Bizora Support'):(x.company_user||model.company.name))+'</b><p>'+esc(x.message)+'</p></div>').join('')+'</div>'+(!closed?'<form id="supportReply"><label>Reply<textarea name="message" required></textarea></label><button class="primary">Send Reply</button></form>':'')+'</div>';
+  $('supportBack').onclick=()=>openSupportCenter();
+  if($('supportReply'))$('supportReply').onsubmit=async e=>{e.preventDefault();await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reply_support_ticket',ticket_id:id,message:e.currentTarget.elements.message.value})});await openSupportTicket(id)};
+}
 function installEcommerceModule(){
   if(document.querySelector('[data-view="ecommerce"]'))return;
   const nav=document.querySelector('#workspaceNav .navScroll');if(!nav)return;
@@ -1316,4 +1340,4 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
   $('recordDialog').close();e.currentTarget.reset();invoiceEditContext=null;optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
-(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();installCommunicationModule();installNotificationCenter();setHeader();dashboard();automationPulse()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
+(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();installCommunicationModule();installSupportModule();installNotificationCenter();setHeader();dashboard();automationPulse()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});

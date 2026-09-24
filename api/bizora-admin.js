@@ -23,13 +23,14 @@ async function nextCompanyCode(sql,name){
 }
 
 async function overview(sql){
-  const [stats,companies,plans,auditPrices,auditRequests]=await Promise.all([
+  const [stats,companies,plans,auditPrices,auditRequests,supportTickets]=await Promise.all([
     sql`SELECT
       (SELECT COUNT(*) FROM companies)::int companies,
       (SELECT COUNT(*) FROM companies WHERE status='active')::int active_companies,
       (SELECT COUNT(*) FROM subscriptions WHERE status='active' AND expires_on>=CURRENT_DATE)::int active_subscriptions,
       (SELECT COUNT(*) FROM subscriptions WHERE status='active' AND expires_on BETWEEN CURRENT_DATE AND CURRENT_DATE+INTERVAL '14 days')::int expiring_14_days,
-      (SELECT COUNT(*) FROM audit_requests WHERE status='submitted')::int pending_audits`,
+      (SELECT COUNT(*) FROM audit_requests WHERE status='submitted')::int pending_audits,
+      (SELECT COUNT(*) FROM support_tickets WHERE status IN ('open','in_progress','waiting_company'))::int open_support`,
     sql`SELECT c.id,c.company_code,c.company_name,c.logo_url,c.status,c.created_at,
       s.id subscription_id,s.status subscription_status,s.starts_on,s.expires_on,s.billing_cycle,s.amount,
       p.id plan_id,p.plan_code,p.plan_name
@@ -49,9 +50,13 @@ async function overview(sql){
       JOIN companies c ON c.id=r.company_id
       JOIN plans p ON p.id=r.plan_id
       LEFT JOIN company_users cu ON cu.id=r.created_by_user_id
-      ORDER BY r.requested_at DESC,r.id DESC LIMIT 500`
+      ORDER BY r.requested_at DESC,r.id DESC LIMIT 500`,
+    sql`SELECT t.id,t.company_id,t.ticket_number,t.subject,t.category,t.priority,t.status,t.updated_at,c.company_name,c.company_code,
+      COALESCE(m.message_count,0)::int message_count FROM support_tickets t JOIN companies c ON c.id=t.company_id
+      LEFT JOIN LATERAL(SELECT COUNT(*)::int message_count FROM support_messages x WHERE x.company_id=t.company_id AND x.ticket_id=t.id) m ON true
+      ORDER BY CASE t.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'waiting_company' THEN 2 ELSE 3 END,t.updated_at DESC LIMIT 500`
   ]);
-  return {stats:stats[0]||{},companies,plans,audit_prices:auditPrices,audit_requests:auditRequests};
+  return {stats:stats[0]||{},companies,plans,audit_prices:auditPrices,audit_requests:auditRequests,support_tickets:supportTickets};
 }
 
 export default async function handler(req,res){
@@ -61,6 +66,18 @@ export default async function handler(req,res){
     const b=body(req),action=clean(req.query?.action||b.action||'overview');
 
     if(req.method==='GET'&&action==='overview')return res.status(200).json(await overview(sql));
+    if(req.method==='GET'&&action==='support_ticket_detail'){
+      const ticketId=positiveInt(req.query?.ticket_id,0);if(!ticketId)return res.status(400).json({error:'Valid support ticket required'});
+      const rows=await sql`SELECT t.*,c.company_name,c.company_code,cu.full_name created_by,ba.full_name assigned_admin
+        FROM support_tickets t JOIN companies c ON c.id=t.company_id
+        LEFT JOIN company_users cu ON cu.id=t.created_by_user_id AND cu.company_id=t.company_id
+        LEFT JOIN bizora_admins ba ON ba.id=t.assigned_admin_id WHERE t.id=${ticketId} LIMIT 1`;
+      if(!rows[0])return res.status(404).json({error:'Support ticket not found'});
+      const messages=await sql`SELECT m.id,m.sender_type,m.message,m.created_at,cu.full_name company_user,ba.full_name admin_name
+        FROM support_messages m LEFT JOIN company_users cu ON cu.id=m.sender_company_user_id AND cu.company_id=m.company_id
+        LEFT JOIN bizora_admins ba ON ba.id=m.sender_admin_id WHERE m.ticket_id=${ticketId} AND m.company_id=${rows[0].company_id} ORDER BY m.created_at,m.id`;
+      return res.status(200).json({record:rows[0],messages});
+    }
 
     if(req.method==='POST'&&action==='create_company'){
       const name=clean(b.company_name),planCode=clean(b.plan_code||'standard').toLowerCase();
@@ -144,6 +161,25 @@ export default async function handler(req,res){
       if(!rows[0])return res.status(404).json({error:'Audit request not found'});
       await audit(sql,admin.id,decision==='approve'?'AUDIT_REQUEST_APPROVED':'AUDIT_REQUEST_REJECTED',{companyId:rows[0].company_id,entityType:'audit_request',entityId:String(requestId),metadata:{price:rows[0].price}});
       return res.status(200).json({audit_request:rows[0]});
+    }
+
+    if(req.method==='POST'&&action==='reply_support_ticket'){
+      const ticketId=positiveInt(b.ticket_id,0),message=String(b.message||'').trim().slice(0,10000);
+      if(!ticketId||!message)return res.status(400).json({error:'Ticket and reply message required'});
+      const t=await sql`SELECT id,company_id,status FROM support_tickets WHERE id=${ticketId} LIMIT 1`;if(!t[0])return res.status(404).json({error:'Support ticket not found'});
+      if(t[0].status==='closed')return res.status(409).json({error:'Closed support ticket cannot receive replies'});
+      await sql`INSERT INTO support_messages(company_id,ticket_id,sender_type,sender_admin_id,message) VALUES(${t[0].company_id},${ticketId},'admin',${admin.id},${message})`;
+      const rows=await sql`UPDATE support_tickets SET assigned_admin_id=COALESCE(assigned_admin_id,${admin.id}),status='waiting_company',last_message_at=now(),updated_at=now() WHERE id=${ticketId} RETURNING *`;
+      await audit(sql,admin.id,'SUPPORT_ADMIN_REPLIED',{companyId:t[0].company_id,entityType:'support_ticket',entityId:String(ticketId)});
+      return res.status(200).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='set_support_ticket_status'){
+      const ticketId=positiveInt(b.ticket_id,0),status=clean(b.status).toLowerCase();
+      if(!ticketId||!['open','in_progress','waiting_company','resolved','closed'].includes(status))return res.status(400).json({error:'Valid support ticket and status required'});
+      const rows=await sql`UPDATE support_tickets SET status=${status},assigned_admin_id=COALESCE(assigned_admin_id,${admin.id}),updated_at=now() WHERE id=${ticketId} RETURNING *`;
+      if(!rows[0])return res.status(404).json({error:'Support ticket not found'});
+      await audit(sql,admin.id,'SUPPORT_STATUS_CHANGED',{companyId:rows[0].company_id,entityType:'support_ticket',entityId:String(ticketId),metadata:{status}});
+      return res.status(200).json({record:rows[0]});
     }
 
     if(req.method==='POST'&&action==='set_company_status'){

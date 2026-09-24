@@ -8,7 +8,7 @@ const ecommerceOrderStatuses=new Set(['pending','confirmed','packed','shipped','
 const ecommercePaymentStatuses=new Set(['unpaid','paid','refunded']);
 const userRoles=new Set(['company_admin','manager','accountant','salesman','cashier']);
 
-const allWorkspaceViews=['users','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','ocr-drafts','automation-center','communications','reports','advanced-reports','audit-center'];
+const allWorkspaceViews=['users','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','ocr-drafts','automation-center','communications','support-center','reports','advanced-reports','audit-center'];
 const roleViews={
   company_admin:allWorkspaceViews,
   manager:allWorkspaceViews.filter(x=>x!=='users'),
@@ -200,6 +200,7 @@ export default async function handler(req,res){
       ocr_drafts:'ocr',ocr_draft_detail:'ocr',save_ocr_draft:'ocr',post_ocr_draft:'ocr',reject_ocr_draft:'ocr',
       automation_center:'automation',run_automations:'automation',update_automation_rule:'automation',dismiss_automation_alert:'automation',
       communication_center:'automation',save_communication_settings:'automation',prepare_whatsapp_share:'automation',
+      support_tickets:'priority_support',support_ticket_detail:'priority_support',create_support_ticket:'priority_support',reply_support_ticket:'priority_support',close_support_ticket:'priority_support',
       reports_summary:'basic_reports',advanced_reports:'advanced_reports'
     };
     const requiredFeature=featureByAction[action];
@@ -677,6 +678,27 @@ export default async function handler(req,res){
         GROUP BY payment_method ORDER BY amount DESC`;
       return res.status(200).json({date_from:from,date_to:to,summary:summary[0]||{},daily,payment_methods:methods});
     }
+    if(req.method==='GET'&&action==='support_tickets'){
+      if(!['company_admin','manager'].includes(u.role))return res.status(403).json({error:'Company Admin or Manager role required'});
+      const rows=await sql`SELECT t.id,t.ticket_number,t.subject,t.category,t.priority,t.status,t.updated_at,
+        COALESCE(m.message_count,0)::int message_count
+        FROM support_tickets t
+        LEFT JOIN LATERAL(SELECT COUNT(*)::int message_count FROM support_messages x WHERE x.company_id=t.company_id AND x.ticket_id=t.id) m ON true
+        WHERE t.company_id=${u.company_id}
+        ORDER BY CASE t.status WHEN 'waiting_company' THEN 0 WHEN 'open' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'resolved' THEN 3 ELSE 4 END,t.updated_at DESC LIMIT 300`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='support_ticket_detail'){
+      if(!['company_admin','manager'].includes(u.role))return res.status(403).json({error:'Company Admin or Manager role required'});
+      const ticketId=positiveInt(req.query?.ticket_id,0);
+      const rows=await sql`SELECT * FROM support_tickets WHERE id=${ticketId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!rows[0])return res.status(404).json({error:'Support ticket not found'});
+      const messages=await sql`SELECT m.id,m.sender_type,m.message,m.created_at,cu.full_name company_user,ba.full_name admin_name
+        FROM support_messages m LEFT JOIN company_users cu ON cu.id=m.sender_company_user_id AND cu.company_id=m.company_id
+        LEFT JOIN bizora_admins ba ON ba.id=m.sender_admin_id
+        WHERE m.ticket_id=${ticketId} AND m.company_id=${u.company_id} ORDER BY m.created_at,m.id`;
+      return res.status(200).json({record:rows[0],messages});
+    }
     if(req.method==='GET'&&action==='communication_center'){
       const settings=await sql`SELECT company_id,whatsapp_number,default_country_code,invoice_template,statement_template,active,updated_at
         FROM communication_settings WHERE company_id=${u.company_id} LIMIT 1`;
@@ -949,6 +971,34 @@ export default async function handler(req,res){
       }
       const rows=await sql`UPDATE ecommerce_orders SET status=${status},updated_at=now() WHERE id=${orderId} AND company_id=${u.company_id} RETURNING *`;
       await companyAudit(sql,u,'ECOM_ORDER_STATUS_CHANGED',{entityType:'ecommerce_order',entityId:String(orderId),metadata:{from:current[0].status,to:status}});
+      return res.status(200).json({record:rows[0]});
+    }
+
+    if(req.method==='POST'&&action==='create_support_ticket'){
+      if(!['company_admin','manager'].includes(u.role))return res.status(403).json({error:'Company Admin or Manager role required'});
+      const subject=clean(b.subject),category=clean(b.category||'general').toLowerCase(),priority=clean(b.priority||'high').toLowerCase(),message=String(b.message||'').trim().slice(0,10000);
+      if(!subject||!message)return res.status(400).json({error:'Subject and message required'});
+      const seq=await sql`SELECT COALESCE(MAX(id),0)::bigint+1 next_id FROM support_tickets WHERE company_id=${u.company_id}`;
+      const ticketNumber='SUP-'+new Date().toISOString().slice(0,10).replaceAll('-','')+'-'+String(seq[0]?.next_id||1).padStart(5,'0');
+      const rows=await sql`INSERT INTO support_tickets(company_id,ticket_number,subject,category,priority,status,created_by_user_id)
+        VALUES(${u.company_id},${ticketNumber},${subject},${category},${priority},'open',${u.id}) RETURNING *`;
+      await sql`INSERT INTO support_messages(company_id,ticket_id,sender_type,sender_company_user_id,message) VALUES(${u.company_id},${rows[0].id},'company',${u.id},${message})`;
+      await companyAudit(sql,u,'SUPPORT_TICKET_CREATED',{entityType:'support_ticket',entityId:String(rows[0].id)});
+      return res.status(201).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='reply_support_ticket'){
+      const ticketId=positiveInt(b.ticket_id,0),message=String(b.message||'').trim().slice(0,10000);
+      if(!ticketId||!message)return res.status(400).json({error:'Ticket and message required'});
+      const t=await sql`SELECT id,status FROM support_tickets WHERE id=${ticketId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!t[0]||t[0].status==='closed')return res.status(409).json({error:'Ticket unavailable'});
+      await sql`INSERT INTO support_messages(company_id,ticket_id,sender_type,sender_company_user_id,message) VALUES(${u.company_id},${ticketId},'company',${u.id},${message})`;
+      const rows=await sql`UPDATE support_tickets SET status='in_progress',last_message_at=now(),updated_at=now() WHERE id=${ticketId} AND company_id=${u.company_id} RETURNING *`;
+      return res.status(200).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='close_support_ticket'){
+      const ticketId=positiveInt(b.ticket_id,0);
+      const rows=await sql`UPDATE support_tickets SET status='closed',updated_at=now() WHERE id=${ticketId} AND company_id=${u.company_id} RETURNING *`;
+      if(!rows[0])return res.status(404).json({error:'Support ticket not found'});
       return res.status(200).json({record:rows[0]});
     }
 

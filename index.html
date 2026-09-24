@@ -19,6 +19,7 @@
   <button data-scroll="companiesSection">Companies</button>
   <button data-scroll="plansSection">Subscription Plans</button>
   <button data-scroll="auditServiceSection">Audit Service</button>
+  <button data-scroll="supportSection">Priority Support</button>
   <a href="/company-login.html">Company Login</a>
 </nav>
 <main class="wrap">
@@ -51,6 +52,11 @@
     <div id="auditPricing" class="auditPricing"></div>
     <div class="auditAdminSubhead"><div><h3>Audit Requests</h3><p>Verify payment before approving access to a single purchased audit</p></div></div>
     <div class="tablewrap"><table><thead><tr><th>Company</th><th>Plan</th><th>Period</th><th>Price</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead><tbody id="auditRequestRows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>
+  </section>
+  <section class="card supportAdminCard" id="supportSection">
+    <div class="sectionHead"><div class="sectionIcon">✦</div><div><h2>Priority Support</h2><p>Premium company tickets and conversations</p></div></div>
+    <div class="tablewrap"><table><thead><tr><th>Ticket</th><th>Company</th><th>Subject</th><th>Priority</th><th>Status</th><th>Messages</th><th>Action</th></tr></thead><tbody id="supportTicketRows"><tr><td colspan="7">Loading…</td></tr></tbody></table></div>
+    <div id="supportAdminDetail" class="supportAdminDetail hidden"></div>
   </section>
 </main>
 

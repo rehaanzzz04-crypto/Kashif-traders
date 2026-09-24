@@ -219,3 +219,6 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
 .auditReject{background:linear-gradient(135deg,#9d1f3d,#d83259)!important;border-color:#ef6a88!important;color:#fff!important}
 @media(max-width:800px){.auditPricing{grid-template-columns:1fr}}
 @media(max-width:620px){.auditPriceEdit{grid-template-columns:auto 1fr}.auditPriceEdit button{grid-column:1/-1}.auditAdminCard .tablewrap{overflow:auto}}
+
+/* Super Admin Priority Support */
+.supportAdminCard{margin-top:16px}.supportAdminDetail{margin-top:14px;padding:16px;border:1px solid #2856ae;border-radius:18px;background:#081943}.supportAdminHead{display:flex;justify-content:space-between;gap:14px}.supportAdminHead span{color:#66e6ff;font-size:9px}.supportAdminHead h3{margin:4px 0;color:#fff}.supportAdminHead select{min-width:150px;padding:9px;border:1px solid #3565c2;border-radius:11px;background:#0a1b4d;color:#fff}.supportAdminMessages{display:grid;gap:8px;margin:14px 0}.supportAdminMessage{padding:10px 12px;border-radius:14px;border:1px solid #315fae}.supportAdminMessage.company{background:#0d2f69}.supportAdminMessage.admin{background:#351b70}.supportAdminMessage p{margin:6px 0 0;color:#d9e4fa;font-size:10px;white-space:pre-wrap}.supportAdminDetail textarea{min-height:90px}@media(max-width:620px){.supportAdminHead{flex-direction:column}.supportAdminHead select{width:100%}}

@@ -480,6 +480,32 @@ export async function ensureBizoraSchema(sql){
     UNIQUE(company_id,rule_code,alert_key)
   )`;
 
+  await sql`CREATE TABLE IF NOT EXISTS support_tickets(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    ticket_number TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'general',
+    priority TEXT NOT NULL DEFAULT 'high' CHECK(priority IN ('normal','high','urgent')),
+    status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','in_progress','waiting_company','resolved','closed')),
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    assigned_admin_id BIGINT REFERENCES bizora_admins(id) ON DELETE SET NULL,
+    last_message_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,ticket_number)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS support_messages(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    ticket_id BIGINT NOT NULL REFERENCES support_tickets(id) ON DELETE RESTRICT,
+    sender_type TEXT NOT NULL CHECK(sender_type IN ('company','admin')),
+    sender_company_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    sender_admin_id BIGINT REFERENCES bizora_admins(id) ON DELETE SET NULL,
+    message TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+
   await sql`CREATE TABLE IF NOT EXISTS communication_settings(
     company_id BIGINT PRIMARY KEY REFERENCES companies(id) ON DELETE RESTRICT,
     whatsapp_number TEXT,
