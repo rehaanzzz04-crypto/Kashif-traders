@@ -23,12 +23,13 @@ async function nextCompanyCode(sql,name){
 }
 
 async function overview(sql){
-  const [stats,companies,plans]=await Promise.all([
+  const [stats,companies,plans,auditPrices,auditRequests]=await Promise.all([
     sql`SELECT
       (SELECT COUNT(*) FROM companies)::int companies,
       (SELECT COUNT(*) FROM companies WHERE status='active')::int active_companies,
       (SELECT COUNT(*) FROM subscriptions WHERE status='active' AND expires_on>=CURRENT_DATE)::int active_subscriptions,
-      (SELECT COUNT(*) FROM subscriptions WHERE status='active' AND expires_on BETWEEN CURRENT_DATE AND CURRENT_DATE+INTERVAL '14 days')::int expiring_14_days`,
+      (SELECT COUNT(*) FROM subscriptions WHERE status='active' AND expires_on BETWEEN CURRENT_DATE AND CURRENT_DATE+INTERVAL '14 days')::int expiring_14_days,
+      (SELECT COUNT(*) FROM audit_requests WHERE status='submitted')::int pending_audits`,
     sql`SELECT c.id,c.company_code,c.company_name,c.logo_url,c.status,c.created_at,
       s.id subscription_id,s.status subscription_status,s.starts_on,s.expires_on,s.billing_cycle,s.amount,
       p.id plan_id,p.plan_code,p.plan_name
@@ -38,9 +39,19 @@ async function overview(sql){
       ) s ON true
       LEFT JOIN plans p ON p.id=s.plan_id
       ORDER BY c.created_at DESC,c.id DESC LIMIT 200`,
-    sql`SELECT id,plan_code,plan_name,monthly_price,yearly_price,user_limit,warehouse_limit,features,active FROM plans ORDER BY monthly_price,id`
+    sql`SELECT id,plan_code,plan_name,monthly_price,yearly_price,user_limit,warehouse_limit,features,active FROM plans ORDER BY monthly_price,id`,
+    sql`SELECT asp.id,asp.plan_id,p.plan_code,p.plan_name,asp.per_audit_price,asp.active,asp.updated_at
+      FROM audit_service_prices asp JOIN plans p ON p.id=asp.plan_id ORDER BY p.monthly_price,p.id`,
+    sql`SELECT r.id,r.company_id,c.company_name,c.company_code,r.plan_id,p.plan_code,p.plan_name,r.price,
+      r.period_from,r.period_to,r.payment_method,r.payment_reference,r.payment_status,r.status,r.notes,
+      r.requested_at,r.reviewed_at,r.completed_at,cu.full_name requested_by
+      FROM audit_requests r
+      JOIN companies c ON c.id=r.company_id
+      JOIN plans p ON p.id=r.plan_id
+      LEFT JOIN company_users cu ON cu.id=r.created_by_user_id
+      ORDER BY r.requested_at DESC,r.id DESC LIMIT 500`
   ]);
-  return {stats:stats[0]||{},companies,plans};
+  return {stats:stats[0]||{},companies,plans,audit_prices:auditPrices,audit_requests:auditRequests};
 }
 
 export default async function handler(req,res){
@@ -106,6 +117,33 @@ export default async function handler(req,res){
       if(!rows[0])return res.status(404).json({error:'Company or plan not found'});
       await audit(sql,admin.id,'SUBSCRIPTION_RENEWED',{companyId,entityType:'subscription',entityId:String(rows[0].id),metadata:{plan_code:planCode,months}});
       return res.status(201).json({subscription:rows[0]});
+    }
+
+    if(req.method==='POST'&&action==='set_audit_price'){
+      const planCode=clean(b.plan_code).toLowerCase(),price=Number(b.per_audit_price);
+      if(!planCode||!Number.isFinite(price)||price<=0)return res.status(400).json({error:'Valid plan and per-audit price required'});
+      const rows=await sql`INSERT INTO audit_service_prices(plan_id,per_audit_price,active,updated_at)
+        SELECT p.id,${price},true,now() FROM plans p WHERE p.plan_code=${planCode}
+        ON CONFLICT(plan_id) DO UPDATE SET per_audit_price=EXCLUDED.per_audit_price,active=true,updated_at=now()
+        RETURNING *`;
+      if(!rows[0])return res.status(404).json({error:'Plan not found'});
+      await audit(sql,admin.id,'AUDIT_PRICE_UPDATED',{entityType:'audit_service_price',entityId:String(rows[0].id),metadata:{plan_code:planCode,per_audit_price:price}});
+      return res.status(200).json({audit_price:rows[0]});
+    }
+
+    if(req.method==='POST'&&action==='review_audit_request'){
+      const requestId=positiveInt(b.request_id,0),decision=clean(b.decision).toLowerCase();
+      if(!requestId||!['approve','reject'].includes(decision))return res.status(400).json({error:'Valid audit request and decision required'});
+      const rows=await sql`UPDATE audit_requests SET
+        payment_status=${decision==='approve'?'verified':'rejected'},
+        status=${decision==='approve'?'approved':'rejected'},
+        reviewed_by_admin_id=${admin.id},reviewed_at=now(),
+        notes=COALESCE(${clean(b.notes)||null},notes)
+        WHERE id=${requestId}
+        RETURNING *`;
+      if(!rows[0])return res.status(404).json({error:'Audit request not found'});
+      await audit(sql,admin.id,decision==='approve'?'AUDIT_REQUEST_APPROVED':'AUDIT_REQUEST_REJECTED',{companyId:rows[0].company_id,entityType:'audit_request',entityId:String(requestId),metadata:{price:rows[0].price}});
+      return res.status(200).json({audit_request:rows[0]});
     }
 
     if(req.method==='POST'&&action==='set_company_status'){
