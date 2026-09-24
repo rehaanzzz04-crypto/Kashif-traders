@@ -51,3 +51,41 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
   .topbar{grid-template-columns:42px 82px minmax(0,1fr) auto!important}.topbar>.bizora-logo{width:82px!important}.companyHead strong{font-size:12px!important}.companyHead span{font-size:7px!important}.toplogout{font-size:11px!important;padding:7px 8px!important}
   .hero{grid-template-columns:1fr!important}.heroArt{display:none!important}.stats{grid-template-columns:1fr!important}.stat.wide{grid-column:auto!important}
 }
+
+
+/* Header + dashboard identity refinement */
+.topbar{
+  grid-template-columns:52px 155px minmax(0,1fr) auto auto!important;
+}
+.topbarSpacer{min-width:0}
+.dashboardLabel{
+  display:block;
+  color:#263a63;
+  font-size:18px;
+  font-weight:850;
+  line-height:1.25;
+}
+.ownerLine{
+  display:block;
+  margin-top:5px;
+  color:#667085;
+  font-size:14px;
+  font-weight:700;
+  line-height:1.35;
+}
+@media(max-width:620px){
+  .topbar{
+    grid-template-columns:44px 105px minmax(0,1fr) auto!important;
+  }
+  .topbarSpacer{display:block}
+  .badge{display:none!important}
+  .dashboardLabel{font-size:15px}
+  .ownerLine{font-size:12px}
+}
+@media(max-width:430px){
+  .topbar{
+    grid-template-columns:42px 90px minmax(0,1fr) auto!important;
+  }
+  .topbar>.bizora-logo{width:90px!important}
+  .hero h1{font-size:31px!important;line-height:1.08!important}
+}
