@@ -34,7 +34,7 @@ export default async function handler(req,res){
 
     const featureByAction={
       users:'core_erp',create_user:'core_erp',set_user_status:'core_erp',
-      suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_payments:'supplier_management',
+      suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',
       create_supplier:'supplier_management',create_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',
       clients:'customer_management',client_invoices:'customer_management',client_receipts:'customer_management',
       create_client:'customer_management',create_client_invoice:'customer_management',create_client_receipt:'customer_management',
@@ -58,9 +58,37 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='supplier_invoices'){
-      const rows=await sql`SELECT i.id,i.supplier_id,s.business_name,i.invoice_number,i.invoice_date,i.due_date,i.amount,i.status,i.notes,i.created_at
-        FROM erp_supplier_invoices i JOIN erp_suppliers s ON s.id=i.supplier_id AND s.company_id=i.company_id
-        WHERE i.company_id=${u.company_id} ORDER BY i.invoice_date DESC,i.id DESC LIMIT 1000`;
+      const rows=await sql`SELECT i.id,i.supplier_id,s.business_name,i.invoice_number,i.invoice_date,i.due_date,i.amount,i.status,i.notes,i.created_at,
+        COALESCE(SUM(ii.quantity),0)::numeric ordered_quantity,
+        COALESCE(SUM(gi.quantity),0)::numeric received_quantity,
+        CASE
+          WHEN COUNT(ii.id)=0 THEN 'not_itemized'
+          WHEN COALESCE(SUM(gi.quantity),0)<=0 THEN 'pending'
+          WHEN COALESCE(SUM(gi.quantity),0)<COALESCE(SUM(ii.quantity),0) THEN 'partial'
+          ELSE 'complete'
+        END grn_status
+        FROM erp_supplier_invoices i
+        JOIN erp_suppliers s ON s.id=i.supplier_id AND s.company_id=i.company_id
+        LEFT JOIN erp_supplier_invoice_items ii ON ii.supplier_invoice_id=i.id AND ii.company_id=i.company_id
+        LEFT JOIN erp_grn_items gi ON gi.supplier_invoice_item_id=ii.id AND gi.company_id=i.company_id
+        WHERE i.company_id=${u.company_id}
+        GROUP BY i.id,s.business_name
+        ORDER BY i.invoice_date DESC,i.id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='supplier_invoice_items'){
+      const invoiceId=positiveInt(req.query?.invoice_id,0);
+      if(!invoiceId)return res.status(400).json({error:'Valid invoice required'});
+      const rows=await sql`SELECT ii.id,ii.product_id,p.sku,p.product_name,p.unit,ii.description,ii.quantity,ii.unit_price,
+        COALESCE(SUM(gi.quantity),0)::numeric received_quantity,
+        GREATEST(ii.quantity-COALESCE(SUM(gi.quantity),0),0)::numeric remaining_quantity
+        FROM erp_supplier_invoice_items ii
+        JOIN erp_supplier_invoices i ON i.id=ii.supplier_invoice_id AND i.company_id=ii.company_id
+        JOIN erp_products p ON p.id=ii.product_id AND p.company_id=ii.company_id
+        LEFT JOIN erp_grn_items gi ON gi.supplier_invoice_item_id=ii.id AND gi.company_id=ii.company_id
+        WHERE ii.company_id=${u.company_id} AND ii.supplier_invoice_id=${invoiceId}
+        GROUP BY ii.id,p.sku,p.product_name,p.unit
+        ORDER BY ii.id`;
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='supplier_payments'){
@@ -171,14 +199,28 @@ export default async function handler(req,res){
       return res.status(201).json({record:rows[0]});
     }
     if(req.method==='POST'&&action==='create_supplier_invoice'){
-      const supplierId=positiveInt(b.supplier_id,0),invoiceNumber=clean(b.invoice_number),amount=number(b.amount),invoiceDate=clean(b.invoice_date)||new Date().toISOString().slice(0,10),dueDate=clean(b.due_date)||null;
-      if(!supplierId||!invoiceNumber||amount<0)return res.status(400).json({error:'Supplier, invoice number and valid amount required'});
-      const rows=await sql`INSERT INTO erp_supplier_invoices(company_id,supplier_id,invoice_number,invoice_date,due_date,amount,notes,created_by_user_id)
+      const supplierId=positiveInt(b.supplier_id,0),invoiceNumber=clean(b.invoice_number),invoiceDate=clean(b.invoice_date)||new Date().toISOString().slice(0,10),dueDate=clean(b.due_date)||null;
+      const items=Array.isArray(b.items)?b.items.map(x=>({product_id:positiveInt(x.product_id,0),description:clean(x.description)||null,quantity:number(x.quantity),unit_price:number(x.unit_price)})):[];
+      if(!supplierId||!invoiceNumber)return res.status(400).json({error:'Supplier and invoice number required'});
+      if(items.length&&items.some(x=>!x.product_id||x.quantity<=0||x.unit_price<0))return res.status(400).json({error:'Valid product, quantity and purchase price required'});
+      const itemTotal=items.reduce((n,x)=>n+x.quantity*x.unit_price,0),amount=items.length?Number(itemTotal.toFixed(2)):number(b.amount);
+      if(amount<0)return res.status(400).json({error:'Valid invoice amount required'});
+      const payload=JSON.stringify(items);
+      const rows=await sql`WITH inv AS(
+        INSERT INTO erp_supplier_invoices(company_id,supplier_id,invoice_number,invoice_date,due_date,amount,notes,created_by_user_id)
         SELECT ${u.company_id},s.id,${invoiceNumber},${invoiceDate}::date,${dueDate}::date,${amount},${clean(b.notes)||null},${u.id}
         FROM erp_suppliers s WHERE s.id=${supplierId} AND s.company_id=${u.company_id}
-        RETURNING id,supplier_id,invoice_number,invoice_date,due_date,amount,status,notes,created_at`;
+        RETURNING *
+      ), added AS(
+        INSERT INTO erp_supplier_invoice_items(company_id,supplier_invoice_id,product_id,description,quantity,unit_price)
+        SELECT ${u.company_id},inv.id,j.product_id,j.description,j.quantity,j.unit_price
+        FROM inv CROSS JOIN jsonb_to_recordset(${payload}::jsonb) AS j(product_id bigint,description text,quantity numeric,unit_price numeric)
+        JOIN erp_products p ON p.id=j.product_id AND p.company_id=${u.company_id}
+        RETURNING id
+      )
+      SELECT * FROM inv`;
       if(!rows[0])return res.status(404).json({error:'Supplier not found'});
-      await companyAudit(sql,u,'SUPPLIER_INVOICE_CREATED',{entityType:'supplier_invoice',entityId:String(rows[0].id),metadata:{amount}});
+      await companyAudit(sql,u,'SUPPLIER_INVOICE_CREATED',{entityType:'supplier_invoice',entityId:String(rows[0].id),metadata:{amount,item_count:items.length}});
       return res.status(201).json({record:rows[0]});
     }
     if(req.method==='POST'&&action==='create_supplier_payment'){
@@ -246,34 +288,63 @@ export default async function handler(req,res){
       return res.status(201).json({record:rows[0]});
     }
     if(req.method==='POST'&&action==='create_grn'){
-      const supplierId=positiveInt(b.supplier_id,0),warehouseId=positiveInt(b.warehouse_id,0),productId=positiveInt(b.product_id,0);
-      const supplierInvoiceId=positiveInt(b.supplier_invoice_id,0)||null,qty=number(b.quantity),unitCost=number(b.unit_cost);
+      const supplierInvoiceId=positiveInt(b.supplier_invoice_id,0),warehouseId=positiveInt(b.warehouse_id,0);
       const receivedDate=clean(b.received_date)||new Date().toISOString().slice(0,10),notes=clean(b.notes)||null;
-      if(!supplierId||!warehouseId||!productId||qty<=0||unitCost<0)return res.status(400).json({error:'Supplier, warehouse, product, positive quantity and valid unit cost required'});
-      const valid=await sql`SELECT
-        EXISTS(SELECT 1 FROM erp_suppliers WHERE id=${supplierId} AND company_id=${u.company_id} AND status='active') supplier_ok,
-        EXISTS(SELECT 1 FROM erp_warehouses WHERE id=${warehouseId} AND company_id=${u.company_id} AND active=true) warehouse_ok,
-        EXISTS(SELECT 1 FROM erp_products WHERE id=${productId} AND company_id=${u.company_id} AND active=true) product_ok,
-        ${supplierInvoiceId}::bigint IS NULL OR EXISTS(SELECT 1 FROM erp_supplier_invoices WHERE id=${supplierInvoiceId} AND company_id=${u.company_id} AND supplier_id=${supplierId}) invoice_ok`;
-      if(!valid[0]?.supplier_ok||!valid[0]?.warehouse_ok||!valid[0]?.product_ok||!valid[0]?.invoice_ok)return res.status(400).json({error:'Selected supplier, invoice, warehouse or product is not valid for this company'});
+      const items=Array.isArray(b.items)?b.items.map(x=>({
+        supplier_invoice_item_id:positiveInt(x.supplier_invoice_item_id,0),
+        product_id:positiveInt(x.product_id,0),
+        ordered_qty:number(x.ordered_qty),
+        quantity:number(x.received_qty??x.quantity),
+        rejected_qty:number(x.rejected_qty),
+        unit_cost:number(x.unit_cost),
+        batch_no:clean(x.batch_no)||null,
+        expiry_date:clean(x.expiry_date)||null,
+        notes:clean(x.notes)||null
+      })):[];
+      if(!supplierInvoiceId||!warehouseId||!items.length)return res.status(400).json({error:'Supplier invoice, warehouse and products required'});
+      if(items.some(x=>!x.supplier_invoice_item_id||!x.product_id||x.quantity<0||x.rejected_qty<0||x.unit_cost<0))return res.status(400).json({error:'Valid GRN product quantities required'});
+      if(!items.some(x=>x.quantity>0))return res.status(400).json({error:'At least one product received quantity is required'});
+      const inv=await sql`SELECT i.id,i.supplier_id,i.invoice_number FROM erp_supplier_invoices i WHERE i.id=${supplierInvoiceId} AND i.company_id=${u.company_id}`;
+      if(!inv[0])return res.status(404).json({error:'Supplier invoice not found'});
+      const wh=await sql`SELECT id FROM erp_warehouses WHERE id=${warehouseId} AND company_id=${u.company_id} AND active=true`;
+      if(!wh[0])return res.status(400).json({error:'Warehouse not found'});
+      for(const item of items){
+        if(item.quantity<=0)continue;
+        const check=await sql`SELECT ii.id,ii.product_id,ii.quantity,ii.unit_price,COALESCE(SUM(gi.quantity),0)::numeric already_received
+          FROM erp_supplier_invoice_items ii
+          LEFT JOIN erp_grn_items gi ON gi.supplier_invoice_item_id=ii.id AND gi.company_id=ii.company_id
+          WHERE ii.id=${item.supplier_invoice_item_id} AND ii.supplier_invoice_id=${supplierInvoiceId} AND ii.company_id=${u.company_id}
+          GROUP BY ii.id`;
+        if(!check[0]||Number(check[0].product_id)!==item.product_id)return res.status(400).json({error:'Invoice product does not match'});
+        const remaining=Number(check[0].quantity)-Number(check[0].already_received||0);
+        if(item.quantity>remaining+0.000001)return res.status(400).json({error:'Received quantity exceeds invoice remaining quantity'});
+        if(!item.unit_cost)item.unit_cost=number(check[0].unit_price);
+        item.ordered_qty=number(check[0].quantity);
+      }
       const seq=await sql`SELECT COALESCE(MAX(id),0)::bigint+1 next_id FROM erp_grns WHERE company_id=${u.company_id}`;
       const grnNumber='GRN-'+String(seq[0]?.next_id||1).padStart(6,'0');
-      const rows=await sql`WITH g AS(
-        INSERT INTO erp_grns(company_id,grn_number,supplier_id,supplier_invoice_id,warehouse_id,received_date,status,notes,created_by_user_id)
-        VALUES(${u.company_id},${grnNumber},${supplierId},${supplierInvoiceId},${warehouseId},${receivedDate}::date,'posted',${notes},${u.id})
-        RETURNING *
-      ), gi AS(
-        INSERT INTO erp_grn_items(company_id,grn_id,product_id,quantity,unit_cost)
-        SELECT ${u.company_id},g.id,${productId},${qty},${unitCost} FROM g RETURNING *
-      ), mv AS(
-        INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
-        SELECT ${u.company_id},${productId},${warehouseId},'GRN',${qty},0,${unitCost},'GRN',g.id,g.grn_number,${notes},${u.id} FROM g RETURNING id
-      )
-      SELECT g.* FROM g`;
-      await companyAudit(sql,u,'GRN_POSTED',{entityType:'grn',entityId:String(rows[0].id),metadata:{grn_number:grnNumber,quantity:qty,unit_cost:unitCost}});
-      return res.status(201).json({record:rows[0]});
+      const g=await sql`INSERT INTO erp_grns(company_id,grn_number,supplier_id,supplier_invoice_id,warehouse_id,received_date,status,notes,created_by_user_id)
+        VALUES(${u.company_id},${grnNumber},${inv[0].supplier_id},${supplierInvoiceId},${warehouseId},${receivedDate}::date,'posted',${notes},${u.id})
+        RETURNING *`;
+      for(const item of items){
+        if(item.quantity<=0)continue;
+        await sql`INSERT INTO erp_grn_items(company_id,grn_id,supplier_invoice_item_id,product_id,ordered_qty,quantity,rejected_qty,unit_cost,batch_no,expiry_date,notes)
+          VALUES(${u.company_id},${g[0].id},${item.supplier_invoice_item_id},${item.product_id},${item.ordered_qty},${item.quantity},${item.rejected_qty},${item.unit_cost},${item.batch_no},${item.expiry_date}::date,${item.notes})`;
+        await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+          VALUES(${u.company_id},${item.product_id},${warehouseId},'GRN',${item.quantity},0,${item.unit_cost},'GRN',${g[0].id},${grnNumber},${item.notes},${u.id})`;
+      }
+      const totals=await sql`SELECT
+        COALESCE(SUM(ii.quantity),0)::numeric ordered,
+        COALESCE(SUM(gi.quantity),0)::numeric received
+        FROM erp_supplier_invoice_items ii
+        LEFT JOIN erp_grn_items gi ON gi.supplier_invoice_item_id=ii.id AND gi.company_id=ii.company_id
+        WHERE ii.company_id=${u.company_id} AND ii.supplier_invoice_id=${supplierInvoiceId}`;
+      const ordered=Number(totals[0]?.ordered||0),received=Number(totals[0]?.received||0);
+      const status=received<=0?'unpaid':received<ordered?'partial':'paid';
+      await sql`UPDATE erp_supplier_invoices SET status=${status},updated_at=now() WHERE id=${supplierInvoiceId} AND company_id=${u.company_id}`;
+      await companyAudit(sql,u,'GRN_POSTED',{entityType:'grn',entityId:String(g[0].id),metadata:{grn_number:grnNumber,invoice_id:supplierInvoiceId,item_count:items.filter(x=>x.quantity>0).length}});
+      return res.status(201).json({record:g[0]});
     }
-
     return res.status(405).json({error:'Method not allowed'});
   }catch(e){
     console.error('Bizora company API error',e);
