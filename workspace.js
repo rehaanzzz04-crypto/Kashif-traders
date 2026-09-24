@@ -471,8 +471,40 @@ async function openReturns(kind){
     '<div class="card"><div class="tablewrap"><table><thead><tr><th>Return</th><th>Date</th><th>'+(isSupplier?'Supplier':'Customer')+'</th><th>Invoice</th>'+(isSupplier?'<th>Warehouse</th>':'')+'<th>Amount</th><th>Status</th></tr></thead><tbody>'+
       (rows.length?rows.map(r=>'<tr><td><b>'+esc(r.return_number)+'</b></td><td>'+date(r.return_date)+'</td><td>'+esc(r.business_name)+'</td><td>'+esc(r.invoice_number)+'</td>'+(isSupplier?'<td>'+esc(r.warehouse_name)+'</td>':'')+'<td>'+money(r.amount)+'</td><td><span class="pill '+esc(r.status)+'">'+esc(r.status)+'</span></td></tr>').join(''):'<tr><td colspan="'+(isSupplier?7:6)+'">No returns yet</td></tr>')+
     '</tbody></table></div></div>';
+  document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const r=rows[i];if(r){tr.classList.add('clickableRow');tr.onclick=()=>openReturnDetail(kind,r).catch(e=>alert(e.message))}});
   if($('newReturn'))$('newReturn').onclick=()=>openReturnForm(kind).catch(e=>alert(e.message));
 }
+async function openReturnDetail(kind,row){
+  const isSupplier=kind==='supplier',action=isSupplier?'supplier_return_detail&return_id=':'client_return_detail&return_id=';
+  $('workspaceTitle').textContent=isSupplier?'Supplier Return':'Customer Return';
+  $('workspaceSubtitle').textContent=row.return_number+' · '+row.business_name;
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading return…</div></div>';
+  const d=await json('/api/bizora-company?action='+action+row.id),r=d.record||row,items=d.items||[],status=String(r.status||'posted').toLowerCase();
+  const canCancel=status==='posted'&&model.subscription.access_mode==='write';
+  $('workspaceBody').innerHTML=
+    '<div class="returnDetailActions"><button id="returnDetailBack" class="secondary">← '+(isSupplier?'Supplier Returns':'Customer Returns')+'</button><div><span class="returnDocStatus '+esc(status)+'">'+esc(status)+'</span><button id="printReturnDoc" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="cancelReturnDoc" class="dangerAction">Cancel & Reverse</button>':'')+'</div></div>'+
+    '<div class="card returnDocument returnPrintable">'+
+      '<div class="returnDocTitle"><div><span class="capEyebrow">'+(isSupplier?'SUPPLIER RETURN':'CUSTOMER RETURN')+'</span><h2>'+esc(model.company.name)+'</h2><p>'+esc(r.business_name)+'</p></div><div><b>'+esc(r.return_number)+'</b><span>'+date(r.return_date)+'</span></div></div>'+
+      '<div class="returnDocMeta"><div><small>'+(isSupplier?'Supplier':'Customer')+'</small><b>'+esc(r.business_name)+'</b></div><div><small>Invoice</small><b>'+esc(r.invoice_number)+'</b></div>'+(isSupplier?'<div><small>Warehouse</small><b>'+esc(r.warehouse_name)+'</b></div>':'')+'<div><small>Status</small><b>'+esc(status)+'</b></div></div>'+
+      '<div class="tablewrap"><table><thead><tr><th>SKU</th><th>Product</th>'+(isSupplier?'':'<th>Warehouse</th>')+'<th>Qty</th><th>Rate</th><th>Total</th></tr></thead><tbody>'+
+        (items.length?items.map(x=>'<tr><td>'+esc(x.sku||'—')+'</td><td><b>'+esc(x.product_name)+'</b><small>'+esc(x.unit||'')+'</small></td>'+(isSupplier?'':'<td>'+esc(x.warehouse_name||'—')+'</td>')+'<td>'+esc(x.quantity)+'</td><td>'+money(x.unit_price)+'</td><td>'+money(x.line_total)+'</td></tr>').join(''):'<tr><td colspan="'+(isSupplier?5:6)+'">No return items</td></tr>')+
+      '</tbody></table></div>'+
+      '<div class="returnDocTotal"><span>Return Credit</span><b>'+money(r.amount)+'</b></div>'+
+      (r.notes?'<div class="returnDocNotes"><small>Notes</small><p>'+esc(r.notes)+'</p></div>':'')+
+    '</div>';
+  $('returnDetailBack').onclick=()=>openReturns(kind).catch(e=>alert(e.message));
+  $('printReturnDoc').onclick=()=>{document.body.classList.add('return-print');window.print();setTimeout(()=>document.body.classList.remove('return-print'),500)};
+  if($('cancelReturnDoc'))$('cancelReturnDoc').onclick=async()=>{
+    const msg=isSupplier?'Cancel this supplier return? Returned stock will be restored to the warehouse and supplier payable will be recalculated.':'Cancel this customer return? Returned stock will be removed again; cancellation will be blocked if that stock has already been consumed or moved.';
+    if(!confirm(msg))return;
+    try{
+      await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:isSupplier?'cancel_supplier_return':'cancel_client_return',return_id:r.id})});
+      optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await openReturns(kind);
+    }catch(e){alert(e.message)}
+  };
+}
+
 async function openReturnForm(kind){
   const isSupplier=kind==='supplier';
   $('workspaceTitle').textContent=isSupplier?'New Supplier Return':'New Customer Return';

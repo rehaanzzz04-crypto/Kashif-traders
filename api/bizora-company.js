@@ -49,7 +49,7 @@ export default async function handler(req,res){
       grns:'grn',grn_detail:'grn',create_grn:'grn',cancel_grn:'grn',
       inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger',
       stock_transfers:'inventory_ledger',stock_transfer_detail:'inventory_ledger',create_stock_transfer:'inventory_ledger',cancel_stock_transfer:'inventory_ledger',
-      stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',cancel_stock_adjustment:'inventory_ledger',supplier_returns:'inventory_ledger',supplier_return_items:'inventory_ledger',create_supplier_return:'inventory_ledger',client_returns:'inventory_ledger',client_return_items:'inventory_ledger',create_client_return:'inventory_ledger',
+      stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',cancel_stock_adjustment:'inventory_ledger',supplier_returns:'inventory_ledger',supplier_return_items:'inventory_ledger',supplier_return_detail:'inventory_ledger',create_supplier_return:'inventory_ledger',cancel_supplier_return:'inventory_ledger',client_returns:'inventory_ledger',client_return_items:'inventory_ledger',client_return_detail:'inventory_ledger',create_client_return:'inventory_ledger',cancel_client_return:'inventory_ledger',
       ecommerce_dashboard:'ecommerce',ecommerce_products:'ecommerce',ecommerce_orders:'ecommerce',ecommerce_order_detail:'ecommerce',ecommerce_sales_report:'ecommerce',save_ecommerce_product:'ecommerce',set_ecommerce_product_status:'ecommerce',save_ecommerce_settings:'ecommerce',create_ecommerce_order:'ecommerce',set_ecommerce_order_status:'ecommerce',set_ecommerce_payment_status:'ecommerce',
       reports_summary:'basic_reports',advanced_reports:'advanced_reports'
     };
@@ -342,6 +342,44 @@ export default async function handler(req,res){
         WHERE ii.company_id=${u.company_id} AND ii.client_invoice_id=${invoiceId}
         ORDER BY ii.id`;
       return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='supplier_return_detail'){
+      const returnId=positiveInt(req.query?.return_id,0);
+      if(!returnId)return res.status(400).json({error:'Valid supplier return required'});
+      const rows=await sql`SELECT r.id,r.return_number,r.return_date,r.amount,r.status,r.notes,r.cancelled_at,r.created_at,r.supplier_invoice_id,r.warehouse_id,
+        s.business_name,s.supplier_code,i.invoice_number,w.warehouse_name
+        FROM erp_supplier_returns r
+        JOIN erp_suppliers s ON s.id=r.supplier_id AND s.company_id=r.company_id
+        JOIN erp_supplier_invoices i ON i.id=r.supplier_invoice_id AND i.company_id=r.company_id
+        JOIN erp_warehouses w ON w.id=r.warehouse_id AND w.company_id=r.company_id
+        WHERE r.id=${returnId} AND r.company_id=${u.company_id} LIMIT 1`;
+      if(!rows[0])return res.status(404).json({error:'Supplier return not found'});
+      const items=await sql`SELECT ri.id,ri.product_id,p.sku,p.product_name,p.unit,ri.quantity,ri.unit_price,ri.unit_cost,
+        (ri.quantity*ri.unit_price)::numeric line_total
+        FROM erp_supplier_return_items ri
+        JOIN erp_products p ON p.id=ri.product_id AND p.company_id=ri.company_id
+        WHERE ri.supplier_return_id=${returnId} AND ri.company_id=${u.company_id}
+        ORDER BY ri.id`;
+      return res.status(200).json({record:rows[0],items});
+    }
+    if(req.method==='GET'&&action==='client_return_detail'){
+      const returnId=positiveInt(req.query?.return_id,0);
+      if(!returnId)return res.status(400).json({error:'Valid customer return required'});
+      const rows=await sql`SELECT r.id,r.return_number,r.return_date,r.amount,r.status,r.notes,r.cancelled_at,r.created_at,r.client_invoice_id,
+        c.business_name,c.client_code,i.invoice_number
+        FROM erp_client_returns r
+        JOIN erp_clients c ON c.id=r.client_id AND c.company_id=r.company_id
+        JOIN erp_client_invoices i ON i.id=r.client_invoice_id AND i.company_id=r.company_id
+        WHERE r.id=${returnId} AND r.company_id=${u.company_id} LIMIT 1`;
+      if(!rows[0])return res.status(404).json({error:'Customer return not found'});
+      const items=await sql`SELECT ri.id,ri.product_id,ri.warehouse_id,p.sku,p.product_name,p.unit,w.warehouse_name,ri.quantity,ri.unit_price,ri.unit_cost,
+        (ri.quantity*ri.unit_price)::numeric line_total
+        FROM erp_client_return_items ri
+        JOIN erp_products p ON p.id=ri.product_id AND p.company_id=ri.company_id
+        JOIN erp_warehouses w ON w.id=ri.warehouse_id AND w.company_id=ri.company_id
+        WHERE ri.client_return_id=${returnId} AND ri.company_id=${u.company_id}
+        ORDER BY ri.id`;
+      return res.status(200).json({record:rows[0],items});
     }
     if(req.method==='GET'&&action==='inventory_stock'){
       const warehouseId=positiveInt(req.query?.warehouse_id,0);
@@ -1405,6 +1443,70 @@ export default async function handler(req,res){
       await sql`UPDATE erp_client_invoices SET status=${newStatus},updated_at=now() WHERE id=${invoiceId} AND company_id=${u.company_id}`;
       await companyAudit(sql,u,'CLIENT_RETURN_POSTED',{entityType:'client_return',entityId:String(rr[0].id),metadata:{return_number:returnNumber,invoice_id:invoiceId,amount,item_count:prepared.length}});
       return res.status(201).json({record:rr[0]});
+    }
+
+    if(req.method==='POST'&&action==='cancel_supplier_return'){
+      const returnId=positiveInt(b.return_id,0);
+      if(!returnId)return res.status(400).json({error:'Valid supplier return required'});
+      const rr=await sql`SELECT id,return_number,supplier_invoice_id,warehouse_id,status,amount FROM erp_supplier_returns
+        WHERE id=${returnId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!rr[0])return res.status(404).json({error:'Supplier return not found'});
+      if(rr[0].status==='cancelled')return res.status(200).json({record:rr[0]});
+      if(rr[0].status!=='posted')return res.status(409).json({error:'Only posted supplier return can be cancelled'});
+      const items=await sql`SELECT product_id,SUM(quantity)::numeric quantity,MAX(unit_cost)::numeric unit_cost
+        FROM erp_supplier_return_items WHERE supplier_return_id=${returnId} AND company_id=${u.company_id}
+        GROUP BY product_id`;
+      const existing=await sql`SELECT id FROM erp_inventory_movements WHERE company_id=${u.company_id} AND reference_type='SUPPLIER_RETURN_CANCEL' AND reference_id=${returnId} LIMIT 1`;
+      if(!existing[0]){
+        for(const item of items)await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+          VALUES(${u.company_id},${item.product_id},${rr[0].warehouse_id},'RETURN_IN',${number(item.quantity)},0,${number(item.unit_cost)},'SUPPLIER_RETURN_CANCEL',${returnId},${rr[0].return_number},'Supplier return cancellation reversal',${u.id})`;
+      }
+      const rows=await sql`UPDATE erp_supplier_returns SET status='cancelled',cancelled_at=now(),updated_at=now()
+        WHERE id=${returnId} AND company_id=${u.company_id} RETURNING *`;
+      const inv=await sql`SELECT i.id,i.amount,i.status,
+        COALESCE((SELECT SUM(r.amount) FROM erp_supplier_returns r WHERE r.company_id=i.company_id AND r.supplier_invoice_id=i.id AND r.status='posted'),0)::numeric returned,
+        COALESCE((SELECT SUM(a.amount) FROM erp_supplier_payment_allocations a WHERE a.company_id=i.company_id AND a.supplier_invoice_id=i.id),0)::numeric paid
+        FROM erp_supplier_invoices i WHERE i.id=${rr[0].supplier_invoice_id} AND i.company_id=${u.company_id} LIMIT 1`;
+      if(inv[0]&&inv[0].status!=='cancelled'){
+        const net=Math.max(0,number(inv[0].amount)-number(inv[0].returned)),paid=number(inv[0].paid),status=paid+0.000001>=net?'paid':paid>0?'partial':'unpaid';
+        await sql`UPDATE erp_supplier_invoices SET status=${status},updated_at=now() WHERE id=${inv[0].id} AND company_id=${u.company_id}`;
+      }
+      await companyAudit(sql,u,'SUPPLIER_RETURN_CANCELLED',{entityType:'supplier_return',entityId:String(returnId),metadata:{return_number:rr[0].return_number,amount:rr[0].amount}});
+      return res.status(200).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='cancel_client_return'){
+      const returnId=positiveInt(b.return_id,0);
+      if(!returnId)return res.status(400).json({error:'Valid customer return required'});
+      const rr=await sql`SELECT id,return_number,client_invoice_id,status,amount FROM erp_client_returns
+        WHERE id=${returnId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!rr[0])return res.status(404).json({error:'Customer return not found'});
+      if(rr[0].status==='cancelled')return res.status(200).json({record:rr[0]});
+      if(rr[0].status!=='posted')return res.status(409).json({error:'Only posted customer return can be cancelled'});
+      const items=await sql`SELECT product_id,warehouse_id,SUM(quantity)::numeric quantity,MAX(unit_cost)::numeric unit_cost
+        FROM erp_client_return_items WHERE client_return_id=${returnId} AND company_id=${u.company_id}
+        GROUP BY product_id,warehouse_id`;
+      for(const item of items){
+        const stock=await sql`SELECT COALESCE(SUM(qty_in-qty_out),0)::numeric quantity FROM erp_inventory_movements
+          WHERE company_id=${u.company_id} AND warehouse_id=${item.warehouse_id} AND product_id=${item.product_id}`;
+        if(number(stock[0]?.quantity)+0.000001<number(item.quantity))return res.status(409).json({error:'Customer return cannot be cancelled because returned stock has already been consumed or moved'});
+      }
+      const existing=await sql`SELECT id FROM erp_inventory_movements WHERE company_id=${u.company_id} AND reference_type='CUSTOMER_RETURN_CANCEL' AND reference_id=${returnId} LIMIT 1`;
+      if(!existing[0]){
+        for(const item of items)await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+          VALUES(${u.company_id},${item.product_id},${item.warehouse_id},'RETURN_OUT',0,${number(item.quantity)},${number(item.unit_cost)},'CUSTOMER_RETURN_CANCEL',${returnId},${rr[0].return_number},'Customer return cancellation reversal',${u.id})`;
+      }
+      const rows=await sql`UPDATE erp_client_returns SET status='cancelled',cancelled_at=now(),updated_at=now()
+        WHERE id=${returnId} AND company_id=${u.company_id} RETURNING *`;
+      const inv=await sql`SELECT i.id,i.amount,i.status,
+        COALESCE((SELECT SUM(r.amount) FROM erp_client_returns r WHERE r.company_id=i.company_id AND r.client_invoice_id=i.id AND r.status='posted'),0)::numeric returned,
+        COALESCE((SELECT SUM(a.amount) FROM erp_client_receipt_allocations a WHERE a.company_id=i.company_id AND a.client_invoice_id=i.id),0)::numeric paid
+        FROM erp_client_invoices i WHERE i.id=${rr[0].client_invoice_id} AND i.company_id=${u.company_id} LIMIT 1`;
+      if(inv[0]&&inv[0].status!=='cancelled'){
+        const net=Math.max(0,number(inv[0].amount)-number(inv[0].returned)),paid=number(inv[0].paid),status=paid+0.000001>=net?'paid':paid>0?'partial':'unpaid';
+        await sql`UPDATE erp_client_invoices SET status=${status},updated_at=now() WHERE id=${inv[0].id} AND company_id=${u.company_id}`;
+      }
+      await companyAudit(sql,u,'CLIENT_RETURN_CANCELLED',{entityType:'client_return',entityId:String(returnId),metadata:{return_number:rr[0].return_number,amount:rr[0].amount}});
+      return res.status(200).json({record:rows[0]});
     }
 
     if(req.method==='POST'&&action==='create_stock_transfer'){

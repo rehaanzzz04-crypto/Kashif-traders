@@ -509,6 +509,8 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
 
+  await sql`ALTER TABLE erp_supplier_returns ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE erp_client_returns ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`;
   await sql`ALTER TABLE erp_stock_adjustments ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'posted'`;
   await sql`ALTER TABLE erp_stock_adjustments ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`;
   await sql`ALTER TABLE erp_supplier_payments ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'posted'`;
