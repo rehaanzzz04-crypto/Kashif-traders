@@ -5,6 +5,7 @@ const number=v=>Number.isFinite(Number(v))?Number(v):0;
 const paymentMethods=new Set(['CASH','BANK','ONLINE','CHEQUE','EASYPAISA','JAZZCASH']);
 const ecommercePaymentMethods=new Set(['COD','CASH','BANK','ONLINE','EASYPAISA','JAZZCASH']);
 const ecommerceOrderStatuses=new Set(['pending','confirmed','packed','shipped','completed','cancelled']);
+const ecommercePaymentStatuses=new Set(['unpaid','paid','refunded']);
 const userRoles=new Set(['company_admin','manager','accountant','salesman','cashier']);
 
 async function overview(sql,u){
@@ -47,7 +48,7 @@ export default async function handler(req,res){
       inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger',
       stock_transfers:'inventory_ledger',create_stock_transfer:'inventory_ledger',
       stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',
-      ecommerce_dashboard:'ecommerce',ecommerce_products:'ecommerce',ecommerce_orders:'ecommerce',save_ecommerce_product:'ecommerce',set_ecommerce_product_status:'ecommerce',save_ecommerce_settings:'ecommerce',create_ecommerce_order:'ecommerce',set_ecommerce_order_status:'ecommerce',
+      ecommerce_dashboard:'ecommerce',ecommerce_products:'ecommerce',ecommerce_orders:'ecommerce',ecommerce_order_detail:'ecommerce',ecommerce_sales_report:'ecommerce',save_ecommerce_product:'ecommerce',set_ecommerce_product_status:'ecommerce',save_ecommerce_settings:'ecommerce',create_ecommerce_order:'ecommerce',set_ecommerce_order_status:'ecommerce',set_ecommerce_payment_status:'ecommerce',
       reports_summary:'basic_reports',advanced_reports:'advanced_reports'
     };
     const requiredFeature=featureByAction[action];
@@ -283,7 +284,7 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='ecommerce_orders'){
-      const rows=await sql`SELECT o.id,o.order_number,o.customer_name,o.phone,o.address,o.payment_method,o.status,o.subtotal,o.delivery_charge,o.total,o.notes,o.created_at,o.updated_at,
+      const rows=await sql`SELECT o.id,o.order_number,o.customer_name,o.phone,o.address,o.payment_method,o.payment_status,o.payment_reference,o.paid_at,o.status,o.subtotal,o.delivery_charge,o.total,o.notes,o.created_at,o.updated_at,
         COALESCE(i.item_count,0)::int item_count,COALESCE(i.total_quantity,0)::numeric total_quantity
         FROM ecommerce_orders o
         LEFT JOIN LATERAL(
@@ -292,6 +293,48 @@ export default async function handler(req,res){
         ) i ON true
         WHERE o.company_id=${u.company_id} ORDER BY o.created_at DESC,o.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='ecommerce_order_detail'){
+      const orderId=positiveInt(req.query?.order_id,0);
+      if(!orderId)return res.status(400).json({error:'Valid order required'});
+      const order=await sql`SELECT id,order_number,customer_name,phone,address,payment_method,payment_status,payment_reference,paid_at,status,subtotal,delivery_charge,total,notes,created_at,updated_at
+        FROM ecommerce_orders WHERE id=${orderId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!order[0])return res.status(404).json({error:'E-commerce order not found'});
+      const items=await sql`SELECT i.id,i.ecommerce_product_id,p.sku,i.product_name,i.quantity,i.unit_price,(i.quantity*i.unit_price)::numeric line_total
+        FROM ecommerce_order_items i
+        LEFT JOIN ecommerce_products p ON p.id=i.ecommerce_product_id AND p.company_id=i.company_id
+        WHERE i.company_id=${u.company_id} AND i.ecommerce_order_id=${orderId}
+        ORDER BY i.id`;
+      const settings=await sql`SELECT store_name,contact_phone,whatsapp_number,address FROM ecommerce_store_settings WHERE company_id=${u.company_id} LIMIT 1`;
+      return res.status(200).json({order:order[0],items,store:settings[0]||{store_name:u.company_name}});
+    }
+    if(req.method==='GET'&&action==='ecommerce_sales_report'){
+      const today=new Date().toISOString().slice(0,10),monthStart=today.slice(0,8)+'01';
+      const from=clean(req.query?.date_from)||monthStart,to=clean(req.query?.date_to)||today;
+      const summary=await sql`SELECT
+        COUNT(*) FILTER(WHERE status<>'cancelled')::int order_count,
+        COUNT(*) FILTER(WHERE status='completed')::int completed_orders,
+        COUNT(*) FILTER(WHERE status='cancelled')::int cancelled_orders,
+        COALESCE(SUM(total) FILTER(WHERE status<>'cancelled'),0)::numeric gross_orders,
+        COALESCE(SUM(total) FILTER(WHERE status='completed'),0)::numeric completed_sales,
+        COALESCE(SUM(total) FILTER(WHERE payment_status='paid' AND status<>'cancelled'),0)::numeric paid_collections,
+        COALESCE(SUM(total) FILTER(WHERE payment_status='unpaid' AND status<>'cancelled'),0)::numeric unpaid_amount,
+        COALESCE(SUM(total) FILTER(WHERE payment_status='refunded'),0)::numeric refunded_amount
+        FROM ecommerce_orders
+        WHERE company_id=${u.company_id} AND created_at>=${from}::date AND created_at<(${to}::date+INTERVAL '1 day')`;
+      const daily=await sql`SELECT created_at::date day,
+        COUNT(*) FILTER(WHERE status<>'cancelled')::int orders,
+        COALESCE(SUM(total) FILTER(WHERE status<>'cancelled'),0)::numeric order_value,
+        COALESCE(SUM(total) FILTER(WHERE status='completed'),0)::numeric completed_sales,
+        COALESCE(SUM(total) FILTER(WHERE payment_status='paid' AND status<>'cancelled'),0)::numeric paid_collections
+        FROM ecommerce_orders
+        WHERE company_id=${u.company_id} AND created_at>=${from}::date AND created_at<(${to}::date+INTERVAL '1 day')
+        GROUP BY created_at::date ORDER BY day DESC`;
+      const methods=await sql`SELECT payment_method,COUNT(*)::int orders,COALESCE(SUM(total),0)::numeric amount
+        FROM ecommerce_orders
+        WHERE company_id=${u.company_id} AND status<>'cancelled' AND created_at>=${from}::date AND created_at<(${to}::date+INTERVAL '1 day')
+        GROUP BY payment_method ORDER BY amount DESC`;
+      return res.status(200).json({date_from:from,date_to:to,summary:summary[0]||{},daily,payment_methods:methods});
     }
     if(req.method==='GET'&&action==='reports_summary'){
       const today=new Date().toISOString().slice(0,10),monthStart=today.slice(0,8)+'01';
@@ -481,6 +524,19 @@ export default async function handler(req,res){
       await companyAudit(sql,u,'ECOM_ORDER_CREATED',{entityType:'ecommerce_order',entityId:String(rows[0].id),metadata:{order_number:orderNumber,total,item_count:prepared.length}});
       return res.status(201).json({record:rows[0]});
     }
+    if(req.method==='POST'&&action==='set_ecommerce_payment_status'){
+      const orderId=positiveInt(b.order_id,0),paymentStatus=clean(b.payment_status).toLowerCase(),reference=clean(b.payment_reference)||null;
+      if(!orderId||!ecommercePaymentStatuses.has(paymentStatus))return res.status(400).json({error:'Valid order and payment status required'});
+      const current=await sql`SELECT id,status,payment_status FROM ecommerce_orders WHERE id=${orderId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!current[0])return res.status(404).json({error:'E-commerce order not found'});
+      if(current[0].status==='cancelled'&&paymentStatus==='paid')return res.status(400).json({error:'Cancelled order cannot be marked paid'});
+      const rows=await sql`UPDATE ecommerce_orders SET payment_status=${paymentStatus},payment_reference=${reference},
+        paid_at=CASE WHEN ${paymentStatus}='paid' THEN COALESCE(paid_at,now()) ELSE NULL END,updated_at=now()
+        WHERE id=${orderId} AND company_id=${u.company_id} RETURNING *`;
+      await companyAudit(sql,u,'ECOM_PAYMENT_STATUS_CHANGED',{entityType:'ecommerce_order',entityId:String(orderId),metadata:{from:current[0].payment_status,to:paymentStatus,reference}});
+      return res.status(200).json({record:rows[0]});
+    }
+
     if(req.method==='POST'&&action==='set_ecommerce_order_status'){
       const orderId=positiveInt(b.order_id,0),status=clean(b.status).toLowerCase();
       if(!orderId||!ecommerceOrderStatuses.has(status))return res.status(400).json({error:'Valid order and status required'});

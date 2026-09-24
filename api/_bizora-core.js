@@ -454,6 +454,9 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
 
+  await sql`ALTER TABLE ecommerce_orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid'`;
+  await sql`ALTER TABLE ecommerce_orders ADD COLUMN IF NOT EXISTS payment_reference TEXT`;
+  await sql`ALTER TABLE ecommerce_orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`;
   await sql`ALTER TABLE erp_client_invoices ADD COLUMN IF NOT EXISTS warehouse_id BIGINT REFERENCES erp_warehouses(id) ON DELETE RESTRICT`;
   await sql`ALTER TABLE erp_grn_items ADD COLUMN IF NOT EXISTS supplier_invoice_item_id BIGINT REFERENCES erp_supplier_invoice_items(id) ON DELETE RESTRICT`;
   await sql`ALTER TABLE erp_grn_items ADD COLUMN IF NOT EXISTS ordered_qty NUMERIC(16,3) NOT NULL DEFAULT 0`;
