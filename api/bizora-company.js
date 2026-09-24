@@ -199,7 +199,7 @@ export default async function handler(req,res){
       inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger',
       stock_transfers:'inventory_ledger',stock_transfer_detail:'inventory_ledger',create_stock_transfer:'inventory_ledger',cancel_stock_transfer:'inventory_ledger',
       stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',cancel_stock_adjustment:'inventory_ledger',supplier_returns:'inventory_ledger',supplier_return_items:'inventory_ledger',supplier_return_detail:'inventory_ledger',create_supplier_return:'inventory_ledger',cancel_supplier_return:'inventory_ledger',client_returns:'inventory_ledger',client_return_items:'inventory_ledger',client_return_detail:'inventory_ledger',create_client_return:'inventory_ledger',cancel_client_return:'inventory_ledger',
-      ecommerce_dashboard:'ecommerce',ecommerce_products:'ecommerce',ecommerce_orders:'ecommerce',ecommerce_order_detail:'ecommerce',ecommerce_sales_report:'ecommerce',save_ecommerce_product:'ecommerce',set_ecommerce_product_status:'ecommerce',save_ecommerce_settings:'ecommerce',create_ecommerce_order:'ecommerce',set_ecommerce_order_status:'ecommerce',set_ecommerce_payment_status:'ecommerce',
+      ecommerce_dashboard:'ecommerce',ecommerce_products:'ecommerce',ecommerce_categories:'ecommerce',ecommerce_media:'ecommerce',ecommerce_orders:'ecommerce',ecommerce_order_detail:'ecommerce',ecommerce_sales_report:'ecommerce',save_ecommerce_product:'ecommerce',set_ecommerce_product_status:'ecommerce',save_ecommerce_category:'ecommerce',delete_ecommerce_category:'ecommerce',save_ecommerce_media:'ecommerce',delete_ecommerce_media:'ecommerce',save_ecommerce_settings:'ecommerce',create_ecommerce_order:'ecommerce',set_ecommerce_order_status:'ecommerce',set_ecommerce_payment_status:'ecommerce',
       ocr_drafts:'ocr',ocr_draft_detail:'ocr',save_ocr_draft:'ocr',post_ocr_draft:'ocr',reject_ocr_draft:'ocr',
       automation_center:'automation',run_automations:'automation',update_automation_rule:'automation',dismiss_automation_alert:'automation',
       communication_center:'automation',save_communication_settings:'automation',prepare_whatsapp_share:'automation',
@@ -633,8 +633,7 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='ecommerce_dashboard'){
-      const settings=await sql`SELECT company_id,store_name,contact_phone,whatsapp_number,address,delivery_charge,active,updated_at
-        FROM ecommerce_store_settings WHERE company_id=${u.company_id} LIMIT 1`;
+      const settings=await sql`SELECT * FROM ecommerce_store_settings WHERE company_id=${u.company_id} LIMIT 1`;
       const stats=await sql`SELECT
         (SELECT COUNT(*) FROM ecommerce_products WHERE company_id=${u.company_id})::int products,
         (SELECT COUNT(*) FROM ecommerce_products WHERE company_id=${u.company_id} AND active=true)::int active_products,
@@ -643,11 +642,20 @@ export default async function handler(req,res){
         COALESCE((SELECT SUM(total) FROM ecommerce_orders WHERE company_id=${u.company_id} AND status='completed'),0)::numeric completed_sales`;
       const recent=await sql`SELECT id,order_number,customer_name,phone,payment_method,status,total,created_at
         FROM ecommerce_orders WHERE company_id=${u.company_id} ORDER BY created_at DESC,id DESC LIMIT 8`;
-      return res.status(200).json({settings:settings[0]||{store_name:u.company_name,delivery_charge:0,active:true},stats:stats[0]||{},recent_orders:recent});
+      return res.status(200).json({settings:settings[0]||{store_name:u.company_name,delivery_charge:0,active:true,published:true,theme_code:'modern',header_layout:'logo_name',primary_color:'#176fe8',secondary_color:'#7042e8',accent_color:'#16b8c8',background_color:'#f6f8fc',show_search:true,show_categories:true,show_featured:true,show_media:true},stats:stats[0]||{},recent_orders:recent});
     }
     if(req.method==='GET'&&action==='ecommerce_products'){
-      const rows=await sql`SELECT id,sku,product_name,description,price,stock_qty,image_url,active,created_at,updated_at
-        FROM ecommerce_products WHERE company_id=${u.company_id} ORDER BY created_at DESC,id DESC LIMIT 1000`;
+      const rows=await sql`SELECT p.id,p.sku,p.product_name,p.description,p.price,p.compare_at_price,p.stock_qty,p.image_url,p.images,p.featured,p.sort_order,p.category_id,c.category_name,p.active,p.created_at,p.updated_at
+        FROM ecommerce_products p LEFT JOIN ecommerce_categories c ON c.id=p.category_id AND c.company_id=p.company_id
+        WHERE p.company_id=${u.company_id} ORDER BY p.sort_order,p.created_at DESC,p.id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='ecommerce_categories'){
+      const rows=await sql`SELECT id,category_name,slug,image_url,sort_order,active,created_at,updated_at FROM ecommerce_categories WHERE company_id=${u.company_id} ORDER BY sort_order,category_name,id`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='ecommerce_media'){
+      const rows=await sql`SELECT id,media_type,title,media_url,link_url,placement,sort_order,active,created_at,updated_at FROM ecommerce_media WHERE company_id=${u.company_id} ORDER BY placement,sort_order,id`;
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='ecommerce_orders'){
@@ -909,20 +917,13 @@ export default async function handler(req,res){
     }
 
     if(req.method==='POST'&&action==='save_ecommerce_product'){
-      const productId=positiveInt(b.product_id,0)||null,sku=code(b.sku),name=clean(b.product_name),price=number(b.price),stockQty=number(b.stock_qty);
+      const productId=positiveInt(b.product_id,0)||null,sku=code(b.sku),name=clean(b.product_name),price=number(b.price),stockQty=number(b.stock_qty),categoryId=positiveInt(b.category_id,0)||null,compareAt=b.compare_at_price===''||b.compare_at_price===null||b.compare_at_price===undefined?null:number(b.compare_at_price),featured=b.featured===true||b.featured==='true'||b.featured==='on',sortOrder=Math.max(0,Math.floor(number(b.sort_order)));
+      const images=Array.isArray(b.images)?b.images.map(x=>clean(x)).filter(x=>/^https?:\/\//i.test(x)).slice(0,3):[],imageUrl=clean(b.image_url)||images[0]||null;
       if(!sku||!name||price<0||stockQty<0)return res.status(400).json({error:'SKU, product name, valid price and stock required'});
       let rows;
-      if(productId){
-        rows=await sql`UPDATE ecommerce_products SET sku=${sku},product_name=${name},description=${clean(b.description)||null},price=${price},stock_qty=${stockQty},image_url=${clean(b.image_url)||null},updated_at=now()
-          WHERE id=${productId} AND company_id=${u.company_id}
-          RETURNING id,sku,product_name,description,price,stock_qty,image_url,active,created_at,updated_at`;
-      }else{
-        rows=await sql`INSERT INTO ecommerce_products(company_id,sku,product_name,description,price,stock_qty,image_url,created_by_user_id)
-          VALUES(${u.company_id},${sku},${name},${clean(b.description)||null},${price},${stockQty},${clean(b.image_url)||null},${u.id})
-          RETURNING id,sku,product_name,description,price,stock_qty,image_url,active,created_at,updated_at`;
-      }
+      if(productId)rows=await sql`UPDATE ecommerce_products SET sku=${sku},product_name=${name},description=${clean(b.description)||null},price=${price},compare_at_price=${compareAt},stock_qty=${stockQty},image_url=${imageUrl},images=${JSON.stringify(images)}::jsonb,category_id=${categoryId},featured=${featured},sort_order=${sortOrder},updated_at=now() WHERE id=${productId} AND company_id=${u.company_id} RETURNING *`;
+      else rows=await sql`INSERT INTO ecommerce_products(company_id,sku,product_name,description,price,compare_at_price,stock_qty,image_url,images,category_id,featured,sort_order,created_by_user_id) VALUES(${u.company_id},${sku},${name},${clean(b.description)||null},${price},${compareAt},${stockQty},${imageUrl},${JSON.stringify(images)}::jsonb,${categoryId},${featured},${sortOrder},${u.id}) RETURNING *`;
       if(!rows[0])return res.status(404).json({error:'E-commerce product not found'});
-      await companyAudit(sql,u,productId?'ECOM_PRODUCT_UPDATED':'ECOM_PRODUCT_CREATED',{entityType:'ecommerce_product',entityId:String(rows[0].id)});
       return res.status(productId?200:201).json({record:rows[0]});
     }
     if(req.method==='POST'&&action==='set_ecommerce_product_status'){
@@ -934,14 +935,45 @@ export default async function handler(req,res){
       await companyAudit(sql,u,'ECOM_PRODUCT_STATUS_CHANGED',{entityType:'ecommerce_product',entityId:String(productId),metadata:{active}});
       return res.status(200).json({record:rows[0]});
     }
+    if(req.method==='POST'&&action==='save_ecommerce_category'){
+      const categoryId=positiveInt(b.category_id,0)||null,name=clean(b.category_name),slug=(clean(b.slug)||name).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,80),imageUrl=clean(b.image_url)||null,sortOrder=Math.max(0,Math.floor(number(b.sort_order))),active=b.active===false?false:true;
+      if(!name||!slug)return res.status(400).json({error:'Category name required'});
+      let rows;
+      if(categoryId)rows=await sql`UPDATE ecommerce_categories SET category_name=${name},slug=${slug},image_url=${imageUrl},sort_order=${sortOrder},active=${active},updated_at=now() WHERE id=${categoryId} AND company_id=${u.company_id} RETURNING *`;
+      else rows=await sql`INSERT INTO ecommerce_categories(company_id,category_name,slug,image_url,sort_order,active,created_by_user_id) VALUES(${u.company_id},${name},${slug},${imageUrl},${sortOrder},${active},${u.id}) RETURNING *`;
+      if(!rows[0])return res.status(404).json({error:'Store category not found'});
+      return res.status(categoryId?200:201).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='delete_ecommerce_category'){
+      const categoryId=positiveInt(b.category_id,0);if(!categoryId)return res.status(400).json({error:'Valid category required'});
+      await sql`UPDATE ecommerce_products SET category_id=NULL,updated_at=now() WHERE company_id=${u.company_id} AND category_id=${categoryId}`;
+      const rows=await sql`DELETE FROM ecommerce_categories WHERE id=${categoryId} AND company_id=${u.company_id} RETURNING id`;
+      if(!rows[0])return res.status(404).json({error:'Category not found'});
+      return res.status(200).json({ok:true});
+    }
+    if(req.method==='POST'&&action==='save_ecommerce_media'){
+      const mediaId=positiveInt(b.media_id,0)||null,type=clean(b.media_type||'image').toLowerCase(),url=clean(b.media_url),placement=clean(b.placement||'home').toLowerCase(),sortOrder=Math.max(0,Math.floor(number(b.sort_order))),active=b.active===false?false:true;
+      if(!['image','video'].includes(type)||!/^https?:\/\//i.test(url)||!['home','hero','offer','gallery'].includes(placement))return res.status(400).json({error:'Valid media type, URL and placement required'});
+      let rows;
+      if(mediaId)rows=await sql`UPDATE ecommerce_media SET media_type=${type},title=${clean(b.title)||null},media_url=${url},link_url=${clean(b.link_url)||null},placement=${placement},sort_order=${sortOrder},active=${active},updated_at=now() WHERE id=${mediaId} AND company_id=${u.company_id} RETURNING *`;
+      else rows=await sql`INSERT INTO ecommerce_media(company_id,media_type,title,media_url,link_url,placement,sort_order,active,created_by_user_id) VALUES(${u.company_id},${type},${clean(b.title)||null},${url},${clean(b.link_url)||null},${placement},${sortOrder},${active},${u.id}) RETURNING *`;
+      if(!rows[0])return res.status(404).json({error:'Store media not found'});
+      return res.status(mediaId?200:201).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='delete_ecommerce_media'){
+      const mediaId=positiveInt(b.media_id,0);if(!mediaId)return res.status(400).json({error:'Valid media required'});
+      const rows=await sql`DELETE FROM ecommerce_media WHERE id=${mediaId} AND company_id=${u.company_id} RETURNING id`;
+      if(!rows[0])return res.status(404).json({error:'Media not found'});
+      return res.status(200).json({ok:true});
+    }
+
     if(req.method==='POST'&&action==='save_ecommerce_settings'){
-      const storeName=clean(b.store_name)||u.company_name,deliveryCharge=number(b.delivery_charge);
-      if(deliveryCharge<0)return res.status(400).json({error:'Valid delivery charge required'});
-      const rows=await sql`INSERT INTO ecommerce_store_settings(company_id,store_name,contact_phone,whatsapp_number,address,delivery_charge,active)
-        VALUES(${u.company_id},${storeName},${clean(b.contact_phone)||null},${clean(b.whatsapp_number)||null},${clean(b.address)||null},${deliveryCharge},${b.active===false?false:true})
-        ON CONFLICT(company_id) DO UPDATE SET store_name=EXCLUDED.store_name,contact_phone=EXCLUDED.contact_phone,whatsapp_number=EXCLUDED.whatsapp_number,address=EXCLUDED.address,delivery_charge=EXCLUDED.delivery_charge,active=EXCLUDED.active,updated_at=now()
-        RETURNING *`;
-      await companyAudit(sql,u,'ECOM_SETTINGS_UPDATED',{entityType:'ecommerce_store_settings',entityId:String(u.company_id)});
+      const storeName=clean(b.store_name)||u.company_name,deliveryCharge=number(b.delivery_charge),theme=clean(b.theme_code||'modern').toLowerCase(),headerLayout=clean(b.header_layout||'logo_name').toLowerCase(),heroMediaType=clean(b.hero_media_type||'image').toLowerCase();
+      const color=v=>/^#[0-9a-f]{6}$/i.test(clean(v))?clean(v):null;
+      if(deliveryCharge<0||!['modern','elegant','minimal','premium'].includes(theme)||!['logo_name','name_only','centered'].includes(headerLayout)||!['image','video'].includes(heroMediaType))return res.status(400).json({error:'Valid store design settings required'});
+      const rows=await sql`INSERT INTO ecommerce_store_settings(company_id,store_name,contact_phone,whatsapp_number,address,delivery_charge,active,published,theme_code,header_layout,hero_title,hero_subtitle,hero_media_url,hero_media_type,primary_color,secondary_color,accent_color,background_color,show_search,show_categories,show_featured,show_media,about_title,about_text,footer_text,instagram_url,facebook_url,tiktok_url,seo_title,seo_description)
+        VALUES(${u.company_id},${storeName},${clean(b.contact_phone)||null},${clean(b.whatsapp_number)||null},${clean(b.address)||null},${deliveryCharge},${b.active===false?false:true},${b.published===false?false:true},${theme},${headerLayout},${clean(b.hero_title)||null},${clean(b.hero_subtitle)||null},${clean(b.hero_media_url)||null},${heroMediaType},${color(b.primary_color)||'#176fe8'},${color(b.secondary_color)||'#7042e8'},${color(b.accent_color)||'#16b8c8'},${color(b.background_color)||'#f6f8fc'},${b.show_search===false?false:true},${b.show_categories===false?false:true},${b.show_featured===false?false:true},${b.show_media===false?false:true},${clean(b.about_title)||null},${clean(b.about_text)||null},${clean(b.footer_text)||null},${clean(b.instagram_url)||null},${clean(b.facebook_url)||null},${clean(b.tiktok_url)||null},${clean(b.seo_title)||null},${clean(b.seo_description)||null})
+        ON CONFLICT(company_id) DO UPDATE SET store_name=EXCLUDED.store_name,contact_phone=EXCLUDED.contact_phone,whatsapp_number=EXCLUDED.whatsapp_number,address=EXCLUDED.address,delivery_charge=EXCLUDED.delivery_charge,active=EXCLUDED.active,published=EXCLUDED.published,theme_code=EXCLUDED.theme_code,header_layout=EXCLUDED.header_layout,hero_title=EXCLUDED.hero_title,hero_subtitle=EXCLUDED.hero_subtitle,hero_media_url=EXCLUDED.hero_media_url,hero_media_type=EXCLUDED.hero_media_type,primary_color=EXCLUDED.primary_color,secondary_color=EXCLUDED.secondary_color,accent_color=EXCLUDED.accent_color,background_color=EXCLUDED.background_color,show_search=EXCLUDED.show_search,show_categories=EXCLUDED.show_categories,show_featured=EXCLUDED.show_featured,show_media=EXCLUDED.show_media,about_title=EXCLUDED.about_title,about_text=EXCLUDED.about_text,footer_text=EXCLUDED.footer_text,instagram_url=EXCLUDED.instagram_url,facebook_url=EXCLUDED.facebook_url,tiktok_url=EXCLUDED.tiktok_url,seo_title=EXCLUDED.seo_title,seo_description=EXCLUDED.seo_description,updated_at=now() RETURNING *`;
       return res.status(200).json({settings:rows[0]});
     }
     if(req.method==='POST'&&action==='create_ecommerce_order'){

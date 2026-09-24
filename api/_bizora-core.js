@@ -4,7 +4,7 @@ import { neon } from '@neondatabase/serverless';
 const ADMIN_COOKIE='bizora_session';
 const COMPANY_COOKIE='bizora_company_session';
 const HOURS=12;
-const BIZORA_SCHEMA_VERSION=2026092402;
+const BIZORA_SCHEMA_VERSION=2026092403;
 const schemaState=globalThis.__bizoraSchemaState||(globalThis.__bizoraSchemaState={version:0,lastChecked:0,promise:null});
 const enc=v=>Buffer.from(v).toString('base64url');
 const dec=v=>Buffer.from(v,'base64url').toString('utf8');
@@ -575,6 +575,33 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS ecommerce_categories(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    category_name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    image_url TEXT,
+    sort_order INT NOT NULL DEFAULT 0,
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,slug)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS ecommerce_media(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    media_type TEXT NOT NULL DEFAULT 'image' CHECK(media_type IN ('image','video')),
+    title TEXT,
+    media_url TEXT NOT NULL,
+    link_url TEXT,
+    placement TEXT NOT NULL DEFAULT 'home' CHECK(placement IN ('home','hero','offer','gallery')),
+    sort_order INT NOT NULL DEFAULT 0,
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
   await sql`CREATE TABLE IF NOT EXISTS ecommerce_products(
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
@@ -667,6 +694,34 @@ export async function ensureBizoraSchema(sql){
   await sql`ALTER TABLE erp_supplier_payments ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`;
   await sql`ALTER TABLE erp_client_receipts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'posted'`;
   await sql`ALTER TABLE erp_client_receipts ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS theme_code TEXT NOT NULL DEFAULT 'modern'`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS header_layout TEXT NOT NULL DEFAULT 'logo_name'`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS hero_title TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS hero_subtitle TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS hero_media_url TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS hero_media_type TEXT NOT NULL DEFAULT 'image'`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS primary_color TEXT NOT NULL DEFAULT '#176fe8'`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS secondary_color TEXT NOT NULL DEFAULT '#7042e8'`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS accent_color TEXT NOT NULL DEFAULT '#16b8c8'`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS background_color TEXT NOT NULL DEFAULT '#f6f8fc'`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS show_search BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS show_categories BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS show_featured BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS show_media BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS about_title TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS about_text TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS footer_text TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS instagram_url TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS facebook_url TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS tiktok_url TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS seo_title TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS seo_description TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE ecommerce_products ADD COLUMN IF NOT EXISTS category_id BIGINT REFERENCES ecommerce_categories(id) ON DELETE SET NULL`;
+  await sql`ALTER TABLE ecommerce_products ADD COLUMN IF NOT EXISTS compare_at_price NUMERIC(14,2)`;
+  await sql`ALTER TABLE ecommerce_products ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb`;
+  await sql`ALTER TABLE ecommerce_products ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE ecommerce_products ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE ecommerce_orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid'`;
   await sql`ALTER TABLE ecommerce_orders ADD COLUMN IF NOT EXISTS payment_reference TEXT`;
   await sql`ALTER TABLE ecommerce_orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ`;
@@ -719,6 +774,8 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS automation_alerts_company_idx ON automation_alerts(company_id,status,last_detected_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ocr_supplier_drafts_company_idx ON ocr_supplier_drafts(company_id,status,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ocr_supplier_draft_items_draft_idx ON ocr_supplier_draft_items(company_id,draft_id,sort_order)`;
+  await sql`CREATE INDEX IF NOT EXISTS ecommerce_categories_company_idx ON ecommerce_categories(company_id,active,sort_order,category_name)`;
+  await sql`CREATE INDEX IF NOT EXISTS ecommerce_media_company_idx ON ecommerce_media(company_id,active,placement,sort_order)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_products_company_idx ON ecommerce_products(company_id,active,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_orders_company_idx ON ecommerce_orders(company_id,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_order_items_company_order_idx ON ecommerce_order_items(company_id,ecommerce_order_id)`;
