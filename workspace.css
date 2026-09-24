@@ -715,3 +715,33 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
 .auditPurchasedHead>div{padding:12px;border-radius:14px;border:1px solid #dce6f3;background:#f8fbff}
 .auditPurchasedHead small{display:block;color:#77849a;font-size:9px;text-transform:uppercase}.auditPurchasedHead b{display:block;margin-top:4px;color:#14213d;font-size:14px}
 @media(max-width:620px){.auditServiceHero{align-items:stretch;flex-direction:column}.auditPrice{text-align:left;min-width:0}.auditApplyBar{align-items:stretch;flex-direction:column}.auditApplyBar button{width:100%}.auditPurchasedHead{grid-template-columns:1fr 1fr}.auditPurchasedHead>div:first-child{grid-column:1/-1}}
+
+
+/* Professional purchased audit report */
+.auditToolbarRight{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.auditReportTitle{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid #e2eaf4}
+.auditReportTitle h2{margin:4px 0 3px;color:#14213d;font-size:26px}.auditReportTitle p{margin:0;color:#718096;font-size:11px}
+.auditReportBadge{min-width:230px;padding:14px;border-radius:18px;background:linear-gradient(135deg,#0e2f75,#7042e8);color:#fff;text-align:right}
+.auditReportBadge small,.auditReportBadge span{display:block;color:#d8e7ff;font-size:9px;text-transform:uppercase;letter-spacing:.5px}.auditReportBadge b{display:block;margin:4px 0;font-size:16px}
+.auditControlGrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin:4px 0 16px}
+.auditControlGrid>div{padding:12px;border-radius:15px;border:1px solid #dfe7f2;background:#fbfdff}
+.auditControlGrid span{display:block;color:#667085;font-size:9px;font-weight:800}.auditControlGrid b{display:block;margin-top:5px;font-size:21px}.auditControlGrid small{display:block;margin-top:3px;font-size:8px}
+.auditControlGrid .clear{background:#effbf6;border-color:#cbeadb}.auditControlGrid .clear b,.auditControlGrid .clear small{color:#087c58}
+.auditControlGrid .attention{background:#fff6f1;border-color:#f2d4c7}.auditControlGrid .attention b,.auditControlGrid .attention small{color:#b54722}
+.auditMetaStrip{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.auditMetaStrip span{display:inline-flex;gap:5px;align-items:center;padding:7px 10px;border-radius:999px;background:#eef5ff;color:#315d9e;font-size:9px;font-weight:800}.auditMetaStrip b{color:#10265a}
+.auditEventsTitle{margin-top:18px}
+@media(max-width:900px){.auditControlGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.auditReportTitle{align-items:stretch;flex-direction:column}.auditReportBadge{text-align:left;min-width:0}}
+@media(max-width:520px){.auditControlGrid{grid-template-columns:1fr}.auditToolbarRight{width:100%}.auditToolbarRight button{flex:1}}
+@media print{
+  body{background:#fff!important}
+  .topbar,.sidenav,.navbackdrop,.hero,#readOnlyNote,.detailToolbar{display:none!important}
+  .shell{padding:0!important;margin:0!important;max-width:none!important}
+  #workspaceBody{margin:0!important}
+  .auditReportPrint{box-shadow:none!important;border:0!important;padding:0!important}
+  .auditReportPrint .tablewrap{overflow:visible!important;border-color:#d9dee7!important}
+  .auditReportPrint table{min-width:0!important}
+  .auditReportPrint th,.auditReportPrint td{font-size:8px!important;padding:6px!important;color:#111!important;border-color:#d9dee7!important}
+  .auditReportPrint .reportKpis{grid-template-columns:repeat(4,1fr)!important}
+  .auditReportPrint .auditControlGrid{grid-template-columns:repeat(5,1fr)!important}
+  .auditReportPrint .reportKpis>div,.auditReportPrint .auditControlGrid>div,.auditReportBadge{box-shadow:none!important}
+}
