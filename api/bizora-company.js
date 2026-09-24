@@ -8,6 +8,51 @@ const ecommerceOrderStatuses=new Set(['pending','confirmed','packed','shipped','
 const ecommercePaymentStatuses=new Set(['unpaid','paid','refunded']);
 const userRoles=new Set(['company_admin','manager','accountant','salesman','cashier']);
 
+const allWorkspaceViews=['users','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','reports','advanced-reports','audit-center'];
+const roleViews={
+  company_admin:allWorkspaceViews,
+  manager:allWorkspaceViews.filter(x=>x!=='users'),
+  accountant:['suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','supplier-returns','client-returns','reports','advanced-reports'],
+  salesman:['clients','client-bills','client-payments','client-statement','products','warehouses','inventory-stock','client-returns','cashier','reports'],
+  cashier:['clients','products','warehouses','inventory-stock','cashier']
+};
+const roleWriteViews={
+  company_admin:allWorkspaceViews,
+  manager:allWorkspaceViews.filter(x=>x!=='users'),
+  accountant:['suppliers','supplier-bills','supplier-payments','clients','client-bills','client-payments','supplier-returns','client-returns'],
+  salesman:['clients','client-bills','client-payments','client-returns','cashier'],
+  cashier:['cashier']
+};
+const roleActionSets={
+  accountant:new Set([
+    'overview','suppliers','supplier_invoices','supplier_invoice_items','supplier_payments','supplier_payment_detail','supplier_statement',
+    'create_supplier','update_supplier','set_supplier_status','create_supplier_invoice','update_supplier_invoice','cancel_supplier_invoice','create_supplier_payment','cancel_supplier_payment',
+    'clients','client_invoices','client_invoice_items','client_receipts','client_receipt_detail','client_statement',
+    'create_client','update_client','set_client_status','create_client_invoice','update_client_invoice','cancel_client_invoice','create_client_receipt','cancel_client_receipt',
+    'products','warehouses','grns','grn_detail','inventory_stock','inventory_ledger',
+    'supplier_returns','supplier_return_items','supplier_return_detail','create_supplier_return','cancel_supplier_return',
+    'client_returns','client_return_items','client_return_detail','create_client_return','cancel_client_return',
+    'reports_summary','advanced_reports'
+  ]),
+  salesman:new Set([
+    'overview','clients','client_invoices','client_invoice_items','client_receipts','client_receipt_detail','client_statement',
+    'create_client','update_client','set_client_status','create_client_invoice','update_client_invoice','cancel_client_invoice','create_client_receipt','cancel_client_receipt',
+    'products','warehouses','inventory_stock','client_returns','client_return_items','client_return_detail','create_client_return','cancel_client_return','reports_summary'
+  ]),
+  cashier:new Set([
+    'overview','clients','create_client','client_invoices','client_invoice_items','client_receipts','client_receipt_detail','create_client_invoice','create_client_receipt',
+    'products','warehouses','inventory_stock'
+  ])
+};
+function roleAllowsAction(role,action){
+  if(role==='company_admin')return true;
+  if(role==='manager')return !['users','create_user','update_user','set_user_status'].includes(action);
+  return roleActionSets[role]?.has(action)===true;
+}
+function roleAccessFor(role){
+  return {views:roleViews[role]||[],write_views:roleWriteViews[role]||[],can_manage_users:role==='company_admin'};
+}
+
 async function overview(sql,u){
   const stats=await sql`SELECT
     (SELECT COUNT(*) FROM company_users WHERE company_id=${u.company_id} AND active=true)::int users,
@@ -28,7 +73,7 @@ async function overview(sql,u){
       - COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND status='posted'),0)
     )::numeric client_receivable`;
   const auditPriceRows=await sql`SELECT asp.per_audit_price,asp.active FROM audit_service_prices asp WHERE asp.plan_id=${u.plan_id} LIMIT 1`;
-  return {company:{id:u.company_id,code:u.company_code,name:u.company_name,logo_url:u.logo_url,status:u.company_status},user:{id:u.id,user_code:u.user_code,full_name:u.full_name,email:u.email,role:u.role},subscription:{status:u.subscription_status,expires_on:u.expires_on,plan_code:u.plan_code,plan_name:u.plan_name,features:u.features,access_mode:u.access_mode},limits:{user_limit:u.user_limit,warehouse_limit:u.warehouse_limit},stats:stats[0]||{},audit_service:{per_audit_price:auditPriceRows[0]?.per_audit_price||null,active:auditPriceRows[0]?.active===true}};
+  return {company:{id:u.company_id,code:u.company_code,name:u.company_name,logo_url:u.logo_url,status:u.company_status},user:{id:u.id,user_code:u.user_code,full_name:u.full_name,email:u.email,role:u.role},subscription:{status:u.subscription_status,expires_on:u.expires_on,plan_code:u.plan_code,plan_name:u.plan_name,features:u.features,access_mode:u.access_mode},limits:{user_limit:u.user_limit,warehouse_limit:u.warehouse_limit},stats:stats[0]||{},audit_service:{per_audit_price:auditPriceRows[0]?.per_audit_price||null,active:auditPriceRows[0]?.active===true},role_access:roleAccessFor(u.role)};
 }
 
 export default async function handler(req,res){
@@ -39,7 +84,7 @@ export default async function handler(req,res){
     const u=await requireCompanyUser(sql,req,res,{write});if(!u)return;
 
     const featureByAction={
-      users:'core_erp',create_user:'core_erp',set_user_status:'core_erp',
+      users:'core_erp',create_user:'core_erp',update_user:'core_erp',set_user_status:'core_erp',
       suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',supplier_payment_detail:'supplier_management',supplier_statement:'supplier_management',
       create_supplier:'supplier_management',update_supplier:'supplier_management',set_supplier_status:'supplier_management',create_supplier_invoice:'supplier_management',update_supplier_invoice:'supplier_management',cancel_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',cancel_supplier_payment:'supplier_management',
       clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',client_receipt_detail:'customer_management',client_statement:'customer_management',
@@ -55,8 +100,10 @@ export default async function handler(req,res){
     };
     const requiredFeature=featureByAction[action];
     if(requiredFeature&&!requireFeature(u,res,requiredFeature))return;
+    if(!roleAllowsAction(u.role,action))return res.status(403).json({error:'Your company role does not allow this action'});
 
     if(req.method==='GET'&&action==='overview')return res.status(200).json(await overview(sql,u));
+    if(['audit_service','audit_events','request_audit'].includes(action)&&!['company_admin','manager'].includes(u.role))return res.status(403).json({error:'Company Admin or Manager role required for Audit Service'});
 
     if(req.method==='GET'&&action==='users'){
       if(u.role!=='company_admin')return res.status(403).json({error:'Company Admin only'});
@@ -736,6 +783,32 @@ export default async function handler(req,res){
       return res.status(201).json({audit_request:rows[0]});
     }
 
+    if(req.method==='POST'&&action==='update_user'){
+      if(u.role!=='company_admin')return res.status(403).json({error:'Company Admin only'});
+      const userId=positiveInt(b.user_id,0),fullName=clean(b.full_name),email=clean(b.email).toLowerCase()||null,role=clean(b.role).toLowerCase(),password=String(b.password||'');
+      if(!userId||!fullName||!userRoles.has(role))return res.status(400).json({error:'Valid user, name and role required'});
+      if(password&&password.length<8)return res.status(400).json({error:'New password must be at least 8 characters'});
+      const current=await sql`SELECT id,user_code,full_name,email,role,active FROM company_users WHERE id=${userId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!current[0])return res.status(404).json({error:'User not found'});
+      if(userId===Number(u.id)&&role!=='company_admin')return res.status(400).json({error:'You cannot remove your own Company Admin role'});
+      if(current[0].role==='company_admin'&&current[0].active&&role!=='company_admin'){
+        const admins=await sql`SELECT COUNT(*)::int count FROM company_users WHERE company_id=${u.company_id} AND role='company_admin' AND active=true`;
+        if(Number(admins[0]?.count||0)<=1)return res.status(409).json({error:'At least one active Company Admin must remain'});
+      }
+      let rows;
+      if(password){
+        rows=await sql`UPDATE company_users SET full_name=${fullName},email=${email},role=${role},password_hash=${hashPassword(password)}
+          WHERE id=${userId} AND company_id=${u.company_id}
+          RETURNING id,user_code,full_name,email,role,active,created_at,last_login_at`;
+      }else{
+        rows=await sql`UPDATE company_users SET full_name=${fullName},email=${email},role=${role}
+          WHERE id=${userId} AND company_id=${u.company_id}
+          RETURNING id,user_code,full_name,email,role,active,created_at,last_login_at`;
+      }
+      await companyAudit(sql,u,'COMPANY_USER_UPDATED',{entityType:'company_user',entityId:String(userId),metadata:{from_role:current[0].role,to_role:role,password_reset:Boolean(password)}});
+      return res.status(200).json({record:rows[0]});
+    }
+
     if(req.method==='POST'&&action==='create_user'){
       if(u.role!=='company_admin')return res.status(403).json({error:'Company Admin only'});
       const userCode=code(b.user_code),fullName=clean(b.full_name),email=clean(b.email).toLowerCase()||null,role=clean(b.role||'salesman').toLowerCase(),password=String(b.password||'');
@@ -755,6 +828,13 @@ export default async function handler(req,res){
       const userId=positiveInt(b.user_id,0),active=Boolean(b.active);
       if(!userId)return res.status(400).json({error:'Valid user required'});
       if(userId===Number(u.id)&&!active)return res.status(400).json({error:'You cannot deactivate your own login'});
+      if(!active){
+        const target=await sql`SELECT role,active FROM company_users WHERE id=${userId} AND company_id=${u.company_id} LIMIT 1`;
+        if(target[0]?.role==='company_admin'&&target[0]?.active){
+          const admins=await sql`SELECT COUNT(*)::int count FROM company_users WHERE company_id=${u.company_id} AND role='company_admin' AND active=true`;
+          if(Number(admins[0]?.count||0)<=1)return res.status(409).json({error:'At least one active Company Admin must remain'});
+        }
+      }
       if(active&&u.user_limit){
         const count=await sql`SELECT COUNT(*)::int count FROM company_users WHERE company_id=${u.company_id} AND active=true`;
         if(Number(count[0]?.count||0)>=Number(u.user_limit))return res.status(403).json({error:'Current subscription user limit reached'});

@@ -23,18 +23,23 @@ const defs={
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
+const roleCanView=view=>view==='dashboard'||model?.role_access?.views?.includes(view)===true;
+const roleCanWrite=view=>model?.subscription?.access_mode==='write'&&model?.role_access?.write_views?.includes(view)===true;
 const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
-  document.querySelectorAll('#workspaceNav [data-feature]').forEach(el=>el.classList.toggle('hidden',!featureOn(el.dataset.feature)));
-  $('usersNav').classList.toggle('hidden',model.user.role!=='company_admin'||!featureOn('core_erp'));
+  document.querySelectorAll('#workspaceNav [data-feature]').forEach(el=>{
+    const view=el.dataset.view,planOk=featureOn(el.dataset.feature),roleOk=!view||roleCanView(view);
+    el.classList.toggle('hidden',!planOk||!roleOk);
+  });
+  $('usersNav').classList.toggle('hidden',!roleCanView('users')||!featureOn('core_erp'));
   if(model.subscription.access_mode!=='write'){$('readOnlyNote').classList.remove('hidden');$('readOnlyNote').textContent='Subscription expired. Data dekh sakte hain, lekin renewal tak new entries blocked hain.'}
   else $('readOnlyNote').classList.add('hidden');
 }
 function dashboard(){
   $('workspaceTitle').textContent=model.company.name;
-  $('workspaceSubtitle').innerHTML='<span class="dashboardPill">Dashboard</span><span class="ownerChip"><span class="ownerAvatar">'+esc((model.user.full_name||'O').trim().charAt(0).toUpperCase())+'</span><span><small>Company Owner</small><b>'+esc(model.user.full_name)+'</b></span></span>';
+  $('workspaceSubtitle').innerHTML='<span class="dashboardPill">Dashboard</span><span class="ownerChip"><span class="ownerAvatar">'+esc((model.user.full_name||'O').trim().charAt(0).toUpperCase())+'</span><span><small>'+esc(model.user.role==='company_admin'?'Company Admin':model.user.role.replaceAll('_',' '))+'</small><b>'+esc(model.user.full_name)+'</b></span></span>';
   $('addRecord').classList.add('hidden');
   const s=model.stats||{};
   const icon=(k)=>({Users:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 2-6 6-6s6 2 6 6"/><circle cx="17" cy="9" r="2"/><path d="M15 14c4 0 6 2 6 6"/></svg>',Suppliers:'<svg viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>',Customers:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-5 3-8 8-8s8 3 8 8"/></svg>',Products:'<svg viewBox="0 0 24 24"><path d="M4 7l8-4 8 4-8 4zM4 7v10l8 4 8-4V7M12 11v10"/></svg>',Warehouses:'<svg viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v11H3zM8 21v-7h8v7"/></svg>','Supplier Payable':'<svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 9h8M8 13h5"/><path d="M16 14c-2 0-3 1-3 2s1 2 3 2 3 1 3 2-1 2-3 2M16 13v10"/></svg>','Customer Receivable':'<svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 9h8M8 13h5"/><path d="M16 14c-2 0-3 1-3 2s1 2 3 2 3 1 3 2-1 2-3 2M16 13v10"/></svg>'}[k]||'');
@@ -62,7 +67,7 @@ function cell(key,value){
 async function show(view){
   currentView=view;document.querySelectorAll('#workspaceNav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   if(view==='dashboard')return dashboard();
-  if(view==='users'&&model.user.role!=='company_admin')return dashboard();
+  if(!roleCanView(view))return dashboard();
   const needed=viewFeatures[view];
   if(needed&&!featureOn(needed)){
     $('workspaceTitle').textContent='Upgrade Required';
@@ -80,12 +85,15 @@ async function show(view){
   if(view==='reports')return openReports(false);
   if(view==='advanced-reports')return openReports(true);
   if(view==='audit-center')return openAuditCenter();
-  const d=defs[view];$('workspaceTitle').textContent=d.title;$('workspaceSubtitle').textContent=model.company.name+' · '+d.title;$('addRecord').classList.toggle('hidden',model.subscription.access_mode!=='write'||!d.create);
+  const d=defs[view];$('workspaceTitle').textContent=d.title;$('workspaceSubtitle').textContent=model.company.name+' · '+d.title;$('addRecord').classList.toggle('hidden',!roleCanWrite(view)||!d.create);
   $('workspaceBody').innerHTML='<div class="card">Loading…</div>';
   const j=await json('/api/bizora-company?action='+d.action),rows=j.records||[];optionCache[view]=rows;
   const userActions=view==='users'?'<th>Action</th>':'';
   $('workspaceBody').innerHTML='<div class="card">'+(view==='users'&&j.limit?'<p class="limitnote">Plan user limit: '+esc(j.limit)+' active users</p>':'')+'<div class="tablewrap"><table><thead><tr>'+d.cols.map(c=>'<th>'+c[1]+'</th>').join('')+userActions+'</tr></thead><tbody>'+(rows.length?rows.map(r=>'<tr>'+d.cols.map(c=>'<td>'+cell(c[0],r[c[0]])+'</td>').join('')+(view==='users'?'<td><button class="secondary userStatusBtn" data-id="'+r.id+'" data-active="'+(r.active?'0':'1')+'">'+(r.active?'Deactivate':'Activate')+'</button></td>':'')+'</tr>').join(''):'<tr><td colspan="'+(d.cols.length+(view==='users'?1:0))+'">No records yet</td></tr>')+'</tbody></table></div></div>';
-  if(view==='users')document.querySelectorAll('.userStatusBtn').forEach(b=>b.onclick=()=>setUserStatus(Number(b.dataset.id),b.dataset.active==='1'));
+  if(view==='users'){
+    document.querySelectorAll('.userStatusBtn').forEach(b=>b.onclick=e=>{e.stopPropagation();setUserStatus(Number(b.dataset.id),b.dataset.active==='1')});
+    document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openUserRecord(row)}});
+  }
   if(['suppliers','clients','products','warehouses'].includes(view)){
     document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openMasterRecord(view,row)}});
   }
@@ -112,6 +120,30 @@ async function show(view){
   }
   if(view==='inventory-stock'||view==='inventory-ledger')await installWarehouseFilter(view,rows);
 }
+async function openUserRecord(row){
+  if(!model?.role_access?.can_manage_users)return;
+  $('workspaceTitle').textContent='User Details';
+  $('workspaceSubtitle').textContent=model.company.name+' · Role & Login Control';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML=
+    '<div class="masterToolbar"><button id="userBack" class="secondary">← Users</button><span class="masterState '+(row.active?'active':'inactive')+'">'+(row.active?'Active':'Inactive')+'</span></div>'+
+    '<form id="userEditForm" class="card userEditCard">'+
+      '<div class="userEditHead"><div class="userEditAvatar">'+esc((row.full_name||'U').charAt(0).toUpperCase())+'</div><div><span class="capEyebrow">COMPANY USER</span><h2>'+esc(row.full_name)+'</h2><p>'+esc(row.user_code)+' · Last login '+(row.last_login_at?esc(new Date(row.last_login_at).toLocaleString('en-GB')):'Never')+'</p></div></div>'+
+      '<div class="formGrid"><label>User ID<input value="'+esc(row.user_code)+'" disabled></label><label>Full Name<input name="full_name" value="'+esc(row.full_name)+'" required></label><label>Email<input name="email" type="email" value="'+esc(row.email||'')+'"></label><label>Role<select name="role">'+['company_admin','manager','accountant','salesman','cashier'].map(x=>'<option value="'+x+'" '+(row.role===x?'selected':'')+'>'+esc(x.replaceAll('_',' '))+'</option>').join('')+'</select></label><label>New Password<input name="password" type="password" minlength="8" placeholder="Leave blank to keep current password"></label></div>'+
+      '<div class="roleGuide"><b>Role Access</b><p>Company Admin: full control · Manager: operational control · Accountant: accounts & reports · Salesman: sales/customer work · Cashier: counter billing.</p></div>'+
+      '<div class="masterActions"><button id="userToggle" type="button" class="'+(row.active?'dangerAction':'secondary')+'">'+(row.active?'Deactivate':'Activate')+'</button><button id="saveUserEdit" class="primary">Save User</button></div>'+
+    '</form>';
+  $('userBack').onclick=()=>show('users');
+  $('userToggle').onclick=()=>setUserStatus(row.id,!row.active);
+  $('userEditForm').onsubmit=async e=>{
+    e.preventDefault();const btn=$('saveUserEdit'),data=Object.fromEntries(new FormData(e.currentTarget));btn.disabled=true;btn.textContent='Saving…';
+    try{
+      await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'update_user',user_id:row.id,...data})});
+      optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show('users');
+    }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save User'}
+  };
+}
+
 async function openMasterRecord(view,row){
   const config={
     suppliers:{title:'Supplier',id:'supplier_id',update:'update_supplier',status:'set_supplier_status',active:String(row.status||'active')==='active',
@@ -197,7 +229,7 @@ async function openSupplierInvoiceDetail(row){
   $('workspaceBody').innerHTML='<div class="card">Loading invoice products…</div>';
   const data=await json('/api/bizora-company?action=supplier_invoice_items&invoice_id='+row.id),items=data.records||[];
   const grnStatus=String(row.grn_status||'').toLowerCase(),payStatus=String(row.status||'unpaid').toLowerCase();
-  const canCancel=payStatus!=='cancelled'&&model.subscription.access_mode==='write';
+  const canCancel=payStatus!=='cancelled'&&roleCanWrite('supplier-bills');
   $('workspaceBody').innerHTML=
     '<div class="detailToolbar invoiceDetailActions"><button id="backToInvoices" class="secondary">← Back</button><div><span class="grnPill '+esc(grnStatus)+'">'+esc(grnStatus==='not_itemized'?'Not Itemized':grnStatus)+'</span><span class="invoiceStatus '+esc(payStatus)+'">'+esc(payStatus)+'</span><button id="printSupplierInvoice" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="editSupplierInvoice" class="secondary">Edit Invoice</button><button id="cancelSupplierInvoice" class="dangerAction">Cancel Invoice</button>':'')+'</div></div>'+
     '<div id="invoicePrintable" class="card invoiceDetailCard invoicePrintable">'+
@@ -331,7 +363,7 @@ async function openCustomerInvoiceDetail(row){
   $('workspaceSubtitle').textContent=row.invoice_number+' · '+row.business_name;
   $('addRecord').classList.add('hidden');$('workspaceBody').innerHTML='<div class="card">Loading invoice products…</div>';
   const data=await json('/api/bizora-company?action=client_invoice_items&invoice_id='+row.id),items=data.records||[],payStatus=String(row.status||'unpaid').toLowerCase();
-  const canCancel=payStatus!=='cancelled'&&model.subscription.access_mode==='write';
+  const canCancel=payStatus!=='cancelled'&&roleCanWrite('client-bills');
   $('workspaceBody').innerHTML=
     '<div class="detailToolbar invoiceDetailActions"><button id="backToCustomerInvoices" class="secondary">← Back</button><div><span class="invoiceStatus '+esc(payStatus)+'">'+esc(payStatus)+'</span><button id="printCustomerInvoice" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="editCustomerInvoice" class="secondary">Edit Invoice</button><button id="cancelCustomerInvoice" class="dangerAction">Cancel Invoice</button>':'')+'</div></div>'+
     '<div id="invoicePrintable" class="card invoiceDetailCard invoicePrintable">'+
@@ -467,7 +499,7 @@ async function openReturns(kind){
   $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading returns…</div></div>';
   const data=await json('/api/bizora-company?action='+action),rows=data.records||[];
   $('workspaceBody').innerHTML=
-    '<div class="returnToolbar"><div><span class="capEyebrow">'+(isSupplier?'PURCHASE RETURN':'SALES RETURN')+'</span><h2>'+(isSupplier?'Supplier Returns':'Customer Returns')+'</h2></div>'+(model.subscription.access_mode==='write'?'<button id="newReturn" class="primary">+ New Return</button>':'')+'</div>'+
+    '<div class="returnToolbar"><div><span class="capEyebrow">'+(isSupplier?'PURCHASE RETURN':'SALES RETURN')+'</span><h2>'+(isSupplier?'Supplier Returns':'Customer Returns')+'</h2></div>'+(roleCanWrite(isSupplier?'supplier-returns':'client-returns')?'<button id="newReturn" class="primary">+ New Return</button>':'')+'</div>'+
     '<div class="card"><div class="tablewrap"><table><thead><tr><th>Return</th><th>Date</th><th>'+(isSupplier?'Supplier':'Customer')+'</th><th>Invoice</th>'+(isSupplier?'<th>Warehouse</th>':'')+'<th>Amount</th><th>Status</th></tr></thead><tbody>'+
       (rows.length?rows.map(r=>'<tr><td><b>'+esc(r.return_number)+'</b></td><td>'+date(r.return_date)+'</td><td>'+esc(r.business_name)+'</td><td>'+esc(r.invoice_number)+'</td>'+(isSupplier?'<td>'+esc(r.warehouse_name)+'</td>':'')+'<td>'+money(r.amount)+'</td><td><span class="pill '+esc(r.status)+'">'+esc(r.status)+'</span></td></tr>').join(''):'<tr><td colspan="'+(isSupplier?7:6)+'">No returns yet</td></tr>')+
     '</tbody></table></div></div>';
@@ -481,7 +513,7 @@ async function openReturnDetail(kind,row){
   $('addRecord').classList.add('hidden');
   $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading return…</div></div>';
   const d=await json('/api/bizora-company?action='+action+row.id),r=d.record||row,items=d.items||[],status=String(r.status||'posted').toLowerCase();
-  const canCancel=status==='posted'&&model.subscription.access_mode==='write';
+  const canCancel=status==='posted'&&roleCanWrite(isGrn?'grns':isTransfer?'stock-transfers':'stock-adjustments');
   $('workspaceBody').innerHTML=
     '<div class="returnDetailActions"><button id="returnDetailBack" class="secondary">← '+(isSupplier?'Supplier Returns':'Customer Returns')+'</button><div><span class="returnDocStatus '+esc(status)+'">'+esc(status)+'</span><button id="printReturnDoc" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="cancelReturnDoc" class="dangerAction">Cancel & Reverse</button>':'')+'</div></div>'+
     '<div class="card returnDocument returnPrintable">'+
@@ -580,6 +612,7 @@ function installEcommerceModule(){
   }
 }
 async function openEcommerce(){
+  if(!roleCanView('ecommerce'))return dashboard();
   $('workspaceTitle').textContent='E-commerce';
   $('workspaceSubtitle').textContent=model.company.name+' · Separate Online Store';
   $('addRecord').classList.add('hidden');
@@ -729,6 +762,7 @@ async function ensureWalkInCustomer(){
   }
 }
 async function openCashier(){
+  if(!roleCanView('cashier'))return dashboard();
   $('workspaceTitle').textContent='Cashier / Counter Sale';
   $('workspaceSubtitle').textContent=model.company.name+' · Fast Billing';
   $('addRecord').classList.add('hidden');
@@ -972,7 +1006,7 @@ async function openAdjustmentForm(){
   $('adjustmentProduct').onchange=e=>$('adjustmentCost').value=Number(e.target.selectedOptions[0]?.dataset.price||0);$('recordDialog').showModal();
 }
 async function openForm(){
-  const d=defs[currentView];if(!d)return;
+  const d=defs[currentView];if(!d||!roleCanWrite(currentView))return;
   if(currentView==='supplier-bills'){invoiceEditContext=null;return openSupplierInvoiceForm()}
   if(currentView==='client-bills'){invoiceEditContext=null;return openCustomerInvoiceForm()}
   if(currentView==='supplier-payments')return openPaymentForm('supplier');
