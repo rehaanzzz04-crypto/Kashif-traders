@@ -285,6 +285,7 @@ export async function getCompanyAccess(sql,req){
       u.id,u.company_id,u.user_code,u.full_name,u.email,u.role,u.active,
       c.company_code,c.company_name,c.logo_url,c.status company_status,
       sub.id subscription_id,sub.status subscription_status,sub.starts_on,sub.expires_on,
+      (sub.status IN ('active','trial') AND sub.expires_on >= CURRENT_DATE) AS subscription_is_valid,
       p.id plan_id,p.plan_code,p.plan_name,p.user_limit,p.warehouse_limit,p.features
     FROM company_users u
     JOIN companies c ON c.id=u.company_id
@@ -299,7 +300,9 @@ export async function getCompanyAccess(sql,req){
   const u=rows[0];
   if(!u?.active)return null;
   const blocked=['suspended','closed'].includes(String(u.company_status));
-  const subValid=['active','trial'].includes(String(u.subscription_status))&&u.expires_on&&new Date(String(u.expires_on).slice(0,10)+'T23:59:59Z').getTime()>=Date.now();
+  // Let Postgres compare DATE values. This avoids timezone/driver Date serialization
+  // differences that could incorrectly mark a valid subscription as expired.
+  const subValid=u.subscription_is_valid===true||String(u.subscription_is_valid)==='true';
   const access_mode=blocked?'blocked':subValid?'write':'read_only';
   return {...u,access_mode};
 }
