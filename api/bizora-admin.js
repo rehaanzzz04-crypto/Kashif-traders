@@ -2,6 +2,26 @@ import { bizoraSql,ensureBizoraSchema,requireSuperAdmin,body,clean,positiveInt,h
 
 const companyCode=v=>clean(v).toUpperCase().replace(/[^A-Z0-9_-]/g,'').slice(0,24);
 
+function companyCodeBase(name){
+  const words=clean(name).toUpperCase().match(/[A-Z0-9]+/g)||[];
+  if(!words.length)return 'CMP';
+  let base=(words[0]||'').slice(0,3);
+  if(base.length<3)base=(base+words.slice(1).join('')).slice(0,3);
+  if(base.length<3)base=(base+'CMP').slice(0,3);
+  return companyCode(base);
+}
+
+async function nextCompanyCode(sql,name){
+  const base=companyCodeBase(name);
+  const rows=await sql`SELECT company_code FROM companies WHERE company_code LIKE ${base+'%'} ORDER BY company_code`;
+  const used=new Set(rows.map(r=>String(r.company_code||'').toUpperCase()));
+  for(let n=1;n<=9999;n++){
+    const code=base+String(n).padStart(3,'0');
+    if(!used.has(code))return code;
+  }
+  const e=new Error('Unable to generate a unique company code');e.statusCode=409;throw e;
+}
+
 async function overview(sql){
   const [stats,companies,plans]=await Promise.all([
     sql`SELECT
@@ -32,10 +52,11 @@ export default async function handler(req,res){
     if(req.method==='GET'&&action==='overview')return res.status(200).json(await overview(sql));
 
     if(req.method==='POST'&&action==='create_company'){
-      const name=clean(b.company_name),code=companyCode(b.company_code),planCode=clean(b.plan_code||'standard').toLowerCase();
+      const name=clean(b.company_name),planCode=clean(b.plan_code||'standard').toLowerCase();
+      const code=await nextCompanyCode(sql,name);
       const adminName=clean(b.admin_name),adminEmail=clean(b.admin_email).toLowerCase(),adminPassword=String(b.admin_password||'');
       const months=Math.min(36,positiveInt(b.months,1));
-      if(!name||code.length<3)return res.status(400).json({error:'Company name and valid code required'});
+      if(!name)return res.status(400).json({error:'Company name required'});
       if(!adminName||!adminEmail||adminPassword.length<8)return res.status(400).json({error:'Company Admin name, email and 8+ character password required'});
       const passHash=hashPassword(adminPassword);
       const rows=await sql`WITH p AS(
