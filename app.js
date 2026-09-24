@@ -7,12 +7,20 @@ const money=v=>'PKR '+Number(v||0).toLocaleString('en-PK',{maximumFractionDigits
 function message(text,bad=false){const el=$('systemMessage');el.textContent=text;el.className='systemmessage '+(bad?'bad':'good');setTimeout(()=>el.classList.add('hidden'),3500)}
 async function json(url,options){const r=await fetch(url,{cache:'no-store',...options}),j=await r.json().catch(()=>({}));if(r.status===401){location.replace('/login.html');throw new Error('Login required')}if(!r.ok)throw new Error(j.error||'Request failed');return j}
 function planOptions(selected=''){return model.plans.filter(x=>x.active).map(p=>'<option value="'+esc(p.plan_code)+'" '+(p.plan_code===selected?'selected':'')+'>'+esc(p.plan_name)+'</option>').join('')}
+function planFeatureList(p){
+  const f=p.features||{},labels=[
+    ['core_erp','Core ERP'],['basic_reports','Basic reports'],['inventory_ledger','Inventory ledger'],['grn','GRN'],
+    ['audit_reports','Audit reports'],['advanced_reports','Advanced reports'],['cashier','Cashier'],['ecommerce','E-commerce'],
+    ['ocr','OCR'],['automation','Automation']
+  ];
+  return labels.filter(([k])=>f[k]===true).map(([,v])=>v);
+}
 function render(){
   const s=model.stats||{};
   $('stats').innerHTML=[['Companies',s.companies??0,'▦'],['Active Companies',s.active_companies??0,'▥'],['Active Subscriptions',s.active_subscriptions??0,'◉'],['Expiring ≤14 Days',s.expiring_14_days??0,'◷']].map(([k,v,i])=>'<div class="stat" data-icon="'+i+'"><small>'+k+'</small><b>'+esc(v)+'</b></div>').join('');
   const q=($('companySearch').value||'').trim().toLowerCase(),rows=model.companies.filter(x=>!q||[x.company_name,x.company_code,x.plan_name].join(' ').toLowerCase().includes(q));
   $('companyRows').innerHTML=rows.length?rows.map(x=>'<tr><td data-label="Company"><b>'+esc(x.company_name)+'</b></td><td data-label="Code">'+esc(x.company_code)+'</td><td data-label="Plan">'+esc(x.plan_name||'—')+'</td><td data-label="Status"><span class="pill '+esc(x.status)+'">'+esc(x.status)+'</span></td><td data-label="Expiry">'+date(x.expires_on)+'</td><td data-label="Actions"><div class="rowactions"><button class="secondary renew" data-id="'+x.id+'">Renew</button><button class="secondary status" data-id="'+x.id+'" data-status="'+(x.status==='suspended'?'active':'suspended')+'">'+(x.status==='suspended'?'Activate':'Suspend')+'</button></div></td></tr>').join(''):'<tr><td colspan="6">No companies</td></tr>';
-  $('plans').innerHTML=model.plans.map(p=>'<div class="plan"><b><span>'+esc(p.plan_name)+'</span><span>'+money(p.monthly_price)+'/mo</span></b><small>'+esc(p.user_limit??'Unlimited')+' users<br>'+esc(p.warehouse_limit??'Unlimited')+' warehouses</small></div>').join('');
+  $('plans').innerHTML=model.plans.map(p=>{const features=planFeatureList(p);return '<div class="plan"><b><span>'+esc(p.plan_name)+'</span><span>'+money(p.monthly_price)+'/mo</span></b><small>'+esc(p.user_limit??'Unlimited')+' users · '+esc(p.warehouse_limit??'Unlimited')+' warehouses</small><div class="planFeatures">'+features.map(x=>'<span>✓ '+esc(x)+'</span>').join('')+'</div></div>'}).join('');
   $('planSelect').innerHTML=planOptions('standard');$('renewPlan').innerHTML=planOptions('standard');
   document.querySelectorAll('.renew').forEach(b=>b.onclick=()=>{const c=model.companies.find(x=>String(x.id)===b.dataset.id);$('renewForm').elements.company_id.value=c.id;$('renewCompanyName').textContent=c.company_name;$('renewPlan').innerHTML=planOptions(c.plan_code||'standard');$('renewDialog').showModal()});
   document.querySelectorAll('.status').forEach(b=>b.onclick=()=>setStatus(Number(b.dataset.id),b.dataset.status));
