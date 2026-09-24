@@ -18,14 +18,15 @@ const defs={
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 function setHeader(){
-  $('companyName').textContent=model.company.name;$('companyMeta').textContent=model.company.code+' · '+model.user.full_name;
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
   $('usersNav').classList.toggle('hidden',model.user.role!=='company_admin');
   if(model.subscription.access_mode!=='write'){$('readOnlyNote').classList.remove('hidden');$('readOnlyNote').textContent='Subscription expired. Data dekh sakte hain, lekin renewal tak new entries blocked hain.'}
 }
 function dashboard(){
-  $('workspaceTitle').textContent='Company Dashboard';$('workspaceSubtitle').textContent='Only '+model.company.name+' data is visible in this session';$('addRecord').classList.add('hidden');
+  $('workspaceTitle').textContent=model.company.name;
+  $('workspaceSubtitle').innerHTML='<strong class="dashboardLabel">Dashboard</strong><span class="ownerLine">Company Owner: '+esc(model.user.full_name)+'</span>';
+  $('addRecord').classList.add('hidden');
   const s=model.stats||{};const icon=(k)=>({Users:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-4 2-6 6-6s6 2 6 6"/><circle cx="17" cy="9" r="2"/><path d="M15 14c4 0 6 2 6 6"/></svg>',Suppliers:'<svg viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>',Customers:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-5 3-8 8-8s8 3 8 8"/></svg>',Products:'<svg viewBox="0 0 24 24"><path d="M4 7l8-4 8 4-8 4zM4 7v10l8 4 8-4V7M12 11v10"/></svg>',Warehouses:'<svg viewBox="0 0 24 24"><path d="M3 10l9-7 9 7v11H3zM8 21v-7h8v7"/></svg>','Supplier Payable':'<svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 9h8M8 13h5"/><path d="M16 14c-2 0-3 1-3 2s1 2 3 2 3 1 3 2-1 2-3 2M16 13v10"/></svg>','Customer Receivable':'<svg viewBox="0 0 24 24"><path d="M5 3h12l2 2v16H5zM8 9h8M8 13h5"/><path d="M16 14c-2 0-3 1-3 2s1 2 3 2 3 1 3 2-1 2-3 2M16 13v10"/></svg>'}[k]||'');const items=[['Users',s.users],['Suppliers',s.suppliers],['Customers',s.clients],['Products',s.products],['Warehouses',s.warehouses],['Supplier Payable',money(s.supplier_payable)],['Customer Receivable',money(s.client_receivable)]];$('workspaceBody').innerHTML='<div class="stats">'+items.map(([k,v],i)=>'<div class="stat '+(i===6?'wide':'')+'"><span class="statIcon">'+icon(k)+'</span><small>'+k+'</small><b>'+esc(v??0)+'</b><span class="statChevron">›</span></div>').join('')+'</div><div class="card subscription"><h2>Subscription</h2><div class="subgrid"><div><small>Plan</small><b>'+esc(model.subscription.plan_name||'—')+'</b></div><div><small>Expires</small><b>'+date(model.subscription.expires_on)+'</b></div><div><small>Access</small><b>'+esc(model.subscription.access_mode)+'</b></div><div><small>Role</small><b>'+esc(model.user.role)+'</b></div><div><small>User Limit</small><b>'+esc(model.limits.user_limit??'Unlimited')+'</b></div><div><small>Warehouse Limit</small><b>'+esc(model.limits.warehouse_limit??'Unlimited')+'</b></div></div></div>';
 }
 function cell(key,value){
