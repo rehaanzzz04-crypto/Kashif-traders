@@ -286,16 +286,37 @@ async function openAuditCenter(){
 }
 async function viewPurchasedAudit(requestId){
   $('workspaceTitle').textContent='Purchased Audit';
-  $('workspaceSubtitle').textContent=model.company.name+' · Approved Audit';
+  $('workspaceSubtitle').textContent=model.company.name+' · Approved Audit Report';
   $('addRecord').classList.add('hidden');
   $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading purchased audit…</div></div>';
-  const d=await json('/api/bizora-company?action=audit_events&request_id='+requestId),rows=d.records||[],r=d.request||{};
-  $('workspaceBody').innerHTML='<div class="detailToolbar"><button id="backToAuditService" class="secondary">← Audit Service</button><span class="auditStatus completed">Paid Audit</span></div>'+
-    '<div class="card reportCard"><div class="auditPurchasedHead"><div><small>Audit Period</small><b>'+date(r.period_from)+' → '+date(r.period_to)+'</b></div><div><small>Audit Price</small><b>'+money(r.price)+'</b></div><div><small>Events</small><b>'+rows.length+'</b></div></div>'+
-    '<div class="tablewrap"><table><thead><tr><th>Date / Time</th><th>Actor</th><th>Event</th><th>Entity</th><th>ID</th><th>Details</th></tr></thead><tbody>'+
-    (rows.length?rows.map(x=>'<tr><td>'+esc(new Date(x.created_at).toLocaleString('en-GB'))+'</td><td><b>'+esc(x.actor_name)+'</b></td><td>'+esc(x.event_type)+'</td><td>'+esc(x.entity_type||'—')+'</td><td>'+esc(x.entity_id||'—')+'</td><td class="auditMeta">'+esc(JSON.stringify(x.metadata||{}))+'</td></tr>').join(''):'<tr><td colspan="6">No audit events in this purchased period</td></tr>')+
-    '</tbody></table></div></div>';
+  const d=await json('/api/bizora-company?action=audit_events&request_id='+requestId),rows=d.records||[],r=d.request||{},sum=d.summary||{},ctrl=d.controls||{},types=d.event_types||[];
+  const issues=[
+    ['Negative Stock',ctrl.negative_stock_items||0],
+    ['Overdue Customer Invoices',ctrl.overdue_customer_invoices||0],
+    ['Overdue Supplier Invoices',ctrl.overdue_supplier_invoices||0],
+    ['Unallocated Customer Receipts',ctrl.unallocated_customer_receipts||0],
+    ['Unallocated Supplier Payments',ctrl.unallocated_supplier_payments||0]
+  ];
+  $('workspaceBody').innerHTML=
+    '<div class="detailToolbar"><button id="backToAuditService" class="secondary">← Audit Service</button><div class="auditToolbarRight"><span class="auditStatus completed">Paid Audit</span><button id="printAudit" class="secondary">Print / Save PDF</button></div></div>'+
+    '<div id="auditPrintable" class="card reportCard auditReportPrint">'+
+      '<div class="auditReportTitle"><div><span class="capEyebrow">BIZORA PAID AUDIT</span><h2>'+esc(d.company?.name||model.company.name)+'</h2><p>'+esc(d.company?.code||model.company.code||'')+' · '+esc(r.plan_name||model.subscription.plan_name||'Plan')+'</p></div><div class="auditReportBadge"><small>Audit Period</small><b>'+date(r.period_from)+' → '+date(r.period_to)+'</b><span>Paid '+money(r.price)+'</span></div></div>'+
+      '<div class="reportKpis">'+
+        [['Customer Sales',sum.customer_sales],['Customer Receipts',sum.customer_receipts],['Supplier Purchases',sum.supplier_purchases],['Supplier Payments',sum.supplier_payments],['Gross Profit',sum.gross_profit],['GRNs',sum.grn_count],['Transfers',sum.transfer_count],['Adjustments',sum.adjustment_count]].map(x=>'<div><small>'+esc(x[0])+'</small><b>'+(/GRNs|Transfers|Adjustments/.test(x[0])?esc(x[1]||0):money(x[1]))+'</b></div>').join('')+
+      '</div>'+
+      '<div class="auditControlGrid">'+issues.map(x=>'<div class="'+(Number(x[1])>0?'attention':'clear')+'"><span>'+esc(x[0])+'</span><b>'+esc(x[1])+'</b><small>'+(Number(x[1])>0?'Review required':'No issue detected')+'</small></div>').join('')+'</div>'+
+      '<div class="auditMetaStrip"><span><b>'+esc(sum.audit_event_count||0)+'</b> audit events</span><span><b>'+esc(sum.active_users||0)+'</b> active users</span><span><b>'+esc(types.length)+'</b> event types</span></div>'+
+      '<div class="reportSectionTitle"><b>Event Type Summary</b><span>Audit activity by category</span></div>'+
+      '<div class="tablewrap"><table><thead><tr><th>Event Type</th><th>Count</th></tr></thead><tbody>'+
+      (types.length?types.map(x=>'<tr><td><b>'+esc(x.event_type)+'</b></td><td>'+esc(x.event_count)+'</td></tr>').join(''):'<tr><td colspan="2">No audit events</td></tr>')+
+      '</tbody></table></div>'+
+      '<div class="reportSectionTitle auditEventsTitle"><b>Detailed Audit Trail</b><span>'+rows.length+' events</span></div>'+
+      '<div class="tablewrap"><table><thead><tr><th>Date / Time</th><th>Actor</th><th>Event</th><th>Entity</th><th>ID</th><th>Details</th></tr></thead><tbody>'+
+      (rows.length?rows.map(x=>'<tr><td>'+esc(new Date(x.created_at).toLocaleString('en-GB'))+'</td><td><b>'+esc(x.actor_name)+'</b></td><td>'+esc(x.event_type)+'</td><td>'+esc(x.entity_type||'—')+'</td><td>'+esc(x.entity_id||'—')+'</td><td class="auditMeta">'+esc(JSON.stringify(x.metadata||{}))+'</td></tr>').join(''):'<tr><td colspan="6">No audit events in this purchased period</td></tr>')+
+      '</tbody></table></div>'+
+    '</div>';
   $('backToAuditService').onclick=()=>openAuditCenter().catch(e=>alert(e.message));
+  $('printAudit').onclick=()=>window.print();
 }
 async function openPaymentForm(kind){
   const isSupplier=kind==='supplier',parties=await partyOptions(kind),today=new Date().toISOString().slice(0,10);
