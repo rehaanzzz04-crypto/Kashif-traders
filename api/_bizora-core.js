@@ -4,7 +4,7 @@ import { neon } from '@neondatabase/serverless';
 const ADMIN_COOKIE='bizora_session';
 const COMPANY_COOKIE='bizora_company_session';
 const HOURS=12;
-const BIZORA_SCHEMA_VERSION=2026092403;
+const BIZORA_SCHEMA_VERSION=2026092404;
 const schemaState=globalThis.__bizoraSchemaState||(globalThis.__bizoraSchemaState={version:0,lastChecked:0,promise:null});
 const enc=v=>Buffer.from(v).toString('base64url');
 const dec=v=>Buffer.from(v,'base64url').toString('utf8');
@@ -602,6 +602,16 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS ecommerce_assets(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    file_name TEXT,
+    mime_type TEXT NOT NULL,
+    byte_size INT NOT NULL CHECK(byte_size>=0),
+    content BYTEA NOT NULL,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
   await sql`CREATE TABLE IF NOT EXISTS ecommerce_products(
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
@@ -776,6 +786,7 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS ocr_supplier_draft_items_draft_idx ON ocr_supplier_draft_items(company_id,draft_id,sort_order)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_categories_company_idx ON ecommerce_categories(company_id,active,sort_order,category_name)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_media_company_idx ON ecommerce_media(company_id,active,placement,sort_order)`;
+  await sql`CREATE INDEX IF NOT EXISTS ecommerce_assets_company_idx ON ecommerce_assets(company_id,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_products_company_idx ON ecommerce_products(company_id,active,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_orders_company_idx ON ecommerce_orders(company_id,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_order_items_company_order_idx ON ecommerce_order_items(company_id,ecommerce_order_id)`;
