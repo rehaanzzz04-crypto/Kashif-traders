@@ -257,28 +257,32 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='supplier_invoices'){
-      const rows=await sql`SELECT i.id,i.supplier_id,s.business_name,i.invoice_number,i.invoice_date,i.due_date,i.amount,i.status,i.notes,i.created_at,
-        COALESCE(q.ordered_quantity,0)::numeric ordered_quantity,
-        COALESCE(r.received_quantity,0)::numeric received_quantity,
-        CASE
-          WHEN COALESCE(q.item_count,0)=0 THEN 'not_itemized'
-          WHEN COALESCE(r.received_quantity,0)<=0 THEN 'pending'
-          WHEN COALESCE(r.received_quantity,0)<COALESCE(q.ordered_quantity,0) THEN 'partial'
-          ELSE 'complete'
-        END grn_status
+      const rows=await sql`WITH item_totals AS(
+          SELECT company_id,supplier_invoice_id,COUNT(*)::int item_count,COALESCE(SUM(quantity),0)::numeric ordered_quantity
+          FROM erp_supplier_invoice_items
+          WHERE company_id=${u.company_id}
+          GROUP BY company_id,supplier_invoice_id
+        ), received_totals AS(
+          SELECT ii.company_id,ii.supplier_invoice_id,COALESCE(SUM(gi.quantity),0)::numeric received_quantity
+          FROM erp_grn_items gi
+          JOIN erp_grns g ON g.id=gi.grn_id AND g.company_id=gi.company_id AND g.status='posted'
+          JOIN erp_supplier_invoice_items ii ON ii.id=gi.supplier_invoice_item_id AND ii.company_id=gi.company_id
+          WHERE gi.company_id=${u.company_id}
+          GROUP BY ii.company_id,ii.supplier_invoice_id
+        )
+        SELECT i.id,i.supplier_id,s.business_name,i.invoice_number,i.invoice_date,i.due_date,i.amount,i.status,i.notes,i.created_at,
+          COALESCE(q.ordered_quantity,0)::numeric ordered_quantity,
+          COALESCE(r.received_quantity,0)::numeric received_quantity,
+          CASE
+            WHEN COALESCE(q.item_count,0)=0 THEN 'not_itemized'
+            WHEN COALESCE(r.received_quantity,0)<=0 THEN 'pending'
+            WHEN COALESCE(r.received_quantity,0)<COALESCE(q.ordered_quantity,0) THEN 'partial'
+            ELSE 'complete'
+          END grn_status
         FROM erp_supplier_invoices i
         JOIN erp_suppliers s ON s.id=i.supplier_id AND s.company_id=i.company_id
-        LEFT JOIN LATERAL(
-          SELECT COUNT(*)::int item_count,COALESCE(SUM(ii.quantity),0)::numeric ordered_quantity
-          FROM erp_supplier_invoice_items ii
-          WHERE ii.company_id=i.company_id AND ii.supplier_invoice_id=i.id
-        ) q ON true
-        LEFT JOIN LATERAL(
-          SELECT COALESCE(SUM(gi.quantity),0)::numeric received_quantity
-          FROM erp_grn_items gi
-          JOIN erp_supplier_invoice_items ii ON ii.id=gi.supplier_invoice_item_id AND ii.company_id=gi.company_id
-          WHERE gi.company_id=i.company_id AND ii.supplier_invoice_id=i.id
-        ) r ON true
+        LEFT JOIN item_totals q ON q.company_id=i.company_id AND q.supplier_invoice_id=i.id
+        LEFT JOIN received_totals r ON r.company_id=i.company_id AND r.supplier_invoice_id=i.id
         WHERE i.company_id=${u.company_id}
         ORDER BY i.invoice_date DESC,i.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
@@ -303,7 +307,11 @@ export default async function handler(req,res){
       const rows=await sql`SELECT p.id,p.supplier_id,s.business_name,p.payment_date,p.amount,p.payment_method,p.reference_number,p.notes,p.status,p.cancelled_at,p.created_at,
         COALESCE(a.allocated_amount,0)::numeric allocated_amount
         FROM erp_supplier_payments p JOIN erp_suppliers s ON s.id=p.supplier_id AND s.company_id=p.company_id
-        LEFT JOIN LATERAL(SELECT COALESCE(SUM(amount),0)::numeric allocated_amount FROM erp_supplier_payment_allocations x WHERE x.company_id=p.company_id AND x.supplier_payment_id=p.id) a ON true
+        LEFT JOIN (
+          SELECT company_id,supplier_payment_id,COALESCE(SUM(amount),0)::numeric allocated_amount
+          FROM erp_supplier_payment_allocations WHERE company_id=${u.company_id}
+          GROUP BY company_id,supplier_payment_id
+        ) a ON a.company_id=p.company_id AND a.supplier_payment_id=p.id
         WHERE p.company_id=${u.company_id} ORDER BY p.payment_date DESC,p.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
     }
@@ -345,18 +353,20 @@ export default async function handler(req,res){
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='client_invoices'){
-      const rows=await sql`SELECT i.id,i.client_id,c.business_name,i.invoice_number,i.invoice_date,i.due_date,i.amount,i.status,i.notes,i.created_at,
-        w.warehouse_name,
-        COALESCE(q.item_count,0)::int item_count,
-        COALESCE(q.total_quantity,0)::numeric total_quantity
+      const rows=await sql`WITH item_totals AS(
+          SELECT company_id,client_invoice_id,COUNT(*)::int item_count,COALESCE(SUM(quantity),0)::numeric total_quantity
+          FROM erp_client_invoice_items
+          WHERE company_id=${u.company_id}
+          GROUP BY company_id,client_invoice_id
+        )
+        SELECT i.id,i.client_id,c.business_name,i.invoice_number,i.invoice_date,i.due_date,i.amount,i.status,i.notes,i.created_at,
+          w.warehouse_name,
+          COALESCE(q.item_count,0)::int item_count,
+          COALESCE(q.total_quantity,0)::numeric total_quantity
         FROM erp_client_invoices i
         JOIN erp_clients c ON c.id=i.client_id AND c.company_id=i.company_id
         LEFT JOIN erp_warehouses w ON w.id=i.warehouse_id AND w.company_id=i.company_id
-        LEFT JOIN LATERAL(
-          SELECT COUNT(*)::int item_count,COALESCE(SUM(ii.quantity),0)::numeric total_quantity
-          FROM erp_client_invoice_items ii
-          WHERE ii.company_id=i.company_id AND ii.client_invoice_id=i.id
-        ) q ON true
+        LEFT JOIN item_totals q ON q.company_id=i.company_id AND q.client_invoice_id=i.id
         WHERE i.company_id=${u.company_id}
         ORDER BY i.invoice_date DESC,i.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
@@ -378,7 +388,11 @@ export default async function handler(req,res){
       const rows=await sql`SELECT r.id,r.client_id,c.business_name,r.receipt_date,r.amount,r.payment_method,r.reference_number,r.notes,r.status,r.cancelled_at,r.created_at,
         COALESCE(a.allocated_amount,0)::numeric allocated_amount
         FROM erp_client_receipts r JOIN erp_clients c ON c.id=r.client_id AND c.company_id=r.company_id
-        LEFT JOIN LATERAL(SELECT COALESCE(SUM(amount),0)::numeric allocated_amount FROM erp_client_receipt_allocations x WHERE x.company_id=r.company_id AND x.client_receipt_id=r.id) a ON true
+        LEFT JOIN (
+          SELECT company_id,client_receipt_id,COALESCE(SUM(amount),0)::numeric allocated_amount
+          FROM erp_client_receipt_allocations WHERE company_id=${u.company_id}
+          GROUP BY company_id,client_receipt_id
+        ) a ON a.company_id=r.company_id AND a.client_receipt_id=r.id
         WHERE r.company_id=${u.company_id} ORDER BY r.receipt_date DESC,r.id DESC LIMIT 1000`;
       return res.status(200).json({records:rows});
     }

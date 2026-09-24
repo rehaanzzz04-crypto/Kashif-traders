@@ -4,7 +4,7 @@ import { neon } from '@neondatabase/serverless';
 const ADMIN_COOKIE='bizora_session';
 const COMPANY_COOKIE='bizora_company_session';
 const HOURS=12;
-const BIZORA_SCHEMA_VERSION=2026092401;
+const BIZORA_SCHEMA_VERSION=2026092402;
 const schemaState=globalThis.__bizoraSchemaState||(globalThis.__bizoraSchemaState={version:0,lastChecked:0,promise:null});
 const enc=v=>Buffer.from(v).toString('base64url');
 const dec=v=>Buffer.from(v,'base64url').toString('utf8');
@@ -687,11 +687,17 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_clients_company_idx ON erp_clients(company_id,status)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_products_company_idx ON erp_products(company_id,active)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_invoices_company_idx ON erp_supplier_invoices(company_id,invoice_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_supplier_invoices_status_idx ON erp_supplier_invoices(company_id,status,invoice_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_invoice_items_company_invoice_idx ON erp_supplier_invoice_items(company_id,supplier_invoice_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_grn_items_invoice_item_idx ON erp_grn_items(company_id,supplier_invoice_item_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_payments_company_idx ON erp_supplier_payments(company_id,payment_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_supplier_payments_status_idx ON erp_supplier_payments(company_id,status,payment_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_payment_allocations_company_idx ON erp_supplier_payment_allocations(company_id,supplier_invoice_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_supplier_payment_allocations_payment_idx ON erp_supplier_payment_allocations(company_id,supplier_payment_id)`;
+
   await sql`CREATE INDEX IF NOT EXISTS erp_client_receipt_allocations_company_idx ON erp_client_receipt_allocations(company_id,client_invoice_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_client_receipt_allocations_receipt_idx ON erp_client_receipt_allocations(company_id,client_receipt_id)`;
+
   await sql`CREATE INDEX IF NOT EXISTS erp_grns_company_idx ON erp_grns(company_id,received_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_grn_items_company_grn_idx ON erp_grn_items(company_id,grn_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_inventory_movements_company_idx ON erp_inventory_movements(company_id,movement_date DESC)`;
@@ -700,8 +706,10 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_stock_transfer_items_company_transfer_idx ON erp_stock_transfer_items(company_id,stock_transfer_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_stock_adjustments_company_idx ON erp_stock_adjustments(company_id,adjustment_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_invoices_company_idx ON erp_client_invoices(company_id,invoice_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_client_invoices_status_idx ON erp_client_invoices(company_id,status,invoice_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_invoice_items_company_invoice_idx ON erp_client_invoice_items(company_id,client_invoice_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_receipts_company_idx ON erp_client_receipts(company_id,receipt_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_client_receipts_status_idx ON erp_client_receipts(company_id,status,receipt_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_returns_company_idx ON erp_supplier_returns(company_id,return_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_return_items_invoice_item_idx ON erp_supplier_return_items(company_id,supplier_invoice_item_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_returns_company_idx ON erp_client_returns(company_id,return_date DESC)`;
