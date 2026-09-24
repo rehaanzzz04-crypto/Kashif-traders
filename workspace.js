@@ -83,7 +83,7 @@ async function partyOptions(kind){
     if(kind==='client')return {value:r.id,label:r.business_name+' · '+(r.client_code||'')};
     if(kind==='product')return {value:r.id,label:r.product_name+' · '+(r.sku||'')};
     if(kind==='warehouse')return {value:r.id,label:r.warehouse_name+' · '+(r.warehouse_code||'')};
-    if(kind==='supplier_invoice')return {value:r.id,label:(r.invoice_number||'Invoice')+' · '+(r.business_name||'')};
+    if(kind==='supplier_invoice')return {value:r.id,label:(r.invoice_number||'Invoice')+' · '+(r.business_name||'')+' · '+(r.grn_status||'')};
     return {value:r.id,label:String(r.id)};
   });
 }
@@ -98,8 +98,83 @@ async function renderField([name,label,type]){
   const minlength=type==='password'?' minlength="8"':'';
   return '<label>'+label+'<input name="'+name+'" type="'+type+'"'+value+min+minlength+required+'></label>';
 }
+function productOptionsHtml(products){
+  return '<option value="">Select Product</option>'+products.map(p=>'<option value="'+p.id+'" data-price="'+Number(p.purchase_price||0)+'">'+esc(p.product_name)+' · '+esc(p.sku||'')+'</option>').join('');
+}
+function supplierInvoiceItemRow(products){
+  return '<div class="lineItem invoiceLine">'+
+    '<label>Product<select class="lineProduct" required>'+productOptionsHtml(products)+'</select></label>'+
+    '<label>Quantity<input class="lineQty" type="number" min="0.001" step="0.001" value="1" required></label>'+
+    '<label>Purchase Price<input class="linePrice" type="number" min="0" step="0.01" value="0" required></label>'+
+    '<label>Description<input class="lineDescription" type="text" placeholder="Optional"></label>'+
+    '<button type="button" class="removeLine secondary">×</button>'+
+  '</div>';
+}
+function wireInvoiceLines(products){
+  const holder=$('invoiceItems');
+  holder.onclick=e=>{if(e.target.closest('.removeLine')){const rows=holder.querySelectorAll('.invoiceLine');if(rows.length>1)e.target.closest('.invoiceLine').remove();updateInvoiceTotal()}};
+  holder.onchange=e=>{if(e.target.classList.contains('lineProduct')){const opt=e.target.selectedOptions[0],row=e.target.closest('.invoiceLine');if(opt?.dataset.price!==undefined)row.querySelector('.linePrice').value=Number(opt.dataset.price||0);updateInvoiceTotal()}};
+  holder.oninput=updateInvoiceTotal;
+  $('addInvoiceLine').onclick=()=>{holder.insertAdjacentHTML('beforeend',supplierInvoiceItemRow(products));updateInvoiceTotal()};
+}
+function updateInvoiceTotal(){
+  const rows=[...document.querySelectorAll('#invoiceItems .invoiceLine')];
+  const total=rows.reduce((n,row)=>n+Number(row.querySelector('.lineQty')?.value||0)*Number(row.querySelector('.linePrice')?.value||0),0);
+  const el=$('invoiceTotal');if(el)el.textContent=money(total);
+}
+async function openSupplierInvoiceForm(){
+  const [suppliers,products]=await Promise.all([partyOptions('supplier'),partyOptions('product').then(async()=>optionCache.products||[])]);
+  const today=new Date().toISOString().slice(0,10),productRows=optionCache.products||[];
+  $('recordTitle').textContent='Add Supplier Invoice';
+  $('recordHint').textContent='Product-wise invoice · '+model.company.name;
+  $('recordFields').innerHTML=
+    '<div class="formGrid">'+
+      '<label>Supplier<select name="supplier_id" required><option value="">Select Supplier</option>'+suppliers.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'+
+      '<label>Invoice Number<input name="invoice_number" required></label>'+
+      '<label>Invoice Date<input name="invoice_date" type="date" value="'+today+'" required></label>'+
+      '<label>Due Date<input name="due_date" type="date" value="'+today+'"></label>'+
+    '</div>'+
+    '<div class="lineHead"><div><b>Invoice Products</b><small>Add one or more products</small></div><button id="addInvoiceLine" type="button" class="secondary">+ Add Product</button></div>'+
+    '<div id="invoiceItems" class="lineItems">'+supplierInvoiceItemRow(productRows)+'</div>'+
+    '<div class="invoiceTotalBox"><span>Invoice Total</span><b id="invoiceTotal">PKR 0</b></div>'+
+    '<label>Notes<textarea name="notes"></textarea></label>';
+  wireInvoiceLines(productRows);updateInvoiceTotal();$('recordDialog').showModal();
+}
+async function openGrnForm(){
+  if(!optionCache.supplier_invoices)optionCache.supplier_invoices=(await json('/api/bizora-company?action=supplier_invoices')).records||[];
+  const invoices=optionCache.supplier_invoices.filter(x=>['pending','partial'].includes(x.grn_status));
+  const warehouses=await partyOptions('warehouse'),today=new Date().toISOString().slice(0,10);
+  $('recordTitle').textContent='Post Goods Receiving';
+  $('recordHint').textContent='Only pending / partially received invoices are shown';
+  $('recordFields').innerHTML=
+    '<div class="formGrid">'+
+      '<label>Supplier Invoice<select name="supplier_invoice_id" id="grnInvoice" required><option value="">Select pending invoice</option>'+invoices.map(x=>'<option value="'+x.id+'">'+esc(x.invoice_number)+' · '+esc(x.business_name)+' · '+esc(x.grn_status)+'</option>').join('')+'</select></label>'+
+      '<label>Warehouse<select name="warehouse_id" required><option value="">Select Warehouse</option>'+warehouses.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'+
+      '<label>Received Date<input name="received_date" type="date" value="'+today+'" required></label>'+
+    '</div>'+
+    '<div class="lineHead"><div><b>Receive Products</b><small>Enter quantity received now</small></div></div>'+
+    '<div id="grnItems" class="lineItems"><div class="emptyLines">Select supplier invoice to load pending products.</div></div>'+
+    '<label>Notes<textarea name="notes"></textarea></label>';
+  $('grnInvoice').onchange=async e=>{
+    const id=Number(e.target.value||0),holder=$('grnItems');if(!id){holder.innerHTML='<div class="emptyLines">Select supplier invoice to load pending products.</div>';return}
+    holder.innerHTML='<div class="emptyLines">Loading products…</div>';
+    const data=await json('/api/bizora-company?action=supplier_invoice_items&invoice_id='+id),items=(data.records||[]).filter(x=>Number(x.remaining_quantity)>0);
+    holder.innerHTML=items.length?items.map(x=>'<div class="lineItem grnLine" data-item-id="'+x.id+'" data-product-id="'+x.product_id+'" data-ordered="'+Number(x.quantity)+'" data-cost="'+Number(x.unit_price||0)+'">'+
+      '<div class="lineProductName"><b>'+esc(x.product_name)+'</b><small>'+esc(x.sku||'')+' · Ordered '+esc(x.quantity)+' · Received '+esc(x.received_quantity)+' · Remaining '+esc(x.remaining_quantity)+'</small></div>'+
+      '<label>Receive Now<input class="grnQty" type="number" min="0" max="'+Number(x.remaining_quantity)+'" step="0.001" value="'+Number(x.remaining_quantity)+'"></label>'+
+      '<label>Rejected<input class="grnRejected" type="number" min="0" step="0.001" value="0"></label>'+
+      '<label>Unit Cost<input class="grnCost" type="number" min="0" step="0.01" value="'+Number(x.unit_price||0)+'"></label>'+
+      '<label>Batch<input class="grnBatch" type="text"></label>'+
+      '<label>Expiry<input class="grnExpiry" type="date"></label>'+
+    '</div>').join(''):'<div class="emptyLines">This invoice has no pending products.</div>';
+  };
+  $('recordDialog').showModal();
+}
 async function openForm(){
-  const d=defs[currentView];if(!d)return;$('recordTitle').textContent='Add '+d.title.replace(/s$/,'');$('recordHint').textContent=model.company.name+' only';
+  const d=defs[currentView];if(!d)return;
+  if(currentView==='supplier-bills')return openSupplierInvoiceForm();
+  if(currentView==='grns')return openGrnForm();
+  $('recordTitle').textContent='Add '+d.title.replace(/s$/,'');$('recordHint').textContent=model.company.name+' only';
   const parts=[];for(const f of d.fields)parts.push(await renderField(f));$('recordFields').innerHTML=parts.join('');$('recordDialog').showModal();
 }
 async function setUserStatus(id,active){
@@ -112,6 +187,32 @@ $('menuToggle').onclick=openMenu;$('closeMenu').onclick=closeMenu;$('navBackdrop
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu()});
 $('workspaceNav').onclick=e=>{const b=e.target.closest('[data-view]');if(b){closeMenu();show(b.dataset.view).catch(err=>$('workspaceBody').innerHTML='<div class="card error">'+esc(err.message)+'</div>')}};
 $('addRecord').onclick=()=>openForm().catch(err=>alert(err.message));$('closeRecord').onclick=$('cancelRecord').onclick=()=>$('recordDialog').close();
-$('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],btn=$('saveRecord');btn.disabled=true;btn.textContent='Saving…';try{const data=Object.fromEntries(new FormData(e.currentTarget));await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:d.create,...data})});$('recordDialog').close();e.currentTarget.reset();optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)}catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
+$('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],btn=$('saveRecord');btn.disabled=true;btn.textContent='Saving…';try{
+  const data=Object.fromEntries(new FormData(e.currentTarget));
+  if(currentView==='supplier-bills'){
+    data.items=[...document.querySelectorAll('#invoiceItems .invoiceLine')].map(row=>({
+      product_id:Number(row.querySelector('.lineProduct').value||0),
+      quantity:Number(row.querySelector('.lineQty').value||0),
+      unit_price:Number(row.querySelector('.linePrice').value||0),
+      description:row.querySelector('.lineDescription').value||''
+    }));
+    if(!data.items.length||data.items.some(x=>!x.product_id||x.quantity<=0||x.unit_price<0))throw new Error('Valid invoice products required');
+  }
+  if(currentView==='grns'){
+    data.items=[...document.querySelectorAll('#grnItems .grnLine')].map(row=>({
+      supplier_invoice_item_id:Number(row.dataset.itemId),
+      product_id:Number(row.dataset.productId),
+      ordered_qty:Number(row.dataset.ordered),
+      received_qty:Number(row.querySelector('.grnQty').value||0),
+      rejected_qty:Number(row.querySelector('.grnRejected').value||0),
+      unit_cost:Number(row.querySelector('.grnCost').value||0),
+      batch_no:row.querySelector('.grnBatch').value||'',
+      expiry_date:row.querySelector('.grnExpiry').value||''
+    })).filter(x=>x.received_qty>0);
+    if(!data.items.length)throw new Error('At least one received product quantity is required');
+  }
+  await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:d.create,...data})});
+  $('recordDialog').close();e.currentTarget.reset();optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
+}catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
 (async()=>{model=await json('/api/bizora-company?action=overview');setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
