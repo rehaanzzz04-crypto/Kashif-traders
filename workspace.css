@@ -821,3 +821,7 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
   body.inventory-print .inventoryPrintable .tablewrap{overflow:visible!important}
   body.inventory-print .inventoryPrintable table{min-width:0!important}
 }
+
+
+/* Protected invoice editing */
+.invoiceDetailActions #editSupplierInvoice,.invoiceDetailActions #editCustomerInvoice{background:#eef5ff;border-color:#c9daf5;color:#2459a8;font-weight:900}

@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let model=null,currentView='dashboard',optionCache={};
+let model=null,currentView='dashboard',optionCache={},invoiceEditContext=null;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 const money=v=>'PKR '+Number(v||0).toLocaleString('en-PK',{maximumFractionDigits:0});
 const date=v=>v?String(v).slice(0,10):'—';
@@ -199,7 +199,7 @@ async function openSupplierInvoiceDetail(row){
   const grnStatus=String(row.grn_status||'').toLowerCase(),payStatus=String(row.status||'unpaid').toLowerCase();
   const canCancel=payStatus!=='cancelled'&&model.subscription.access_mode==='write';
   $('workspaceBody').innerHTML=
-    '<div class="detailToolbar invoiceDetailActions"><button id="backToInvoices" class="secondary">← Back</button><div><span class="grnPill '+esc(grnStatus)+'">'+esc(grnStatus==='not_itemized'?'Not Itemized':grnStatus)+'</span><span class="invoiceStatus '+esc(payStatus)+'">'+esc(payStatus)+'</span><button id="printSupplierInvoice" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="cancelSupplierInvoice" class="dangerAction">Cancel Invoice</button>':'')+'</div></div>'+
+    '<div class="detailToolbar invoiceDetailActions"><button id="backToInvoices" class="secondary">← Back</button><div><span class="grnPill '+esc(grnStatus)+'">'+esc(grnStatus==='not_itemized'?'Not Itemized':grnStatus)+'</span><span class="invoiceStatus '+esc(payStatus)+'">'+esc(payStatus)+'</span><button id="printSupplierInvoice" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="editSupplierInvoice" class="secondary">Edit Invoice</button><button id="cancelSupplierInvoice" class="dangerAction">Cancel Invoice</button>':'')+'</div></div>'+
     '<div id="invoicePrintable" class="card invoiceDetailCard invoicePrintable">'+
       '<div class="invoicePrintTitle"><div><span class="capEyebrow">SUPPLIER INVOICE</span><h2>'+esc(model.company.name)+'</h2><p>'+esc(row.business_name)+'</p></div><div><b>'+esc(row.invoice_number)+'</b><span>'+date(row.invoice_date)+'</span></div></div>'+
       '<div class="invoiceDetailHead"><div><span>Supplier</span><b>'+esc(row.business_name)+'</b></div><div><span>Invoice</span><b>'+esc(row.invoice_number)+'</b></div><div><span>Date</span><b>'+date(row.invoice_date)+'</b></div><div><span>Amount</span><b>'+money(row.amount)+'</b></div></div>'+
@@ -210,6 +210,7 @@ async function openSupplierInvoiceDetail(row){
     '</div>';
   $('backToInvoices').onclick=()=>show('supplier-bills');
   $('printSupplierInvoice').onclick=()=>{document.body.classList.add('invoice-print');window.print();setTimeout(()=>document.body.classList.remove('invoice-print'),500)};
+  if($('editSupplierInvoice'))$('editSupplierInvoice').onclick=()=>openSupplierInvoiceForm({row,items}).catch(e=>alert(e.message));
   if($('cancelSupplierInvoice'))$('cancelSupplierInvoice').onclick=async()=>{
     if(!confirm('Cancel this supplier invoice? GRN ya allocated payment ho to system cancellation block karega.'))return;
     try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancel_supplier_invoice',invoice_id:row.id})});optionCache={};await show('supplier-bills')}
@@ -262,12 +263,13 @@ async function renderField([name,label,type]){
 function productOptionsHtml(products){
   return '<option value="">Select Product</option>'+products.map(p=>'<option value="'+p.id+'" data-price="'+Number(p.purchase_price||0)+'">'+esc(p.product_name)+' · '+esc(p.sku||'')+'</option>').join('');
 }
-function supplierInvoiceItemRow(products){
+function supplierInvoiceItemRow(products,item=null){
+  const options='<option value="">Select Product</option>'+products.map(p=>'<option value="'+p.id+'" data-price="'+Number(p.purchase_price||0)+'" '+(item&&Number(p.id)===Number(item.product_id)?'selected':'')+'>'+esc(p.product_name)+' · '+esc(p.sku||'')+'</option>').join('');
   return '<div class="lineItem invoiceLine">'+
-    '<label>Product<select class="lineProduct" required>'+productOptionsHtml(products)+'</select></label>'+
-    '<label>Quantity<input class="lineQty" type="number" min="0.001" step="0.001" value="1" required></label>'+
-    '<label>Purchase Price<input class="linePrice" type="number" min="0" step="0.01" value="0" required></label>'+
-    '<label>Description<input class="lineDescription" type="text" placeholder="Optional"></label>'+
+    '<label>Product<select class="lineProduct" required>'+options+'</select></label>'+
+    '<label>Quantity<input class="lineQty" type="number" min="0.001" step="0.001" value="'+esc(item?.quantity??1)+'" required></label>'+
+    '<label>Purchase Price<input class="linePrice" type="number" min="0" step="0.01" value="'+esc(item?.unit_price??0)+'" required></label>'+
+    '<label>Description<input class="lineDescription" type="text" value="'+esc(item?.description||'')+'" placeholder="Optional"></label>'+
     '<button type="button" class="removeLine secondary">×</button>'+
   '</div>';
 }
@@ -283,12 +285,13 @@ function updateInvoiceTotal(){
   const total=rows.reduce((n,row)=>n+Number(row.querySelector('.lineQty')?.value||0)*Number(row.querySelector('.linePrice')?.value||0),0);
   const el=$('invoiceTotal');if(el)el.textContent=money(total);
 }
-function customerInvoiceItemRow(products){
+function customerInvoiceItemRow(products,item=null){
+  const options='<option value="">Select Product</option>'+products.map(p=>'<option value="'+p.id+'" '+(item&&Number(p.id)===Number(item.product_id)?'selected':'')+'>'+esc(p.product_name)+' · '+esc(p.sku||'')+'</option>').join('');
   return '<div class="lineItem customerInvoiceLine">'+
-    '<label>Product<select class="customerLineProduct" required>'+productOptionsHtml(products)+'</select></label>'+
-    '<label>Quantity<input class="customerLineQty" type="number" min="0.001" step="0.001" value="1" required></label>'+
-    '<label>Sale Price<input class="customerLinePrice" type="number" min="0" step="0.01" value="0" required></label>'+
-    '<label>Description<input class="customerLineDescription" type="text" placeholder="Optional"></label>'+
+    '<label>Product<select class="customerLineProduct" required>'+options+'</select></label>'+
+    '<label>Quantity<input class="customerLineQty" type="number" min="0.001" step="0.001" value="'+esc(item?.quantity??1)+'" required></label>'+
+    '<label>Sale Price<input class="customerLinePrice" type="number" min="0" step="0.01" value="'+esc(item?.unit_price??0)+'" required></label>'+
+    '<label>Description<input class="customerLineDescription" type="text" value="'+esc(item?.description||'')+'" placeholder="Optional"></label>'+
     '<button type="button" class="removeLine secondary">×</button>'+
   '</div>';
 }
@@ -297,24 +300,25 @@ function updateCustomerInvoiceTotal(){
   const total=rows.reduce((n,row)=>n+Number(row.querySelector('.customerLineQty')?.value||0)*Number(row.querySelector('.customerLinePrice')?.value||0),0);
   const el=$('customerInvoiceTotal');if(el)el.textContent=money(total);
 }
-async function openCustomerInvoiceForm(){
+async function openCustomerInvoiceForm(edit=null){
   const [customers,warehouses]=await Promise.all([partyOptions('client'),partyOptions('warehouse')]);
   const products=optionCache.products||(await json('/api/bizora-company?action=products')).records||[];optionCache.products=products;
-  const today=new Date().toISOString().slice(0,10);
-  $('recordTitle').textContent='Add Customer Invoice';
-  $('recordHint').textContent='Product-wise sales invoice · '+model.company.name;
+  const today=new Date().toISOString().slice(0,10),row=edit?.row||null,existing=edit?.items||[];
+  invoiceEditContext=row?{type:'client',action:'update_client_invoice',invoice_id:row.id}:null;
+  $('recordTitle').textContent=row?'Edit Customer Invoice':'Add Customer Invoice';
+  $('recordHint').textContent=(row?'Protected product-wise edit · ':'Product-wise sales invoice · ')+model.company.name;
   $('recordFields').innerHTML=
     '<div class="formGrid">'+
-      '<label>Customer<select name="client_id" required><option value="">Select Customer</option>'+customers.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'+
-      '<label>Invoice Number<input name="invoice_number" required></label>'+
-      '<label>Warehouse<select name="warehouse_id" required><option value="">Select Warehouse</option>'+warehouses.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'+
-      '<label>Invoice Date<input name="invoice_date" type="date" value="'+today+'" required></label>'+
-      '<label>Due Date<input name="due_date" type="date" value="'+today+'"></label>'+
+      '<label>Customer<select name="client_id" required><option value="">Select Customer</option>'+customers.map(o=>'<option value="'+o.value+'" '+(row&&Number(o.value)===Number(row.client_id)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select></label>'+
+      '<label>Invoice Number<input name="invoice_number" value="'+esc(row?.invoice_number||'')+'" required></label>'+
+      '<label>Warehouse<select name="warehouse_id" required><option value="">Select Warehouse</option>'+warehouses.map(o=>'<option value="'+o.value+'" '+(row&&String(o.label).startsWith(String(row.warehouse_name||''))?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select></label>'+
+      '<label>Invoice Date<input name="invoice_date" type="date" value="'+date(row?.invoice_date||today)+'" required></label>'+
+      '<label>Due Date<input name="due_date" type="date" value="'+(row?.due_date?date(row.due_date):today)+'"></label>'+
     '</div>'+
     '<div class="lineHead"><div><b>Invoice Products</b><small>Sale price can be changed per invoice</small></div><button id="addCustomerInvoiceLine" type="button" class="secondary">+ Add Product</button></div>'+
-    '<div id="customerInvoiceItems" class="lineItems">'+customerInvoiceItemRow(products)+'</div>'+
+    '<div id="customerInvoiceItems" class="lineItems">'+(existing.length?existing.map(x=>customerInvoiceItemRow(products,x)).join(''):customerInvoiceItemRow(products))+'</div>'+
     '<div class="invoiceTotalBox"><span>Invoice Total</span><b id="customerInvoiceTotal">PKR 0</b></div>'+
-    '<label>Notes<textarea name="notes"></textarea></label>';
+    '<label>Notes<textarea name="notes">'+esc(row?.notes||'')+'</textarea></label>';
   const holder=$('customerInvoiceItems');
   holder.onclick=e=>{if(e.target.closest('.removeLine')){const rows=holder.querySelectorAll('.customerInvoiceLine');if(rows.length>1)e.target.closest('.customerInvoiceLine').remove();updateCustomerInvoiceTotal()}};
   holder.onchange=e=>{if(e.target.classList.contains('customerLineProduct')){const opt=e.target.selectedOptions[0],row=e.target.closest('.customerInvoiceLine');const product=products.find(p=>String(p.id)===String(opt?.value));row.querySelector('.customerLinePrice').value=Number(product?.sale_price||0);updateCustomerInvoiceTotal()}};
@@ -329,7 +333,7 @@ async function openCustomerInvoiceDetail(row){
   const data=await json('/api/bizora-company?action=client_invoice_items&invoice_id='+row.id),items=data.records||[],payStatus=String(row.status||'unpaid').toLowerCase();
   const canCancel=payStatus!=='cancelled'&&model.subscription.access_mode==='write';
   $('workspaceBody').innerHTML=
-    '<div class="detailToolbar invoiceDetailActions"><button id="backToCustomerInvoices" class="secondary">← Back</button><div><span class="invoiceStatus '+esc(payStatus)+'">'+esc(payStatus)+'</span><button id="printCustomerInvoice" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="cancelCustomerInvoice" class="dangerAction">Cancel Invoice</button>':'')+'</div></div>'+
+    '<div class="detailToolbar invoiceDetailActions"><button id="backToCustomerInvoices" class="secondary">← Back</button><div><span class="invoiceStatus '+esc(payStatus)+'">'+esc(payStatus)+'</span><button id="printCustomerInvoice" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="editCustomerInvoice" class="secondary">Edit Invoice</button><button id="cancelCustomerInvoice" class="dangerAction">Cancel Invoice</button>':'')+'</div></div>'+
     '<div id="invoicePrintable" class="card invoiceDetailCard invoicePrintable">'+
       '<div class="invoicePrintTitle"><div><span class="capEyebrow">CUSTOMER INVOICE</span><h2>'+esc(model.company.name)+'</h2><p>'+esc(row.business_name)+'</p></div><div><b>'+esc(row.invoice_number)+'</b><span>'+date(row.invoice_date)+'</span></div></div>'+
       '<div class="invoiceDetailHead"><div><span>Customer</span><b>'+esc(row.business_name)+'</b></div><div><span>Invoice</span><b>'+esc(row.invoice_number)+'</b></div><div><span>Warehouse</span><b>'+esc(row.warehouse_name||'—')+'</b></div><div><span>Amount</span><b>'+money(row.amount)+'</b></div></div>'+
@@ -340,6 +344,7 @@ async function openCustomerInvoiceDetail(row){
     '</div>';
   $('backToCustomerInvoices').onclick=()=>show('client-bills');
   $('printCustomerInvoice').onclick=()=>{document.body.classList.add('invoice-print');window.print();setTimeout(()=>document.body.classList.remove('invoice-print'),500)};
+  if($('editCustomerInvoice'))$('editCustomerInvoice').onclick=()=>openCustomerInvoiceForm({row,items}).catch(e=>alert(e.message));
   if($('cancelCustomerInvoice'))$('cancelCustomerInvoice').onclick=async()=>{
     if(!confirm('Cancel this customer invoice? Allocated payment ho to cancellation block hogi. Stock sale hui ho to system automatically restore karega.'))return;
     try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'cancel_client_invoice',invoice_id:row.id})});optionCache={};await show('client-bills')}
@@ -870,22 +875,23 @@ async function openPartyStatement(kind){
       '</tbody></table></div>';
   };
 }
-async function openSupplierInvoiceForm(){
+async function openSupplierInvoiceForm(edit=null){
   const [suppliers,products]=await Promise.all([partyOptions('supplier'),partyOptions('product').then(async()=>optionCache.products||[])]);
-  const today=new Date().toISOString().slice(0,10),productRows=optionCache.products||[];
-  $('recordTitle').textContent='Add Supplier Invoice';
-  $('recordHint').textContent='Product-wise invoice · '+model.company.name;
+  const today=new Date().toISOString().slice(0,10),productRows=optionCache.products||[],row=edit?.row||null,existing=edit?.items||[];
+  invoiceEditContext=row?{type:'supplier',action:'update_supplier_invoice',invoice_id:row.id}:null;
+  $('recordTitle').textContent=row?'Edit Supplier Invoice':'Add Supplier Invoice';
+  $('recordHint').textContent=(row?'Protected product-wise edit · ':'Product-wise invoice · ')+model.company.name;
   $('recordFields').innerHTML=
     '<div class="formGrid">'+
-      '<label>Supplier<select name="supplier_id" required><option value="">Select Supplier</option>'+suppliers.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'+
-      '<label>Invoice Number<input name="invoice_number" required></label>'+
-      '<label>Invoice Date<input name="invoice_date" type="date" value="'+today+'" required></label>'+
-      '<label>Due Date<input name="due_date" type="date" value="'+today+'"></label>'+
+      '<label>Supplier<select name="supplier_id" required><option value="">Select Supplier</option>'+suppliers.map(o=>'<option value="'+o.value+'" '+(row&&Number(o.value)===Number(row.supplier_id)?'selected':'')+'>'+esc(o.label)+'</option>').join('')+'</select></label>'+
+      '<label>Invoice Number<input name="invoice_number" value="'+esc(row?.invoice_number||'')+'" required></label>'+
+      '<label>Invoice Date<input name="invoice_date" type="date" value="'+date(row?.invoice_date||today)+'" required></label>'+
+      '<label>Due Date<input name="due_date" type="date" value="'+(row?.due_date?date(row.due_date):today)+'"></label>'+
     '</div>'+
     '<div class="lineHead"><div><b>Invoice Products</b><small>Add one or more products</small></div><button id="addInvoiceLine" type="button" class="secondary">+ Add Product</button></div>'+
-    '<div id="invoiceItems" class="lineItems">'+supplierInvoiceItemRow(productRows)+'</div>'+
+    '<div id="invoiceItems" class="lineItems">'+(existing.length?existing.map(x=>supplierInvoiceItemRow(productRows,x)).join(''):supplierInvoiceItemRow(productRows))+'</div>'+
     '<div class="invoiceTotalBox"><span>Invoice Total</span><b id="invoiceTotal">PKR 0</b></div>'+
-    '<label>Notes<textarea name="notes"></textarea></label>';
+    '<label>Notes<textarea name="notes">'+esc(row?.notes||'')+'</textarea></label>';
   wireInvoiceLines(productRows);updateInvoiceTotal();$('recordDialog').showModal();
 }
 async function openGrnForm(){
@@ -935,8 +941,8 @@ async function openAdjustmentForm(){
 }
 async function openForm(){
   const d=defs[currentView];if(!d)return;
-  if(currentView==='supplier-bills')return openSupplierInvoiceForm();
-  if(currentView==='client-bills')return openCustomerInvoiceForm();
+  if(currentView==='supplier-bills'){invoiceEditContext=null;return openSupplierInvoiceForm()}
+  if(currentView==='client-bills'){invoiceEditContext=null;return openCustomerInvoiceForm()}
   if(currentView==='supplier-payments')return openPaymentForm('supplier');
   if(currentView==='client-payments')return openPaymentForm('client');
   if(currentView==='grns')return openGrnForm();
@@ -954,7 +960,7 @@ const closeMenu=()=>{$('workspaceNav').classList.remove('open');$('navBackdrop')
 $('menuToggle').onclick=openMenu;$('closeMenu').onclick=closeMenu;$('navBackdrop').onclick=closeMenu;
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu()});
 $('workspaceNav').onclick=e=>{const b=e.target.closest('[data-view]');if(b){closeMenu();show(b.dataset.view).catch(err=>$('workspaceBody').innerHTML='<div class="card error">'+esc(err.message)+'</div>')}};
-$('addRecord').onclick=()=>openForm().catch(err=>alert(err.message));$('closeRecord').onclick=$('cancelRecord').onclick=()=>$('recordDialog').close();
+$('addRecord').onclick=()=>openForm().catch(err=>alert(err.message));$('closeRecord').onclick=$('cancelRecord').onclick=()=>{invoiceEditContext=null;$('recordDialog').close()};
 $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],btn=$('saveRecord');btn.disabled=true;btn.textContent='Saving…';try{
   const data=Object.fromEntries(new FormData(e.currentTarget));
   if(currentView==='supplier-bills'){
@@ -992,8 +998,10 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
     data.items=[...document.querySelectorAll('#transferItems .transferLine')].map(row=>({product_id:Number(row.querySelector('.transferProduct').value||0),quantity:Number(row.querySelector('.transferQty').value||0),unit_cost:Number(row.querySelector('.transferCost').value||0),notes:row.querySelector('.transferNotes').value||''}));
     if(!data.items.length||data.items.some(x=>!x.product_id||x.quantity<=0||x.unit_cost<0))throw new Error('Valid transfer products required');
   }
-  await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:d.create,...data})});
-  $('recordDialog').close();e.currentTarget.reset();optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
+  const saveAction=invoiceEditContext?.action||d.create;
+  if(invoiceEditContext?.invoice_id)data.invoice_id=invoiceEditContext.invoice_id;
+  await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:saveAction,...data})});
+  $('recordDialog').close();e.currentTarget.reset();invoiceEditContext=null;optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
 (async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});

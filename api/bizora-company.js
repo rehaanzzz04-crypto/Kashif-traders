@@ -41,9 +41,9 @@ export default async function handler(req,res){
     const featureByAction={
       users:'core_erp',create_user:'core_erp',set_user_status:'core_erp',
       suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_invoice_items:'supplier_management',supplier_payments:'supplier_management',supplier_payment_detail:'supplier_management',supplier_statement:'supplier_management',
-      create_supplier:'supplier_management',update_supplier:'supplier_management',set_supplier_status:'supplier_management',create_supplier_invoice:'supplier_management',cancel_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',cancel_supplier_payment:'supplier_management',
+      create_supplier:'supplier_management',update_supplier:'supplier_management',set_supplier_status:'supplier_management',create_supplier_invoice:'supplier_management',update_supplier_invoice:'supplier_management',cancel_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',cancel_supplier_payment:'supplier_management',
       clients:'customer_management',client_invoices:'customer_management',client_invoice_items:'customer_management',client_receipts:'customer_management',client_receipt_detail:'customer_management',client_statement:'customer_management',
-      create_client:'customer_management',update_client:'customer_management',set_client_status:'customer_management',create_client_invoice:'customer_management',cancel_client_invoice:'customer_management',create_client_receipt:'customer_management',cancel_client_receipt:'customer_management',
+      create_client:'customer_management',update_client:'customer_management',set_client_status:'customer_management',create_client_invoice:'customer_management',update_client_invoice:'customer_management',cancel_client_invoice:'customer_management',create_client_receipt:'customer_management',cancel_client_receipt:'customer_management',
       products:'products',create_product:'products',update_product:'products',set_product_status:'products',
       warehouses:'warehouses',create_warehouse:'warehouses',update_warehouse:'warehouses',set_warehouse_status:'warehouses',
       grns:'grn',grn_detail:'grn',create_grn:'grn',cancel_grn:'grn',
@@ -781,6 +781,40 @@ export default async function handler(req,res){
       return res.status(200).json({record:rows[0]});
     }
 
+    if(req.method==='POST'&&action==='update_supplier_invoice'){
+      const invoiceId=positiveInt(b.invoice_id,0),supplierId=positiveInt(b.supplier_id,0),invoiceNumber=clean(b.invoice_number),invoiceDate=clean(b.invoice_date)||new Date().toISOString().slice(0,10),dueDate=clean(b.due_date)||null;
+      const items=Array.isArray(b.items)?b.items.map(x=>({product_id:positiveInt(x.product_id,0),description:clean(x.description)||null,quantity:number(x.quantity),unit_price:number(x.unit_price)})):[];
+      if(!invoiceId||!supplierId||!invoiceNumber||!items.length)return res.status(400).json({error:'Supplier, invoice number and products required'});
+      if(items.some(x=>!x.product_id||x.quantity<=0||x.unit_price<0))return res.status(400).json({error:'Valid product, quantity and purchase price required'});
+      const inv=await sql`SELECT id,supplier_id,status FROM erp_supplier_invoices WHERE id=${invoiceId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!inv[0])return res.status(404).json({error:'Supplier invoice not found'});
+      if(inv[0].status==='cancelled')return res.status(409).json({error:'Cancelled invoice cannot be edited'});
+      const deps=await sql`SELECT
+        EXISTS(SELECT 1 FROM erp_grns WHERE company_id=${u.company_id} AND supplier_invoice_id=${invoiceId} AND status='posted') has_grn,
+        EXISTS(SELECT 1 FROM erp_supplier_payment_allocations WHERE company_id=${u.company_id} AND supplier_invoice_id=${invoiceId}) has_payment,
+        EXISTS(SELECT 1 FROM erp_supplier_returns WHERE company_id=${u.company_id} AND supplier_invoice_id=${invoiceId} AND status='posted') has_return`;
+      if(deps[0]?.has_grn)return res.status(409).json({error:'Invoice products cannot be edited after GRN/stock receiving'});
+      if(deps[0]?.has_payment)return res.status(409).json({error:'Invoice cannot be edited after payment allocation'});
+      if(deps[0]?.has_return)return res.status(409).json({error:'Invoice cannot be edited after supplier return'});
+      const supplier=await sql`SELECT id FROM erp_suppliers WHERE id=${supplierId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!supplier[0])return res.status(400).json({error:'Valid supplier required'});
+      for(const item of items){
+        const p=await sql`SELECT id FROM erp_products WHERE id=${item.product_id} AND company_id=${u.company_id} LIMIT 1`;
+        if(!p[0])return res.status(400).json({error:'One or more invoice products are invalid'});
+      }
+      const duplicate=await sql`SELECT id FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND supplier_id=${supplierId} AND invoice_number=${invoiceNumber} AND id<>${invoiceId} LIMIT 1`;
+      if(duplicate[0])return res.status(409).json({error:'Supplier invoice number already exists'});
+      const amount=Number(items.reduce((n,x)=>n+x.quantity*x.unit_price,0).toFixed(2));
+      await sql`UPDATE erp_supplier_invoices SET supplier_id=${supplierId},invoice_number=${invoiceNumber},invoice_date=${invoiceDate}::date,due_date=${dueDate}::date,amount=${amount},status='unpaid',notes=${clean(b.notes)||null},updated_at=now()
+        WHERE id=${invoiceId} AND company_id=${u.company_id}`;
+      await sql`DELETE FROM erp_supplier_invoice_items WHERE company_id=${u.company_id} AND supplier_invoice_id=${invoiceId}`;
+      for(const item of items)await sql`INSERT INTO erp_supplier_invoice_items(company_id,supplier_invoice_id,product_id,description,quantity,unit_price)
+        VALUES(${u.company_id},${invoiceId},${item.product_id},${item.description},${item.quantity},${item.unit_price})`;
+      await companyAudit(sql,u,'SUPPLIER_INVOICE_UPDATED',{entityType:'supplier_invoice',entityId:String(invoiceId),metadata:{amount,item_count:items.length}});
+      const rows=await sql`SELECT * FROM erp_supplier_invoices WHERE id=${invoiceId} AND company_id=${u.company_id}`;
+      return res.status(200).json({record:rows[0]});
+    }
+
     if(req.method==='POST'&&action==='create_supplier_invoice'){
       const supplierId=positiveInt(b.supplier_id,0),invoiceNumber=clean(b.invoice_number),invoiceDate=clean(b.invoice_date)||new Date().toISOString().slice(0,10),dueDate=clean(b.due_date)||null;
       const items=Array.isArray(b.items)?b.items.map(x=>({product_id:positiveInt(x.product_id,0),description:clean(x.description)||null,quantity:number(x.quantity),unit_price:number(x.unit_price)})):[];
@@ -922,6 +956,72 @@ export default async function handler(req,res){
       }
       const rows=await sql`UPDATE erp_client_invoices SET status='cancelled',updated_at=now() WHERE id=${invoiceId} AND company_id=${u.company_id} RETURNING *`;
       await companyAudit(sql,u,'CLIENT_INVOICE_CANCELLED',{entityType:'client_invoice',entityId:String(invoiceId),metadata:{invoice_number:inv[0].invoice_number,stock_groups_restored:sold.length}});
+      return res.status(200).json({record:rows[0]});
+    }
+
+    if(req.method==='POST'&&action==='update_client_invoice'){
+      const invoiceId=positiveInt(b.invoice_id,0),clientId=positiveInt(b.client_id,0),warehouseId=positiveInt(b.warehouse_id,0),invoiceNumber=clean(b.invoice_number),invoiceDate=clean(b.invoice_date)||new Date().toISOString().slice(0,10),dueDate=clean(b.due_date)||null;
+      const items=Array.isArray(b.items)?b.items.map(x=>({product_id:positiveInt(x.product_id,0),description:clean(x.description)||null,quantity:number(x.quantity),unit_price:number(x.unit_price)})):[];
+      if(!invoiceId||!clientId||!warehouseId||!invoiceNumber||!items.length)return res.status(400).json({error:'Customer, warehouse, invoice number and products required'});
+      if(items.some(x=>!x.product_id||x.quantity<=0||x.unit_price<0))return res.status(400).json({error:'Valid product, quantity and sale price required'});
+      const inv=await sql`SELECT id,client_id,warehouse_id,invoice_number,status FROM erp_client_invoices WHERE id=${invoiceId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!inv[0])return res.status(404).json({error:'Customer invoice not found'});
+      if(inv[0].status==='cancelled')return res.status(409).json({error:'Cancelled invoice cannot be edited'});
+      const deps=await sql`SELECT
+        EXISTS(SELECT 1 FROM erp_client_receipt_allocations WHERE company_id=${u.company_id} AND client_invoice_id=${invoiceId}) has_payment,
+        EXISTS(SELECT 1 FROM erp_client_returns WHERE company_id=${u.company_id} AND client_invoice_id=${invoiceId} AND status='posted') has_return`;
+      if(deps[0]?.has_payment)return res.status(409).json({error:'Invoice cannot be edited after payment allocation'});
+      if(deps[0]?.has_return)return res.status(409).json({error:'Invoice cannot be edited after customer return'});
+      const client=await sql`SELECT id FROM erp_clients WHERE id=${clientId} AND company_id=${u.company_id} LIMIT 1`;
+      const wh=await sql`SELECT id FROM erp_warehouses WHERE id=${warehouseId} AND company_id=${u.company_id} AND active=true LIMIT 1`;
+      if(!client[0]||!wh[0])return res.status(400).json({error:'Valid customer and active warehouse required'});
+      const duplicate=await sql`SELECT id FROM erp_client_invoices WHERE company_id=${u.company_id} AND invoice_number=${invoiceNumber} AND id<>${invoiceId} LIMIT 1`;
+      if(duplicate[0])return res.status(409).json({error:'Customer invoice number already exists'});
+      const oldItems=await sql`SELECT product_id,warehouse_id,quantity,unit_cost FROM erp_client_invoice_items WHERE company_id=${u.company_id} AND client_invoice_id=${invoiceId}`;
+      const hadStock=await sql`SELECT EXISTS(SELECT 1 FROM erp_inventory_movements WHERE company_id=${u.company_id} AND reference_type='CUSTOMER_INVOICE' AND reference_id=${invoiceId} AND movement_type='SALE') has_stock`;
+      const prepared=[];
+      for(const item of items){
+        const p=await sql`SELECT id,purchase_price FROM erp_products WHERE id=${item.product_id} AND company_id=${u.company_id} LIMIT 1`;
+        if(!p[0])return res.status(400).json({error:'One or more invoice products are invalid'});
+        prepared.push({...item,unit_cost:number(p[0].purchase_price)});
+      }
+      const oldMap=new Map(),newMap=new Map();
+      for(const x of oldItems){
+        const key=String(x.warehouse_id)+':'+String(x.product_id),v=oldMap.get(key)||{warehouse_id:positiveInt(x.warehouse_id,0),product_id:positiveInt(x.product_id,0),quantity:0,unit_cost:number(x.unit_cost)};
+        v.quantity+=number(x.quantity);oldMap.set(key,v);
+      }
+      for(const x of prepared){
+        const key=String(warehouseId)+':'+String(x.product_id),v=newMap.get(key)||{warehouse_id:warehouseId,product_id:x.product_id,quantity:0,unit_cost:x.unit_cost};
+        v.quantity+=x.quantity;v.unit_cost=x.unit_cost;newMap.set(key,v);
+      }
+      if(hadStock[0]?.has_stock){
+        for(const [key,nv] of newMap){
+          const ov=oldMap.get(key),delta=nv.quantity-number(ov?.quantity||0);
+          if(delta>0.000001){
+            const stock=await sql`SELECT COALESCE(SUM(qty_in-qty_out),0)::numeric quantity FROM erp_inventory_movements WHERE company_id=${u.company_id} AND warehouse_id=${nv.warehouse_id} AND product_id=${nv.product_id}`;
+            if(number(stock[0]?.quantity)+0.000001<delta)return res.status(409).json({error:'Insufficient warehouse stock for updated invoice quantities'});
+          }
+        }
+      }
+      const amount=Number(prepared.reduce((n,x)=>n+x.quantity*x.unit_price,0).toFixed(2));
+      await sql`UPDATE erp_client_invoices SET client_id=${clientId},warehouse_id=${warehouseId},invoice_number=${invoiceNumber},invoice_date=${invoiceDate}::date,due_date=${dueDate}::date,amount=${amount},status='unpaid',notes=${clean(b.notes)||null},updated_at=now()
+        WHERE id=${invoiceId} AND company_id=${u.company_id}`;
+      await sql`DELETE FROM erp_client_invoice_items WHERE company_id=${u.company_id} AND client_invoice_id=${invoiceId}`;
+      for(const item of prepared)await sql`INSERT INTO erp_client_invoice_items(company_id,client_invoice_id,product_id,warehouse_id,description,quantity,unit_price,unit_cost)
+        VALUES(${u.company_id},${invoiceId},${item.product_id},${warehouseId},${item.description},${item.quantity},${item.unit_price},${item.unit_cost})`;
+      if(hadStock[0]?.has_stock){
+        const keys=new Set([...oldMap.keys(),...newMap.keys()]);
+        for(const key of keys){
+          const ov=oldMap.get(key),nv=newMap.get(key),delta=number(nv?.quantity||0)-number(ov?.quantity||0);
+          if(Math.abs(delta)<=0.000001)continue;
+          const refCost=delta>0?number(nv?.unit_cost):number(ov?.unit_cost),warehouse=positiveInt((nv||ov).warehouse_id,0),product=positiveInt((nv||ov).product_id,0);
+          await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+            VALUES(${u.company_id},${product},${warehouse},${delta>0?'SALE':'RETURN_IN'},${delta<0?Math.abs(delta):0},${delta>0?delta:0},${refCost},'CUSTOMER_INVOICE_EDIT',${invoiceId},${invoiceNumber},'Stock correction after invoice edit',${u.id})`;
+        }
+        await sql`UPDATE erp_inventory_movements SET reference_number=${invoiceNumber} WHERE company_id=${u.company_id} AND reference_type='CUSTOMER_INVOICE' AND reference_id=${invoiceId}`;
+      }
+      await companyAudit(sql,u,'CLIENT_INVOICE_UPDATED',{entityType:'client_invoice',entityId:String(invoiceId),metadata:{amount,item_count:prepared.length,warehouse_id:warehouseId,stock_corrected:hadStock[0]?.has_stock===true}});
+      const rows=await sql`SELECT * FROM erp_client_invoices WHERE id=${invoiceId} AND company_id=${u.company_id}`;
       return res.status(200).json({record:rows[0]});
     }
 
