@@ -1,4 +1,4 @@
-import { bizoraSql,ensureBizoraSchema,requireCompanyUser,body,clean,positiveInt,companyAudit,hashPassword } from './_bizora-core.js';
+import { bizoraSql,ensureBizoraSchema,requireCompanyUser,requireFeature,body,clean,positiveInt,companyAudit,hashPassword } from './_bizora-core.js';
 
 const code=v=>clean(v).toUpperCase().replace(/[^A-Z0-9_-]/g,'').slice(0,30);
 const number=v=>Number.isFinite(Number(v))?Number(v):0;
@@ -31,6 +31,18 @@ export default async function handler(req,res){
     const b=body(req),action=clean(req.query?.action||b.action||'overview');
     const write=req.method!=='GET';
     const u=await requireCompanyUser(sql,req,res,{write});if(!u)return;
+
+    const featureByAction={
+      users:'core_erp',create_user:'core_erp',set_user_status:'core_erp',
+      suppliers:'supplier_management',supplier_invoices:'supplier_management',supplier_payments:'supplier_management',
+      create_supplier:'supplier_management',create_supplier_invoice:'supplier_management',create_supplier_payment:'supplier_management',
+      clients:'customer_management',client_invoices:'customer_management',client_receipts:'customer_management',
+      create_client:'customer_management',create_client_invoice:'customer_management',create_client_receipt:'customer_management',
+      products:'products',create_product:'products',
+      warehouses:'warehouses',create_warehouse:'warehouses'
+    };
+    const requiredFeature=featureByAction[action];
+    if(requiredFeature&&!requireFeature(u,res,requiredFeature))return;
 
     if(req.method==='GET'&&action==='overview')return res.status(200).json(await overview(sql,u));
 
