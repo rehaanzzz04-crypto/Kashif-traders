@@ -11,3 +11,43 @@ dialog{width:min(560px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflo
 @media(max-width:900px){.topbar{grid-template-columns:48px 135px minmax(0,1fr) auto}.badge{display:none}.hero h1{font-size:40px}.subgrid{grid-template-columns:1fr 1fr}.subgrid div{border-bottom:1px solid #214996}}
 @media(max-width:620px){.topbar{grid-template-columns:44px 108px minmax(0,1fr) auto;gap:7px;padding:9px 10px}.topbar>.bizora-logo{width:108px;height:42px}.companyHead{padding-left:8px}.companyHead strong{font-size:15px}.companyHead span{font-size:8px}.toplogout{font-size:12px;padding:7px 9px}.menubtn{width:42px;padding:0}.shell{padding:10px}.hero{padding:24px 20px;border-radius:22px}.hero h1{font-size:36px}.hero p{font-size:15px}.stats{grid-template-columns:1fr 1fr;gap:10px}.stat{min-height:120px;padding:18px 36px 16px 72px}.statIcon{left:14px;top:28px;width:46px;height:46px}.statIcon svg{width:25px;height:25px}.stat small{font-size:12px}.stat b{font-size:28px}.statChevron{right:12px}.card{padding:15px}.subgrid{grid-template-columns:1fr 1fr}.subgrid b{font-size:16px}dialog{width:calc(100vw - 12px);max-width:none;border-radius:17px}.actions{position:sticky;bottom:0;margin:14px -20px -20px;padding:10px 20px;background:#07143a;border-top:1px solid #1d397c}}
 @media(max-width:420px){.topbar{grid-template-columns:42px 88px minmax(0,1fr) auto}.topbar>.bizora-logo{width:88px}.companyHead strong{font-size:13px}.stats{grid-template-columns:1fr}.stat.wide{grid-column:auto}}
+
+
+/* FINAL APPROVED LIGHT BIZORA COMPANY THEME */
+:root{--page:#f5f7fb;--ink2:#101828;--muted3:#667085;--line2:#dce6f2}
+body{background:linear-gradient(180deg,#f8fbff,#f4f7fb)!important;color:var(--ink2)!important}
+.topbar{background:linear-gradient(90deg,#071735,#0b1d4d)!important;border-bottom:1px solid #163b84!important;box-shadow:0 8px 26px rgba(16,37,86,.18)!important}
+.menubtn,.toplogout{background:#0c1d48!important;border:1px solid #426ed2!important;color:#fff!important}.badge{background:#10265a!important;border-color:#365db2!important;color:#dbe8ff!important}
+.companyHead strong{color:#fff!important}.companyHead span{color:#b6c7e8!important}
+.shell{max-width:1180px!important}
+.hero{background:linear-gradient(135deg,#fff 0%,#f7fbff 55%,#dbeeff 100%)!important;border:1px solid #b9d8ff!important;box-shadow:0 16px 42px rgba(37,87,145,.13)!important;color:#101828!important;align-items:center!important}
+.hero:after{border-color:#8bc4ff55!important}.eyebrow{color:#1d73df!important}.hero h1{color:#0c1738!important}.hero p{color:#5c6b89!important}
+.heroCopy{position:relative;z-index:2;max-width:650px}.heroArt{position:relative;z-index:2;display:grid;place-items:center;min-height:230px}
+.cityArt{position:relative;width:270px;height:210px}
+.artHalo{position:absolute;inset:4px;border-radius:50%;background:radial-gradient(circle at 55% 45%,rgba(50,149,255,.26),rgba(111,91,255,.08) 46%,transparent 70%)}
+.building{position:absolute;bottom:30px;border-radius:10px 10px 4px 4px;background:linear-gradient(145deg,#f7fbff,#95caff);box-shadow:0 12px 24px rgba(44,110,195,.18);border:1px solid #b5dbff}.building i{display:block;width:10px;height:14px;margin:9px auto 0;background:#2e8cff;border-radius:2px}
+.buildingA{left:80px;width:58px;height:112px}.buildingB{left:132px;width:62px;height:142px}.buildingC{left:182px;width:48px;height:88px}.peopleBadge{position:absolute;right:18px;top:48px;width:72px;height:72px;display:grid;place-items:center;border-radius:20px;background:linear-gradient(145deg,#168dff,#6f46f6);color:white;letter-spacing:-4px;font-size:18px;box-shadow:0 14px 28px rgba(67,101,224,.3)}
+.tree{position:absolute;bottom:22px;width:16px;height:42px;border-radius:50% 50% 42% 42%;background:linear-gradient(#2adf92,#22b875)}.tree:after{content:"";position:absolute;left:7px;bottom:-9px;width:3px;height:14px;background:#6b4b2a}.treeA{left:52px}.treeB{right:26px}
+.primary{background:linear-gradient(90deg,#10bff4,#1677ff 55%,#7c3aed)!important;color:#fff!important}
+.readonly{background:#fff8e8!important;color:#8a5b00!important;border-color:#f4d88f!important}
+.stats{gap:14px!important}.stat{background:#fff!important;border:1px solid #e0e8f2!important;box-shadow:0 12px 28px rgba(53,76,116,.09)!important;color:#101828!important}.stat small{color:#586784!important}.stat b{color:#0d1635!important}.statChevron{color:#9eb4d7!important}.statIcon{box-shadow:none!important}
+.card{background:#fff!important;border:1px solid #e0e8f2!important;box-shadow:0 14px 34px rgba(45,68,104,.09)!important;color:#101828!important}.subscription:before{background:linear-gradient(145deg,#8a4fff,#6f36ed)!important;border:0!important;color:#fff!important}.subscription h2{color:#111827!important}
+.subgrid{background:#fff!important;border-color:#dfe7f2!important}.subgrid div{border-right-color:#e5ebf3!important}.subgrid small{color:#667085!important}.subgrid b{color:#101828!important}
+.limitnote{color:#667085!important}.tablewrap{background:#fff!important;border-color:#dce5f1!important}th{background:#f7f9fc!important;color:#64748b!important}td{color:#111827!important;border-bottom-color:#e9eef5!important}
+.secondary{background:#eef3f9!important;color:#26334d!important;border:1px solid #d6e0ee!important}
+.sidenav{background:linear-gradient(#081733,#0b1d4d)!important}
+dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!important;box-shadow:0 30px 80px rgba(28,44,76,.22)!important}.dialoghead p{color:#667085!important}.iconbtn{background:#edf2f8!important;color:#21304b!important}label{color:#475467!important}label input,label select,label textarea{background:#fff!important;color:#111827!important;border-color:#cfd9e6!important}.actions{background:#fff!important}
+.loginbody{background:linear-gradient(180deg,#eef5ff,#f8fbff)!important}.loginbox{background:#fff!important;color:#111827!important;border:1px solid #d9e5f3!important;box-shadow:0 30px 70px rgba(44,72,112,.14)!important}.loginby,.loginfoot{color:#667085!important}
+@media(max-width:900px){.hero{display:grid!important;grid-template-columns:1fr .72fr!important}}
+@media(max-width:620px){
+  .topbar{grid-template-columns:44px 105px minmax(0,1fr) auto!important}
+  .topbar>.bizora-logo{width:105px!important}
+  .companyHead{display:block!important;min-width:0!important}.companyHead strong{font-size:14px!important;white-space:normal!important;line-height:1.15!important}.companyHead span{font-size:8px!important}
+  .hero{grid-template-columns:1fr .7fr!important;padding:22px 16px!important}.hero h1{font-size:34px!important}.hero p{font-size:14px!important}.heroArt{display:grid!important;min-height:165px}.cityArt{transform:scale(.68);transform-origin:center}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))!important}.stat{min-height:118px!important}
+  .subgrid{grid-template-columns:repeat(2,1fr)!important}
+}
+@media(max-width:430px){
+  .topbar{grid-template-columns:42px 82px minmax(0,1fr) auto!important}.topbar>.bizora-logo{width:82px!important}.companyHead strong{font-size:12px!important}.companyHead span{font-size:7px!important}.toplogout{font-size:11px!important;padding:7px 8px!important}
+  .hero{grid-template-columns:1fr!important}.heroArt{display:none!important}.stats{grid-template-columns:1fr!important}.stat.wide{grid-column:auto!important}
+}
