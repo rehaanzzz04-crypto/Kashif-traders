@@ -3,45 +3,67 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#081a46">
-  <title>Bizora Store</title>
-  <link rel="stylesheet" href="/workspace.css">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="">
+  <title>Online Store</title>
   <link rel="stylesheet" href="/store.css">
 </head>
-<body class="storebody">
-  <header class="storeTop">
-    <div class="bizora-logo storeBizora" aria-label="Bizora"></div>
-    <div class="storeTopRight"><span>Powered by Bizora</span><button id="cartToggle" type="button">Cart <b id="cartCount">0</b></button></div>
-  </header>
-  <main class="storeShell">
-    <section class="storeHero">
-      <div><span class="storeEyebrow">ONLINE STORE</span><h1 id="storeName">Loading store…</h1><p id="storeAddress">Secure ordering powered by Bizora ERP</p></div>
-      <div class="storeHeroMark">BZ</div>
-    </section>
-    <section class="storeTools">
-      <div class="storeSearch"><input id="storeSearch" placeholder="Search products…"></div>
-      <div id="storeContact" class="storeContact"></div>
-    </section>
-    <div class="storeLayout">
-      <section><div id="productGrid" class="productGrid"><div class="storeEmpty">Loading products…</div></div></section>
-      <aside id="cartPanel" class="cartPanel">
-        <div class="cartHead"><div><span class="storeEyebrow">YOUR CART</span><h2>Order Summary</h2></div><button id="cartClose" type="button">×</button></div>
-        <div id="cartItems" class="cartItems"><div class="storeEmpty">Your cart is empty.</div></div>
-        <div class="cartTotals"><div><span>Subtotal</span><b id="cartSubtotal">PKR 0</b></div><div><span>Delivery</span><b id="cartDelivery">PKR 0</b></div><div class="cartGrand"><span>Total</span><b id="cartTotal">PKR 0</b></div></div>
-        <form id="checkoutForm" class="checkoutForm">
-          <label>Name<input name="customer_name" required maxlength="120"></label>
-          <label>Phone<input name="phone" required maxlength="40" inputmode="tel"></label>
-          <label>Address<textarea name="address" maxlength="1000"></textarea></label>
-          <label>Payment Method<select name="payment_method"><option value="COD">Cash on Delivery</option><option value="BANK">Bank Transfer</option><option value="EASYPAISA">EasyPaisa</option><option value="JAZZCASH">JazzCash</option><option value="ONLINE">Online</option></select></label>
-          <label>Order Notes<textarea name="notes" maxlength="1000"></textarea></label>
-          <input class="storeTrap" name="website" tabindex="-1" autocomplete="off">
-          <button id="placeOrder" class="storePrimary">Place Order</button>
-        </form>
-      </aside>
+<body class="storebody theme-modern">
+  <header class="publicHeader">
+    <div class="publicHeaderInner">
+      <a class="publicBrand" href="#">
+        <img id="brandLogo" class="brandLogo hidden" alt="">
+        <div><b id="brandName">Loading…</b><small id="brandTagline"></small></div>
+      </a>
+      <nav id="categoryNav" class="categoryNav"></nav>
+      <div class="headerActions"><button id="mobileMenu" class="mobileMenu" type="button">☰</button><button id="cartToggle" class="cartButton" type="button">Cart <b id="cartCount">0</b></button></div>
     </div>
+  </header>
+
+  <main>
+    <section id="heroSection" class="publicHero">
+      <div class="heroCopy"><span class="eyebrow">ONLINE STORE</span><h1 id="heroTitle">Loading store…</h1><p id="heroSubtitle"></p><a href="#productsSection" class="shopNow">Shop Now</a></div>
+      <div id="heroMedia" class="heroMedia"></div>
+    </section>
+
+    <section id="searchSection" class="publicTools">
+      <div class="publicSearch"><input id="storeSearch" placeholder="Search products…"></div>
+      <div id="contactChips" class="contactChips"></div>
+    </section>
+
+    <section id="categorySection" class="categorySection hidden"><div class="sectionHead"><div><span class="eyebrow">BROWSE</span><h2>Categories</h2></div></div><div id="categoryCards" class="categoryCards"></div></section>
+    <section id="featuredSection" class="featuredSection hidden"><div class="sectionHead"><div><span class="eyebrow">FEATURED</span><h2>Featured Products</h2></div></div><div id="featuredGrid" class="productGrid"></div></section>
+    <section id="mediaSection" class="mediaSection hidden"><div class="sectionHead"><div><span class="eyebrow">OFFERS & MEDIA</span><h2>What's New</h2></div></div><div id="mediaGrid" class="mediaGrid"></div></section>
+
+    <section id="productsSection" class="productsSection">
+      <div class="sectionHead"><div><span class="eyebrow">SHOP</span><h2>Products</h2></div><select id="categoryFilter"><option value="">All Categories</option></select></div>
+      <div id="productGrid" class="productGrid"><div class="storeEmpty">Loading products…</div></div>
+    </section>
+
+    <section id="aboutSection" class="aboutSection hidden"><span class="eyebrow">ABOUT</span><h2 id="aboutTitle"></h2><p id="aboutText"></p></section>
     <section id="orderSuccess" class="orderSuccess hidden"></section>
   </main>
-  <footer class="storeFooter"><div class="bizora-logo storeFooterLogo" aria-label="Bizora"></div><p>Secure multi-company commerce powered by Bizora ERP.</p></footer>
+
+  <aside id="cartPanel" class="cartPanel">
+    <div class="cartHead"><div><span class="eyebrow">YOUR CART</span><h2>Order Summary</h2></div><button id="cartClose" type="button">×</button></div>
+    <div id="cartItems" class="cartItems"><div class="storeEmpty">Your cart is empty.</div></div>
+    <div class="cartTotals"><div><span>Subtotal</span><b id="cartSubtotal">PKR 0</b></div><div><span>Delivery</span><b id="cartDelivery">PKR 0</b></div><div class="cartGrand"><span>Total</span><b id="cartTotal">PKR 0</b></div></div>
+    <form id="checkoutForm" class="checkoutForm">
+      <label>Name<input name="customer_name" required maxlength="120"></label>
+      <label>Phone<input name="phone" required maxlength="40" inputmode="tel"></label>
+      <label>Address<textarea name="address" maxlength="1000"></textarea></label>
+      <label>Payment Method<select name="payment_method"><option value="COD">Cash on Delivery</option><option value="BANK">Bank Transfer</option><option value="EASYPAISA">EasyPaisa</option><option value="JAZZCASH">JazzCash</option><option value="ONLINE">Online</option></select></label>
+      <label>Order Notes<textarea name="notes" maxlength="1000"></textarea></label>
+      <input class="storeTrap" name="website" tabindex="-1" autocomplete="off">
+      <button id="placeOrder" class="storePrimary">Place Order</button>
+    </form>
+  </aside>
+
+  <footer class="companyFooter">
+    <div><b id="footerCompany"></b><p id="footerText"></p></div>
+    <div id="socialLinks" class="socialLinks"></div>
+  </footer>
+  <div class="poweredBar">Powered by <b>Bizora</b></div>
   <script src="/store.js"></script>
 </body>
 </html>

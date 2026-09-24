@@ -8,7 +8,14 @@ async function storeFor(sql,companyCode){
   const rows=await sql`SELECT c.id,c.company_code,c.company_name,c.logo_url,p.plan_code,p.plan_name,
     COALESCE((p.features->>'ecommerce')::boolean,false) ecommerce_enabled,
     COALESCE(st.store_name,c.company_name) store_name,st.contact_phone,st.whatsapp_number,st.address,
-    COALESCE(st.delivery_charge,0)::numeric delivery_charge,COALESCE(st.active,true) store_active
+    COALESCE(st.delivery_charge,0)::numeric delivery_charge,COALESCE(st.active,true) active,COALESCE(st.published,true) published,
+    COALESCE(st.theme_code,'modern') theme_code,COALESCE(st.header_layout,'logo_name') header_layout,
+    st.hero_title,st.hero_subtitle,st.hero_media_url,COALESCE(st.hero_media_type,'image') hero_media_type,
+    COALESCE(st.primary_color,'#176fe8') primary_color,COALESCE(st.secondary_color,'#7042e8') secondary_color,
+    COALESCE(st.accent_color,'#16b8c8') accent_color,COALESCE(st.background_color,'#f6f8fc') background_color,
+    COALESCE(st.show_search,true) show_search,COALESCE(st.show_categories,true) show_categories,
+    COALESCE(st.show_featured,true) show_featured,COALESCE(st.show_media,true) show_media,
+    st.about_title,st.about_text,st.footer_text,st.instagram_url,st.facebook_url,st.tiktok_url,st.seo_title,st.seo_description
     FROM companies c
     JOIN LATERAL(
       SELECT * FROM subscriptions s
@@ -20,7 +27,7 @@ async function storeFor(sql,companyCode){
     WHERE upper(c.company_code)=upper(${companyCode}) AND c.status='active'
     LIMIT 1`;
   const x=rows[0];
-  if(!x||x.ecommerce_enabled!==true||x.store_active!==true)return null;
+  if(!x||x.ecommerce_enabled!==true||x.active!==true||x.published!==true)return null;
   return x;
 }
 
@@ -39,13 +46,30 @@ export default async function handler(req,res){
     if(!store)return res.status(404).json({error:'Store is unavailable'});
 
     if(req.method==='GET'){
-      const products=await sql`SELECT id,sku,product_name,description,price,stock_qty,image_url
-        FROM ecommerce_products
-        WHERE company_id=${store.id} AND active=true AND stock_qty>0
-        ORDER BY product_name,id LIMIT 1000`;
+      const [products,categories,media]=await Promise.all([
+        sql`SELECT p.id,p.sku,p.product_name,p.description,p.price,p.compare_at_price,p.stock_qty,p.image_url,p.images,p.featured,p.sort_order,p.category_id,c.category_name
+          FROM ecommerce_products p
+          LEFT JOIN ecommerce_categories c ON c.id=p.category_id AND c.company_id=p.company_id
+          WHERE p.company_id=${store.id} AND p.active=true AND p.stock_qty>0
+          ORDER BY p.sort_order,p.featured DESC,p.product_name,p.id LIMIT 1000`,
+        sql`SELECT id,category_name,slug,image_url,sort_order FROM ecommerce_categories
+          WHERE company_id=${store.id} AND active=true ORDER BY sort_order,category_name,id`,
+        sql`SELECT id,media_type,title,media_url,link_url,placement,sort_order FROM ecommerce_media
+          WHERE company_id=${store.id} AND active=true ORDER BY placement,sort_order,id`
+      ]);
       return res.status(200).json({
-        store:{company_code:store.company_code,company_name:store.company_name,store_name:store.store_name,logo_url:store.logo_url,contact_phone:store.contact_phone,whatsapp_number:store.whatsapp_number,address:store.address,delivery_charge:store.delivery_charge},
-        products
+        store:{
+          company_code:store.company_code,company_name:store.company_name,store_name:store.store_name,logo_url:store.logo_url,
+          contact_phone:store.contact_phone,whatsapp_number:store.whatsapp_number,address:store.address,delivery_charge:store.delivery_charge,
+          theme_code:store.theme_code,header_layout:store.header_layout,hero_title:store.hero_title,hero_subtitle:store.hero_subtitle,
+          hero_media_url:store.hero_media_url,hero_media_type:store.hero_media_type,primary_color:store.primary_color,
+          secondary_color:store.secondary_color,accent_color:store.accent_color,background_color:store.background_color,
+          show_search:store.show_search,show_categories:store.show_categories,show_featured:store.show_featured,show_media:store.show_media,
+          about_title:store.about_title,about_text:store.about_text,footer_text:store.footer_text,
+          instagram_url:store.instagram_url,facebook_url:store.facebook_url,tiktok_url:store.tiktok_url,
+          seo_title:store.seo_title,seo_description:store.seo_description
+        },
+        products,categories,media
       });
     }
 
@@ -69,8 +93,7 @@ export default async function handler(req,res){
 
       const deliveryCharge=num(store.delivery_charge),subtotal=prepared.reduce((n,x)=>n+x.quantity*x.unit_price,0),total=Number((subtotal+deliveryCharge).toFixed(2));
       const orderNumber='WEB-'+new Date().toISOString().slice(0,10).replaceAll('-','')+'-'+Date.now().toString().slice(-6)+'-'+crypto.randomBytes(2).toString('hex').toUpperCase();
-      const reserved=[];
-      let orderId=null;
+      const reserved=[];let orderId=null;
       try{
         for(const item of prepared){
           const updated=await sql`UPDATE ecommerce_products SET stock_qty=stock_qty-${item.quantity},updated_at=now()
