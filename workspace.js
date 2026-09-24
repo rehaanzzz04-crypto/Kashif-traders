@@ -11,7 +11,7 @@ const defs={
   'supplier-bills':{title:'Supplier Invoices',action:'supplier_invoices',create:'create_supplier_invoice',cols:[['invoice_number','Invoice'],['business_name','Supplier'],['invoice_date','Date'],['due_date','Due'],['amount','Amount'],['grn_status','GRN Status'],['status','Payment Status']],fields:[['supplier_id','Supplier','supplier'],['invoice_number','Invoice Number','text'],['invoice_date','Invoice Date','date'],['due_date','Due Date','date'],['amount','Amount','number'],['notes','Notes','textarea']]},
   'supplier-payments':{title:'Supplier Payments',action:'supplier_payments',create:'create_supplier_payment',cols:[['payment_date','Date'],['business_name','Supplier'],['amount','Amount'],['payment_method','Method'],['reference_number','Reference']],fields:[['supplier_id','Supplier','supplier'],['payment_date','Payment Date','date'],['amount','Amount','number'],['payment_method','Method','select:CASH,BANK,ONLINE,CHEQUE,EASYPAISA,JAZZCASH'],['reference_number','Reference','text'],['notes','Notes','textarea']]},
   clients:{title:'Customers',action:'clients',create:'create_client',cols:[['client_code','Code'],['business_name','Business'],['contact_person','Contact'],['mobile_number','Mobile'],['credit_limit','Credit Limit'],['opening_balance','Opening Balance']],fields:[['client_code','Customer Code','text'],['business_name','Business Name','text'],['contact_person','Contact Person','text'],['mobile_number','Mobile','tel'],['credit_limit','Credit Limit','number'],['opening_balance','Opening Balance','number']]},
-  'client-bills':{title:'Customer Invoices',action:'client_invoices',create:'create_client_invoice',cols:[['invoice_number','Invoice'],['business_name','Customer'],['invoice_date','Date'],['due_date','Due'],['amount','Amount'],['status','Status']],fields:[['client_id','Customer','client'],['invoice_number','Invoice Number','text'],['invoice_date','Invoice Date','date'],['due_date','Due Date','date'],['amount','Amount','number'],['notes','Notes','textarea']]},
+  'client-bills':{title:'Customer Invoices',action:'client_invoices',create:'create_client_invoice',cols:[['invoice_number','Invoice'],['business_name','Customer'],['invoice_date','Date'],['due_date','Due'],['warehouse_name','Warehouse'],['item_count','Items'],['total_quantity','Quantity'],['amount','Amount'],['status','Status']]},
   'client-payments':{title:'Customer Payments',action:'client_receipts',create:'create_client_receipt',cols:[['receipt_date','Date'],['business_name','Customer'],['amount','Amount'],['payment_method','Method'],['reference_number','Reference']],fields:[['client_id','Customer','client'],['receipt_date','Receipt Date','date'],['amount','Amount','number'],['payment_method','Method','select:CASH,BANK,ONLINE,CHEQUE,EASYPAISA,JAZZCASH'],['reference_number','Reference','text'],['notes','Notes','textarea']]},
   products:{title:'Products',action:'products',create:'create_product',cols:[['sku','SKU'],['barcode','Barcode'],['product_name','Product'],['unit','Unit'],['purchase_price','Purchase Price'],['sale_price','Sale Price']],fields:[['sku','SKU','text'],['barcode','Barcode','text'],['product_name','Product Name','text'],['unit','Unit','text'],['purchase_price','Purchase Price','number'],['sale_price','Sale Price','number']]},
   warehouses:{title:'Warehouses',action:'warehouses',create:'create_warehouse',cols:[['warehouse_code','Code'],['warehouse_name','Warehouse'],['address','Address']],fields:[['warehouse_code','Warehouse Code','text'],['warehouse_name','Warehouse Name','text'],['address','Address','text']]},
@@ -78,6 +78,9 @@ async function show(view){
   if(view==='users')document.querySelectorAll('.userStatusBtn').forEach(b=>b.onclick=()=>setUserStatus(Number(b.dataset.id),b.dataset.active==='1'));
   if(view==='supplier-bills'){
     document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openSupplierInvoiceDetail(row)}});
+  }
+  if(view==='client-bills'){
+    document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openCustomerInvoiceDetail(row)}});
   }
   if(view==='inventory-stock'||view==='inventory-ledger')await installWarehouseFilter(view,rows);
 }
@@ -160,6 +163,57 @@ function updateInvoiceTotal(){
   const total=rows.reduce((n,row)=>n+Number(row.querySelector('.lineQty')?.value||0)*Number(row.querySelector('.linePrice')?.value||0),0);
   const el=$('invoiceTotal');if(el)el.textContent=money(total);
 }
+function customerInvoiceItemRow(products){
+  return '<div class="lineItem customerInvoiceLine">'+
+    '<label>Product<select class="customerLineProduct" required>'+productOptionsHtml(products)+'</select></label>'+
+    '<label>Quantity<input class="customerLineQty" type="number" min="0.001" step="0.001" value="1" required></label>'+
+    '<label>Sale Price<input class="customerLinePrice" type="number" min="0" step="0.01" value="0" required></label>'+
+    '<label>Description<input class="customerLineDescription" type="text" placeholder="Optional"></label>'+
+    '<button type="button" class="removeLine secondary">×</button>'+
+  '</div>';
+}
+function updateCustomerInvoiceTotal(){
+  const rows=[...document.querySelectorAll('#customerInvoiceItems .customerInvoiceLine')];
+  const total=rows.reduce((n,row)=>n+Number(row.querySelector('.customerLineQty')?.value||0)*Number(row.querySelector('.customerLinePrice')?.value||0),0);
+  const el=$('customerInvoiceTotal');if(el)el.textContent=money(total);
+}
+async function openCustomerInvoiceForm(){
+  const [customers,warehouses]=await Promise.all([partyOptions('client'),partyOptions('warehouse')]);
+  const products=optionCache.products||(await json('/api/bizora-company?action=products')).records||[];optionCache.products=products;
+  const today=new Date().toISOString().slice(0,10);
+  $('recordTitle').textContent='Add Customer Invoice';
+  $('recordHint').textContent='Product-wise sales invoice · '+model.company.name;
+  $('recordFields').innerHTML=
+    '<div class="formGrid">'+
+      '<label>Customer<select name="client_id" required><option value="">Select Customer</option>'+customers.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'+
+      '<label>Invoice Number<input name="invoice_number" required></label>'+
+      '<label>Warehouse<select name="warehouse_id" required><option value="">Select Warehouse</option>'+warehouses.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'+
+      '<label>Invoice Date<input name="invoice_date" type="date" value="'+today+'" required></label>'+
+      '<label>Due Date<input name="due_date" type="date" value="'+today+'"></label>'+
+    '</div>'+
+    '<div class="lineHead"><div><b>Invoice Products</b><small>Sale price can be changed per invoice</small></div><button id="addCustomerInvoiceLine" type="button" class="secondary">+ Add Product</button></div>'+
+    '<div id="customerInvoiceItems" class="lineItems">'+customerInvoiceItemRow(products)+'</div>'+
+    '<div class="invoiceTotalBox"><span>Invoice Total</span><b id="customerInvoiceTotal">PKR 0</b></div>'+
+    '<label>Notes<textarea name="notes"></textarea></label>';
+  const holder=$('customerInvoiceItems');
+  holder.onclick=e=>{if(e.target.closest('.removeLine')){const rows=holder.querySelectorAll('.customerInvoiceLine');if(rows.length>1)e.target.closest('.customerInvoiceLine').remove();updateCustomerInvoiceTotal()}};
+  holder.onchange=e=>{if(e.target.classList.contains('customerLineProduct')){const opt=e.target.selectedOptions[0],row=e.target.closest('.customerInvoiceLine');const product=products.find(p=>String(p.id)===String(opt?.value));row.querySelector('.customerLinePrice').value=Number(product?.sale_price||0);updateCustomerInvoiceTotal()}};
+  holder.oninput=updateCustomerInvoiceTotal;
+  $('addCustomerInvoiceLine').onclick=()=>{holder.insertAdjacentHTML('beforeend',customerInvoiceItemRow(products));updateCustomerInvoiceTotal()};
+  updateCustomerInvoiceTotal();$('recordDialog').showModal();
+}
+async function openCustomerInvoiceDetail(row){
+  $('workspaceTitle').textContent='Customer Invoice';
+  $('workspaceSubtitle').textContent=row.invoice_number+' · '+row.business_name;
+  $('addRecord').classList.add('hidden');$('workspaceBody').innerHTML='<div class="card">Loading invoice products…</div>';
+  const data=await json('/api/bizora-company?action=client_invoice_items&invoice_id='+row.id),items=data.records||[];
+  $('workspaceBody').innerHTML='<div class="detailToolbar"><button id="backToCustomerInvoices" class="secondary">← Back</button></div><div class="card invoiceDetailCard">'+
+    '<div class="invoiceDetailHead"><div><span>Customer</span><b>'+esc(row.business_name)+'</b></div><div><span>Invoice</span><b>'+esc(row.invoice_number)+'</b></div><div><span>Warehouse</span><b>'+esc(row.warehouse_name||'—')+'</b></div><div><span>Amount</span><b>'+money(row.amount)+'</b></div></div>'+
+    '<div class="tablewrap"><table><thead><tr><th>SKU</th><th>Product</th><th>Unit</th><th>Quantity</th><th>Sale Price</th><th>Line Total</th></tr></thead><tbody>'+
+    (items.length?items.map(x=>'<tr><td>'+esc(x.sku)+'</td><td><b>'+esc(x.product_name)+'</b></td><td>'+esc(x.unit)+'</td><td>'+esc(x.quantity)+'</td><td>'+money(x.unit_price)+'</td><td>'+money(Number(x.quantity||0)*Number(x.unit_price||0))+'</td></tr>').join(''):'<tr><td colspan="6">No product lines found.</td></tr>')+
+    '</tbody></table></div></div>';
+  $('backToCustomerInvoices').onclick=()=>show('client-bills');
+}
 async function openSupplierInvoiceForm(){
   const [suppliers,products]=await Promise.all([partyOptions('supplier'),partyOptions('product').then(async()=>optionCache.products||[])]);
   const today=new Date().toISOString().slice(0,10),productRows=optionCache.products||[];
@@ -226,6 +280,7 @@ async function openAdjustmentForm(){
 async function openForm(){
   const d=defs[currentView];if(!d)return;
   if(currentView==='supplier-bills')return openSupplierInvoiceForm();
+  if(currentView==='client-bills')return openCustomerInvoiceForm();
   if(currentView==='grns')return openGrnForm();
   if(currentView==='stock-transfers')return openTransferForm();
   if(currentView==='stock-adjustments')return openAdjustmentForm();
@@ -252,6 +307,15 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
       description:row.querySelector('.lineDescription').value||''
     }));
     if(!data.items.length||data.items.some(x=>!x.product_id||x.quantity<=0||x.unit_price<0))throw new Error('Valid invoice products required');
+  }
+  if(currentView==='client-bills'){
+    data.items=[...document.querySelectorAll('#customerInvoiceItems .customerInvoiceLine')].map(row=>({
+      product_id:Number(row.querySelector('.customerLineProduct').value||0),
+      quantity:Number(row.querySelector('.customerLineQty').value||0),
+      unit_price:Number(row.querySelector('.customerLinePrice').value||0),
+      description:row.querySelector('.customerLineDescription').value||''
+    }));
+    if(!data.items.length||data.items.some(x=>!x.product_id||x.quantity<=0||x.unit_price<0))throw new Error('Valid customer invoice products required');
   }
   if(currentView==='grns'){
     data.items=[...document.querySelectorAll('#grnItems .grnLine')].map(row=>({
