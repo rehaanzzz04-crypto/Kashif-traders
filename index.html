@@ -1,38 +1,59 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0f3b36"><title>Bizora ERP — Super Admin</title><link rel="stylesheet" href="/app.css">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07112d"><title>Bizora ERP — Super Admin</title><link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <header class="topbar"><div class="brandmark">BZ</div><div class="brandcopy"><strong>Bizora ERP</strong><span>by Bizora Technologies</span></div><a href="/company-login.html" class="companyLoginLink">Company Login</a><div class="badge" id="adminBadge">Authorizing…</div><button id="logout" class="toplogout">Logout</button></header>
-  <main class="wrap">
-    <section class="hero"><div><span class="eyebrow">MULTI-COMPANY ERP PLATFORM</span><h1>Super Admin Control Center</h1><p>Create companies, assign subscriptions and control workspace access. Each company remains an isolated tenant.</p></div><button id="addCompany" class="primary">+ Add Company</button></section>
-    <div id="systemMessage" class="systemmessage hidden"></div>
-    <section class="stats" id="stats"></section>
-    <section class="grid">
-      <article class="card wide"><div class="cardhead"><div><h2>Companies</h2><p>Separate tenants and latest subscription status</p></div><input id="companySearch" placeholder="Search company"></div><div class="tablewrap"><table><thead><tr><th>Company</th><th>Code</th><th>Plan</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="companyRows"><tr><td colspan="6">Loading…</td></tr></tbody></table></div></article>
-      <article class="card"><div class="cardhead"><div><h2>Subscription Plans</h2><p>Plans stored in Bizora SaaS database</p></div></div><div id="plans" class="plans"></div></article>
-    </section>
-    <section class="architecture"><div><b>Bizora Super Admin</b><span>Companies + Subscriptions</span></div><i>→</i><div><b>Tenant Session</b><span>company_id enforced by backend</span></div><i>→</i><div><b>Company ERP Workspace</b><span>Suppliers, Clients, Products, Warehouses</span></div></section>
-  </main>
+<header class="topbar">
+  <button id="adminMenuToggle" class="menubtn" type="button" aria-controls="adminNav" aria-expanded="false">☰</button>
+  <div class="bizora-logo" aria-label="Bizora"></div>
+  <div class="brandcopy"><strong>Bizora ERP</strong><span>BY BIZORA TECHNOLOGIES</span></div>
+  <div id="adminBadge" class="adminrole">Super Admin</div>
+  <button id="logout" class="toplogout">Logout</button>
+</header>
+<div id="adminNavBackdrop" class="navbackdrop"></div>
+<nav id="adminNav" class="sidenav" aria-hidden="true">
+  <div class="navhead"><div><b>Super Admin</b><span>Bizora Control Center</span></div><button id="adminMenuClose" type="button">×</button></div>
+  <button data-scroll="overviewSection">Overview</button>
+  <button data-scroll="companiesSection">Companies</button>
+  <button data-scroll="plansSection">Subscription Plans</button>
+  <a href="/company-login.html">Company Login</a>
+</nav>
+<main class="wrap">
+  <section class="hero" id="overviewSection">
+    <div class="heroCopy"><span class="eyebrow">MULTI-COMPANY ERP PLATFORM</span><h1>Super Admin<br>Control Center</h1><p>Create companies, assign subscriptions and control workspace access. Each company remains an isolated tenant.</p><button id="addCompany" class="primary heroCta">+ Add Company</button></div>
+    <div class="heroArt"><div class="miniScreen"><div class="miniLogo"></div><div class="miniLines"></div><div class="miniBuildings"><i></i><i></i><i></i></div></div></div>
+  </section>
+  <div id="systemMessage" class="systemmessage hidden"></div>
+  <section class="stats" id="stats"></section>
+  <section class="card companyCard" id="companiesSection">
+    <div class="sectionHead"><div class="sectionIcon">▦</div><div><h2>Companies</h2><p>Manage all companies, subscriptions and workspace access</p></div></div>
+    <div class="searchWrap"><span>⌕</span><input id="companySearch" placeholder="Search companies by name, code or plan..."></div>
+    <div class="tablewrap"><table><thead><tr><th>Company</th><th>Code</th><th>Plan</th><th>Status</th><th>Expiry</th><th>Actions</th></tr></thead><tbody id="companyRows"><tr><td colspan="6">Loading…</td></tr></tbody></table></div>
+  </section>
+  <section class="card plansCard" id="plansSection">
+    <div class="sectionHead"><div class="sectionIcon crown">♛</div><div><h2>Subscription Plans</h2><p>Choose a plan to assign to your companies</p></div></div>
+    <div id="plans" class="plans"></div>
+  </section>
+</main>
 
-  <dialog id="companyDialog"><form id="companyForm">
-    <div class="dialoghead"><div><h2>Add Company</h2><p>Create subscription + first Company Admin</p></div><button type="button" id="closeCompany" class="iconbtn">×</button></div>
-    <label>Company Name<input name="company_name" required placeholder="ABC Foods"></label>
-    <label>Company Code<input name="company_code" readonly tabindex="-1" placeholder="Auto-generated by Bizora"></label>
-    <label>Subscription Plan<select name="plan_code" id="planSelect"></select></label>
-    <label>Subscription Months<input name="months" type="number" min="1" max="36" value="1" required></label>
-    <label>Company Admin Name<input name="admin_name" required placeholder="Company Admin"></label>
-    <label>Company Admin Email<input name="admin_email" type="email" required placeholder="admin@company.com"></label>
-    <label>Temporary Password<input name="admin_password" type="password" minlength="8" required autocomplete="new-password"></label>
-    <div class="actions"><button type="button" class="secondary" id="cancelCompany">Cancel</button><button class="primary" id="createCompany">Create Company</button></div>
-  </form></dialog>
+<dialog id="companyDialog"><form id="companyForm">
+<div class="dialoghead"><div><h2>Add Company</h2><p>Create subscription + first Company Admin</p></div><button type="button" id="closeCompany" class="iconbtn">×</button></div>
+<label>Company Name<input name="company_name" required placeholder="ABC Foods"></label>
+<label>Company Code<input name="company_code" readonly tabindex="-1" placeholder="Auto-generated by Bizora"></label>
+<label>Subscription Plan<select name="plan_code" id="planSelect"></select></label>
+<label>Subscription Months<input name="months" type="number" min="1" max="36" value="1" required></label>
+<label>Company Admin Name<input name="admin_name" required placeholder="Company Admin"></label>
+<label>Company Admin Email<input name="admin_email" type="email" required placeholder="admin@company.com"></label>
+<label>Temporary Password<input name="admin_password" type="password" minlength="8" required autocomplete="new-password"></label>
+<div class="actions"><button type="button" class="secondary" id="cancelCompany">Cancel</button><button class="primary" id="createCompany">Create Company</button></div>
+</form></dialog>
 
-  <dialog id="renewDialog"><form id="renewForm">
-    <div class="dialoghead"><div><h2>Renew Subscription</h2><p id="renewCompanyName"></p></div><button type="button" id="closeRenew" class="iconbtn">×</button></div>
-    <input type="hidden" name="company_id"><label>Plan<select name="plan_code" id="renewPlan"></select></label><label>Months<input name="months" type="number" min="1" max="36" value="1" required></label>
-    <div class="actions"><button type="button" class="secondary" id="cancelRenew">Cancel</button><button class="primary" id="renewBtn">Renew</button></div>
-  </form></dialog>
-  <script src="/app.js"></script>
+<dialog id="renewDialog"><form id="renewForm">
+<div class="dialoghead"><div><h2>Renew Subscription</h2><p id="renewCompanyName"></p></div><button type="button" id="closeRenew" class="iconbtn">×</button></div>
+<input type="hidden" name="company_id"><label>Plan<select name="plan_code" id="renewPlan"></select></label><label>Months<input name="months" type="number" min="1" max="36" value="1" required></label>
+<div class="actions"><button type="button" class="secondary" id="cancelRenew">Cancel</button><button class="primary" id="renewBtn">Renew</button></div>
+</form></dialog>
+<script src="/app.js"></script>
 </body></html>
