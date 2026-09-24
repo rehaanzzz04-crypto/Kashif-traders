@@ -25,7 +25,7 @@ function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
 const roleCanView=view=>view==='dashboard'||model?.role_access?.views?.includes(view)===true;
 const roleCanWrite=view=>model?.subscription?.access_mode==='write'&&model?.role_access?.write_views?.includes(view)===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce','ocr-drafts':'ocr','automation-center':'automation',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce','ocr-drafts':'ocr','automation-center':'automation',communications:'automation',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -84,6 +84,7 @@ async function show(view){
   if(view==='ecommerce')return openEcommerce();
   if(view==='ocr-drafts')return openOcrDrafts();
   if(view==='automation-center')return openAutomationCenter();
+  if(view==='communications')return openCommunications();
   if(view==='reports')return openReports(false);
   if(view==='advanced-reports')return openReports(true);
   if(view==='audit-center')return openAuditCenter();
@@ -367,7 +368,7 @@ async function openCustomerInvoiceDetail(row){
   const data=await json('/api/bizora-company?action=client_invoice_items&invoice_id='+row.id),items=data.records||[],payStatus=String(row.status||'unpaid').toLowerCase();
   const canCancel=payStatus!=='cancelled'&&roleCanWrite('client-bills');
   $('workspaceBody').innerHTML=
-    '<div class="detailToolbar invoiceDetailActions"><button id="backToCustomerInvoices" class="secondary">← Back</button><div><span class="invoiceStatus '+esc(payStatus)+'">'+esc(payStatus)+'</span><button id="printCustomerInvoice" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="editCustomerInvoice" class="secondary">Edit Invoice</button><button id="cancelCustomerInvoice" class="dangerAction">Cancel Invoice</button>':'')+'</div></div>'+
+    '<div class="detailToolbar invoiceDetailActions"><button id="backToCustomerInvoices" class="secondary">← Back</button><div><span class="invoiceStatus '+esc(payStatus)+'">'+esc(payStatus)+'</span><button id="shareCustomerInvoiceWhatsApp" class="secondary">Share WhatsApp</button><button id="printCustomerInvoice" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="editCustomerInvoice" class="secondary">Edit Invoice</button><button id="cancelCustomerInvoice" class="dangerAction">Cancel Invoice</button>':'')+'</div></div>'+
     '<div id="invoicePrintable" class="card invoiceDetailCard invoicePrintable">'+
       '<div class="invoicePrintTitle"><div><span class="capEyebrow">CUSTOMER INVOICE</span><h2>'+esc(model.company.name)+'</h2><p>'+esc(row.business_name)+'</p></div><div><b>'+esc(row.invoice_number)+'</b><span>'+date(row.invoice_date)+'</span></div></div>'+
       '<div class="invoiceDetailHead"><div><span>Customer</span><b>'+esc(row.business_name)+'</b></div><div><span>Invoice</span><b>'+esc(row.invoice_number)+'</b></div><div><span>Warehouse</span><b>'+esc(row.warehouse_name||'—')+'</b></div><div><span>Amount</span><b>'+money(row.amount)+'</b></div></div>'+
@@ -377,6 +378,7 @@ async function openCustomerInvoiceDetail(row){
       '<div class="invoicePrintTotal"><span>Invoice Total</span><b>'+money(row.amount)+'</b></div>'+
     '</div>';
   $('backToCustomerInvoices').onclick=()=>show('client-bills');
+  $('shareCustomerInvoiceWhatsApp').onclick=()=>prepareWhatsAppShare('client_invoice',row.id).catch(e=>alert(e.message));
   $('printCustomerInvoice').onclick=()=>{document.body.classList.add('invoice-print');window.print();setTimeout(()=>document.body.classList.remove('invoice-print'),500)};
   if($('editCustomerInvoice'))$('editCustomerInvoice').onclick=()=>openCustomerInvoiceForm({row,items}).catch(e=>alert(e.message));
   if($('cancelCustomerInvoice'))$('cancelCustomerInvoice').onclick=async()=>{
@@ -762,6 +764,37 @@ async function openAutomationCenter(){
   document.querySelectorAll('.dismissAutomation').forEach(b=>b.onclick=async()=>{try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'dismiss_automation_alert',alert_id:Number(b.dataset.id)})});await openAutomationCenter()}catch(e){alert(e.message)}});
 }
 
+function installCommunicationModule(){
+  if(document.querySelector('[data-view="communications"]'))return;
+  const section=[...document.querySelectorAll('#workspaceNav .navSection')].find(x=>/^Automation$/i.test((x.querySelector('.navSectionTitle')?.textContent||'').trim()));
+  if(!section)return;
+  const b=document.createElement('button');b.type='button';b.dataset.view='communications';b.dataset.feature='automation';
+  b.innerHTML='<span class="navIcon"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg></span><span class="navLabel">WhatsApp Sharing</span><span class="navChevron">›</span>';
+  section.appendChild(b);
+}
+function openWhatsAppLink(phone,message){
+  const url='https://wa.me/'+encodeURIComponent(phone)+'?text='+encodeURIComponent(message);
+  window.open(url,'_blank','noopener');
+}
+async function prepareWhatsAppShare(entityType,entityId){
+  const d=await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'prepare_whatsapp_share',entity_type:entityType,entity_id:entityId})});
+  openWhatsAppLink(d.share.phone,d.share.message);
+}
+async function openCommunications(){
+  $('workspaceTitle').textContent='WhatsApp Sharing';
+  $('workspaceSubtitle').textContent=model.company.name+' · Premium Communication Tools';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading communication settings…</div></div>';
+  const d=await json('/api/bizora-company?action=communication_center'),s=d.settings||{},logs=d.logs||[],canEdit=['company_admin','manager','accountant'].includes(model.user.role)&&roleCanWrite('communications');
+  $('workspaceBody').innerHTML=
+    '<div class="communicationHead"><div><span class="capEyebrow">PREMIUM COMMUNICATION</span><h2>WhatsApp Sharing Center</h2><p>Invoice aur customer balance ka message WhatsApp mein open hota hai. Final send user WhatsApp se karta hai.</p></div><span class="communicationMode">Manual Share</span></div>'+
+    '<form id="communicationForm" class="card communicationCard"><div class="formGrid"><label>Business WhatsApp<input name="whatsapp_number" value="'+esc(s.whatsapp_number||'')+'" placeholder="e.g. 923001234567" '+(!canEdit?'disabled':'')+'></label><label>Default Country Code<input name="default_country_code" value="'+esc(s.default_country_code||'92')+'" '+(!canEdit?'disabled':'')+'></label></div><label>Invoice Message Template<textarea name="invoice_template" '+(!canEdit?'disabled':'')+'>'+esc(s.invoice_template||'')+'</textarea></label><label>Statement Message Template<textarea name="statement_template" '+(!canEdit?'disabled':'')+'>'+esc(s.statement_template||'')+'</textarea></label><div class="communicationTags"><span>{{customer}}</span><span>{{company}}</span><span>{{invoice}}</span><span>{{amount}}</span><span>{{due}}</span><span>{{status}}</span><span>{{balance}}</span></div>'+(canEdit?'<div class="masterActions"><button class="primary">Save Settings</button></div>':'')+'</form>'+
+    '<div class="card communicationLogs"><div class="reportSectionTitle"><div><b>Recent WhatsApp Opens</b><span>'+logs.length+' recent record(s)</span></div></div><div class="tablewrap"><table><thead><tr><th>Date</th><th>Recipient</th><th>Type</th><th>Status</th></tr></thead><tbody>'+
+      (logs.length?logs.map(x=>'<tr><td>'+esc(new Date(x.created_at).toLocaleString('en-GB'))+'</td><td>'+esc(x.recipient)+'</td><td>'+esc(String(x.template_code||x.entity_type||'').replaceAll('_',' '))+'</td><td><span class="pill active">'+esc(x.status)+'</span></td></tr>').join(''):'<tr><td colspan="4">No WhatsApp shares yet</td></tr>')+
+    '</tbody></table></div></div>';
+  if(canEdit)$('communicationForm').onsubmit=async e=>{e.preventDefault();const btn=e.currentTarget.querySelector('button'),data=Object.fromEntries(new FormData(e.currentTarget));btn.disabled=true;btn.textContent='Saving…';try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'save_communication_settings',active:true,...data})});await openCommunications()}catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save Settings'}};
+}
+
 function installEcommerceModule(){
   if(document.querySelector('[data-view="ecommerce"]'))return;
   const nav=document.querySelector('#workspaceNav .navScroll');if(!nav)return;
@@ -1116,10 +1149,11 @@ async function openPartyStatement(kind){
     const id=Number(e.target.value||0),box=$('statementContent');if(!id){box.className='emptyLines';box.innerHTML='Select account to view statement.';return}
     box.className='';box.innerHTML='<div class="emptyLines">Loading statement…</div>';
     const data=await json('/api/bizora-company?action='+(isSupplier?'supplier_statement&supplier_id=':'client_statement&client_id=')+id),rows=data.records||[];
-    box.innerHTML='<div class="statementSummary"><div><small>Account</small><b>'+esc(data.party.business_name)+'</b></div><div><small>Opening Balance</small><b>'+money(data.opening_balance)+'</b></div><div><small>Current Balance</small><b>'+money(data.balance)+'</b></div></div>'+
+    box.innerHTML='<div class="statementShareBar"><button id="shareStatementWhatsApp" class="secondary">Share Balance on WhatsApp</button></div><div class="statementSummary"><div><small>Account</small><b>'+esc(data.party.business_name)+'</b></div><div><small>Opening Balance</small><b>'+money(data.opening_balance)+'</b></div><div><small>Current Balance</small><b>'+money(data.balance)+'</b></div></div>'+
       '<div class="tablewrap"><table><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Debit</th><th>Credit</th><th>Running Balance</th><th>Notes</th></tr></thead><tbody>'+
       (rows.length?rows.map(x=>'<tr><td>'+date(x.entry_date)+'</td><td>'+esc(x.entry_type)+'</td><td>'+esc(x.reference||'—')+'</td><td>'+money(x.debit)+'</td><td>'+money(x.credit)+'</td><td><b>'+money(x.running_balance)+'</b></td><td>'+esc(x.notes||'')+'</td></tr>').join(''):'<tr><td colspan="7">No transactions yet</td></tr>')+
       '</tbody></table></div>';
+    if(!isSupplier&&$('shareStatementWhatsApp'))$('shareStatementWhatsApp').onclick=()=>prepareWhatsAppShare('client_statement',id).catch(e=>alert(e.message));
   };
 }
 async function openSupplierInvoiceForm(edit=null){
@@ -1251,4 +1285,4 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
   $('recordDialog').close();e.currentTarget.reset();invoiceEditContext=null;optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
-(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();setHeader();dashboard();automationPulse()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
+(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();installAutomationModule();installCommunicationModule();setHeader();dashboard();automationPulse()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});

@@ -480,6 +480,31 @@ export async function ensureBizoraSchema(sql){
     UNIQUE(company_id,rule_code,alert_key)
   )`;
 
+  await sql`CREATE TABLE IF NOT EXISTS communication_settings(
+    company_id BIGINT PRIMARY KEY REFERENCES companies(id) ON DELETE RESTRICT,
+    whatsapp_number TEXT,
+    default_country_code TEXT NOT NULL DEFAULT '92',
+    invoice_template TEXT,
+    statement_template TEXT,
+    active BOOLEAN NOT NULL DEFAULT true,
+    updated_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS communication_logs(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    channel TEXT NOT NULL DEFAULT 'whatsapp',
+    recipient TEXT NOT NULL,
+    entity_type TEXT,
+    entity_id TEXT,
+    template_code TEXT,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'opened' CHECK(status IN ('prepared','opened')),
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+
   await sql`CREATE TABLE IF NOT EXISTS ecommerce_store_settings(
     company_id BIGINT PRIMARY KEY REFERENCES companies(id) ON DELETE RESTRICT,
     store_name TEXT NOT NULL,
@@ -622,6 +647,7 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_return_items_invoice_item_idx ON erp_supplier_return_items(company_id,supplier_invoice_item_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_returns_company_idx ON erp_client_returns(company_id,return_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_return_items_invoice_item_idx ON erp_client_return_items(company_id,client_invoice_item_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS communication_logs_company_idx ON communication_logs(company_id,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS automation_rules_company_idx ON automation_rules(company_id,active,updated_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS automation_alerts_company_idx ON automation_alerts(company_id,status,last_detected_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ocr_supplier_drafts_company_idx ON ocr_supplier_drafts(company_id,status,created_at DESC)`;

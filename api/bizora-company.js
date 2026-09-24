@@ -8,19 +8,19 @@ const ecommerceOrderStatuses=new Set(['pending','confirmed','packed','shipped','
 const ecommercePaymentStatuses=new Set(['unpaid','paid','refunded']);
 const userRoles=new Set(['company_admin','manager','accountant','salesman','cashier']);
 
-const allWorkspaceViews=['users','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','ocr-drafts','automation-center','reports','advanced-reports','audit-center'];
+const allWorkspaceViews=['users','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','ocr-drafts','automation-center','communications','reports','advanced-reports','audit-center'];
 const roleViews={
   company_admin:allWorkspaceViews,
   manager:allWorkspaceViews.filter(x=>x!=='users'),
-  accountant:['suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','supplier-returns','client-returns','ocr-drafts','reports','advanced-reports'],
-  salesman:['clients','client-bills','client-payments','client-statement','products','warehouses','inventory-stock','client-returns','cashier','reports'],
+  accountant:['suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','supplier-returns','client-returns','ocr-drafts','communications','reports','advanced-reports'],
+  salesman:['clients','client-bills','client-payments','client-statement','products','warehouses','inventory-stock','client-returns','cashier','communications','reports'],
   cashier:['clients','products','warehouses','inventory-stock','cashier']
 };
 const roleWriteViews={
   company_admin:allWorkspaceViews,
   manager:allWorkspaceViews.filter(x=>x!=='users'),
-  accountant:['suppliers','supplier-bills','supplier-payments','clients','client-bills','client-payments','supplier-returns','client-returns','ocr-drafts'],
-  salesman:['clients','client-bills','client-payments','client-returns','cashier'],
+  accountant:['suppliers','supplier-bills','supplier-payments','clients','client-bills','client-payments','supplier-returns','client-returns','ocr-drafts','communications'],
+  salesman:['clients','client-bills','client-payments','client-returns','cashier','communications'],
   cashier:['cashier']
 };
 const roleActionSets={
@@ -33,12 +33,14 @@ const roleActionSets={
     'supplier_returns','supplier_return_items','supplier_return_detail','create_supplier_return','cancel_supplier_return',
     'client_returns','client_return_items','client_return_detail','create_client_return','cancel_client_return',
     'ocr_drafts','ocr_draft_detail','save_ocr_draft','post_ocr_draft','reject_ocr_draft',
+    'communication_center','save_communication_settings','prepare_whatsapp_share',
     'reports_summary','advanced_reports'
   ]),
   salesman:new Set([
     'overview','clients','client_invoices','client_invoice_items','client_receipts','client_receipt_detail','client_statement',
     'create_client','update_client','set_client_status','create_client_invoice','update_client_invoice','cancel_client_invoice','create_client_receipt','cancel_client_receipt',
-    'products','warehouses','inventory_stock','client_returns','client_return_items','client_return_detail','create_client_return','cancel_client_return','reports_summary'
+    'products','warehouses','inventory_stock','client_returns','client_return_items','client_return_detail','create_client_return','cancel_client_return',
+    'communication_center','prepare_whatsapp_share','reports_summary'
   ]),
   cashier:new Set([
     'overview','clients','create_client','client_invoices','client_invoice_items','client_receipts','client_receipt_detail','create_client_invoice','create_client_receipt',
@@ -197,6 +199,7 @@ export default async function handler(req,res){
       ecommerce_dashboard:'ecommerce',ecommerce_products:'ecommerce',ecommerce_orders:'ecommerce',ecommerce_order_detail:'ecommerce',ecommerce_sales_report:'ecommerce',save_ecommerce_product:'ecommerce',set_ecommerce_product_status:'ecommerce',save_ecommerce_settings:'ecommerce',create_ecommerce_order:'ecommerce',set_ecommerce_order_status:'ecommerce',set_ecommerce_payment_status:'ecommerce',
       ocr_drafts:'ocr',ocr_draft_detail:'ocr',save_ocr_draft:'ocr',post_ocr_draft:'ocr',reject_ocr_draft:'ocr',
       automation_center:'automation',run_automations:'automation',update_automation_rule:'automation',dismiss_automation_alert:'automation',
+      communication_center:'automation',save_communication_settings:'automation',prepare_whatsapp_share:'automation',
       reports_summary:'basic_reports',advanced_reports:'advanced_reports'
     };
     const requiredFeature=featureByAction[action];
@@ -648,6 +651,21 @@ export default async function handler(req,res){
         GROUP BY payment_method ORDER BY amount DESC`;
       return res.status(200).json({date_from:from,date_to:to,summary:summary[0]||{},daily,payment_methods:methods});
     }
+    if(req.method==='GET'&&action==='communication_center'){
+      const settings=await sql`SELECT company_id,whatsapp_number,default_country_code,invoice_template,statement_template,active,updated_at
+        FROM communication_settings WHERE company_id=${u.company_id} LIMIT 1`;
+      const logs=await sql`SELECT id,channel,recipient,entity_type,entity_id,template_code,status,created_at
+        FROM communication_logs WHERE company_id=${u.company_id}
+        ORDER BY created_at DESC,id DESC LIMIT 100`;
+      return res.status(200).json({
+        settings:settings[0]||{
+          whatsapp_number:null,default_country_code:'92',active:true,
+          invoice_template:'Assalam-o-Alaikum {{customer}}, {{company}} ki invoice {{invoice}} amount {{amount}}. Due: {{due}}.',
+          statement_template:'Assalam-o-Alaikum {{customer}}, {{company}} account balance {{balance}} hai.'
+        },
+        logs
+      });
+    }
     if(req.method==='GET'&&action==='automation_center'){
       const rules=await sql`SELECT id,rule_code,rule_name,active,parameters,last_run_at,updated_at
         FROM automation_rules WHERE company_id=${u.company_id} ORDER BY id`;
@@ -906,6 +924,59 @@ export default async function handler(req,res){
       const rows=await sql`UPDATE ecommerce_orders SET status=${status},updated_at=now() WHERE id=${orderId} AND company_id=${u.company_id} RETURNING *`;
       await companyAudit(sql,u,'ECOM_ORDER_STATUS_CHANGED',{entityType:'ecommerce_order',entityId:String(orderId),metadata:{from:current[0].status,to:status}});
       return res.status(200).json({record:rows[0]});
+    }
+
+    if(req.method==='POST'&&action==='save_communication_settings'){
+      if(!['company_admin','manager','accountant'].includes(u.role))return res.status(403).json({error:'Company Admin, Manager or Accountant role required'});
+      const country=clean(b.default_country_code||'92').replace(/\D/g,'').slice(0,5)||'92',
+        whatsapp=clean(b.whatsapp_number).replace(/\D/g,'').slice(0,20)||null,
+        invoiceTemplate=String(b.invoice_template||'').slice(0,2000),
+        statementTemplate=String(b.statement_template||'').slice(0,2000);
+      const rows=await sql`INSERT INTO communication_settings(company_id,whatsapp_number,default_country_code,invoice_template,statement_template,active,updated_by_user_id)
+        VALUES(${u.company_id},${whatsapp},${country},${invoiceTemplate||null},${statementTemplate||null},${b.active!==false},${u.id})
+        ON CONFLICT(company_id) DO UPDATE SET whatsapp_number=EXCLUDED.whatsapp_number,default_country_code=EXCLUDED.default_country_code,
+          invoice_template=EXCLUDED.invoice_template,statement_template=EXCLUDED.statement_template,active=EXCLUDED.active,updated_by_user_id=EXCLUDED.updated_by_user_id,updated_at=now()
+        RETURNING *`;
+      await companyAudit(sql,u,'COMMUNICATION_SETTINGS_UPDATED',{entityType:'communication_settings',entityId:String(u.company_id)});
+      return res.status(200).json({settings:rows[0]});
+    }
+    if(req.method==='POST'&&action==='prepare_whatsapp_share'){
+      const entityType=clean(b.entity_type),entityId=positiveInt(b.entity_id,0);
+      if(!['client_invoice','client_statement'].includes(entityType)||!entityId)return res.status(400).json({error:'Valid WhatsApp share target required'});
+      const settings=await sql`SELECT * FROM communication_settings WHERE company_id=${u.company_id} LIMIT 1`;
+      const country=clean(settings[0]?.default_country_code||'92').replace(/\D/g,'')||'92';
+      let recipient='',message='',templateCode='';
+      const fill=(tpl,vars)=>Object.entries(vars).reduce((x,[k,v])=>x.replaceAll('{{'+k+'}}',String(v??'')),tpl);
+      if(entityType==='client_invoice'){
+        const rows=await sql`SELECT i.id,i.invoice_number,i.invoice_date,i.due_date,i.amount,i.status,c.business_name,c.mobile_number
+          FROM erp_client_invoices i JOIN erp_clients c ON c.id=i.client_id AND c.company_id=i.company_id
+          WHERE i.id=${entityId} AND i.company_id=${u.company_id} LIMIT 1`;
+        const x=rows[0];if(!x)return res.status(404).json({error:'Customer invoice not found'});
+        recipient=clean(x.mobile_number).replace(/\D/g,'');
+        const tpl=settings[0]?.invoice_template||'Assalam-o-Alaikum {{customer}}, {{company}} ki invoice {{invoice}} amount {{amount}}. Due: {{due}}.';
+        message=fill(tpl,{customer:x.business_name,company:u.company_name,invoice:x.invoice_number,amount:'PKR '+number(x.amount).toLocaleString('en-PK'),due:x.due_date?String(x.due_date).slice(0,10):'—',status:x.status});
+        templateCode='CLIENT_INVOICE';
+      }else{
+        const rows=await sql`SELECT c.id,c.business_name,c.mobile_number,
+          (c.opening_balance
+            +COALESCE((SELECT SUM(i.amount) FROM erp_client_invoices i WHERE i.company_id=c.company_id AND i.client_id=c.id AND i.status<>'cancelled'),0)
+            -COALESCE((SELECT SUM(r.amount) FROM erp_client_returns r WHERE r.company_id=c.company_id AND r.client_id=c.id AND r.status='posted'),0)
+            -COALESCE((SELECT SUM(p.amount) FROM erp_client_receipts p WHERE p.company_id=c.company_id AND p.client_id=c.id AND p.status='posted'),0))::numeric balance
+          FROM erp_clients c WHERE c.id=${entityId} AND c.company_id=${u.company_id} LIMIT 1`;
+        const x=rows[0];if(!x)return res.status(404).json({error:'Customer not found'});
+        recipient=clean(x.mobile_number).replace(/\D/g,'');
+        const tpl=settings[0]?.statement_template||'Assalam-o-Alaikum {{customer}}, {{company}} account balance {{balance}} hai.';
+        message=fill(tpl,{customer:x.business_name,company:u.company_name,balance:'PKR '+number(x.balance).toLocaleString('en-PK')});
+        templateCode='CLIENT_STATEMENT';
+      }
+      if(!recipient)return res.status(409).json({error:'Customer mobile number is missing'});
+      if(recipient.startsWith('0'))recipient=country+recipient.slice(1);
+      else if(!recipient.startsWith(country)&&recipient.length<=11)recipient=country+recipient;
+      const log=await sql`INSERT INTO communication_logs(company_id,channel,recipient,entity_type,entity_id,template_code,message,status,created_by_user_id)
+        VALUES(${u.company_id},'whatsapp',${recipient},${entityType},${String(entityId)},${templateCode},${message},'opened',${u.id})
+        RETURNING id,recipient,message,status,created_at`;
+      await companyAudit(sql,u,'WHATSAPP_SHARE_OPENED',{entityType,entityId:String(entityId),metadata:{recipient,template_code:templateCode}});
+      return res.status(200).json({share:{phone:recipient,message,log_id:log[0].id}});
     }
 
     if(req.method==='POST'&&action==='run_automations'){
