@@ -333,15 +333,6 @@ export default async function handler(req,res){
         await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
           VALUES(${u.company_id},${item.product_id},${warehouseId},'GRN',${item.quantity},0,${item.unit_cost},'GRN',${g[0].id},${grnNumber},${item.notes},${u.id})`;
       }
-      const totals=await sql`SELECT
-        COALESCE(SUM(ii.quantity),0)::numeric ordered,
-        COALESCE(SUM(gi.quantity),0)::numeric received
-        FROM erp_supplier_invoice_items ii
-        LEFT JOIN erp_grn_items gi ON gi.supplier_invoice_item_id=ii.id AND gi.company_id=ii.company_id
-        WHERE ii.company_id=${u.company_id} AND ii.supplier_invoice_id=${supplierInvoiceId}`;
-      const ordered=Number(totals[0]?.ordered||0),received=Number(totals[0]?.received||0);
-      const status=received<=0?'unpaid':received<ordered?'partial':'paid';
-      await sql`UPDATE erp_supplier_invoices SET status=${status},updated_at=now() WHERE id=${supplierInvoiceId} AND company_id=${u.company_id}`;
       await companyAudit(sql,u,'GRN_POSTED',{entityType:'grn',entityId:String(g[0].id),metadata:{grn_number:grnNumber,invoice_id:supplierInvoiceId,item_count:items.filter(x=>x.quantity>0).length}});
       return res.status(201).json({record:g[0]});
     }
