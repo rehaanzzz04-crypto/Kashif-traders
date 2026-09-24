@@ -580,3 +580,27 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
   }
   .navIcon{width:34px;height:34px}
 }
+
+
+/* Subscription capability matrix */
+.capabilityCard{margin-top:18px!important}
+.capHead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:15px}
+.capHead h2{margin:3px 0 0;color:#111827;font-size:24px}
+.capEyebrow{color:#1d73df;font-size:9px;font-weight:900;letter-spacing:1.3px}
+.planBadge{display:inline-flex;align-items:center;padding:8px 12px;border-radius:999px;background:linear-gradient(135deg,#0f6fe7,#7340e8);color:#fff;font-size:11px;font-weight:900}
+.featureGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.featureItem{display:flex;align-items:center;gap:10px;min-height:66px;padding:11px;border:1px solid #e0e7f1;border-radius:15px;background:#fbfdff}
+.featureState{flex:0 0 34px;width:34px;height:34px;display:grid;place-items:center;border-radius:11px;font-weight:900}
+.featureItem.included .featureState{background:#e8fbf3;color:#0b9a67}
+.featureItem.locked .featureState{background:#f2f4f7;color:#7b879f;font-size:14px}
+.featureItem b{display:block;color:#18233d;font-size:12px}
+.featureItem small{display:block;margin-top:3px;color:#7a879e;font-size:9px}
+.featureItem.locked{opacity:.72}
+.upgradeCard{text-align:center;padding:30px!important}.upgradeCard h2{margin:0;color:#17213a}.upgradeCard p{color:#667085}
+@media(max-width:620px){
+  .featureGrid{grid-template-columns:1fr 1fr;gap:8px}
+  .featureItem{min-height:62px;padding:9px;gap:8px}
+  .featureState{flex-basis:30px;width:30px;height:30px}
+  .featureItem b{font-size:11px}.featureItem small{font-size:8px}
+}
+@media(max-width:420px){.featureGrid{grid-template-columns:1fr}}
