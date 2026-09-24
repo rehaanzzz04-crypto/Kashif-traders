@@ -4,7 +4,7 @@ import { neon } from '@neondatabase/serverless';
 const ADMIN_COOKIE='bizora_session';
 const COMPANY_COOKIE='bizora_company_session';
 const HOURS=12;
-const BIZORA_SCHEMA_VERSION=2026092404;
+const BIZORA_SCHEMA_VERSION=2026092405;
 const schemaState=globalThis.__bizoraSchemaState||(globalThis.__bizoraSchemaState={version:0,lastChecked:0,promise:null});
 const enc=v=>Buffer.from(v).toString('base64url');
 const dec=v=>Buffer.from(v,'base64url').toString('utf8');
@@ -704,6 +704,9 @@ export async function ensureBizoraSchema(sql){
   await sql`ALTER TABLE erp_supplier_payments ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`;
   await sql`ALTER TABLE erp_client_receipts ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'posted'`;
   await sql`ALTER TABLE erp_client_receipts ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS store_logo_url TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS announcement_text TEXT`;
+  await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS show_announcement BOOLEAN NOT NULL DEFAULT false`;
   await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS theme_code TEXT NOT NULL DEFAULT 'modern'`;
   await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS header_layout TEXT NOT NULL DEFAULT 'logo_name'`;
   await sql`ALTER TABLE ecommerce_store_settings ADD COLUMN IF NOT EXISTS hero_title TEXT`;
