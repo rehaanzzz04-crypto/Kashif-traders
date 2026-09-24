@@ -23,7 +23,7 @@ const defs={
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'audit_reports'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -41,10 +41,11 @@ function dashboard(){
   const items=[['Users',s.users],['Suppliers',s.suppliers],['Customers',s.clients],['Products',s.products],['Warehouses',s.warehouses],['Supplier Payable',money(s.supplier_payable)],['Customer Receivable',money(s.client_receivable)]];
   const featureLabels=[
     ['core_erp','Core ERP'],['basic_reports','Basic Reports'],['inventory_ledger','Inventory Ledger'],['grn','Goods Receiving (GRN)'],
-    ['audit_reports','Audit Reports'],['advanced_reports','Advanced Reports'],['cashier','Cashier / Counter Sale'],
+    ['advanced_reports','Advanced Reports'],['cashier','Cashier / Counter Sale'],
     ['ecommerce','E-commerce'],['ocr','OCR Automation'],['automation','Workflow Automation']
   ];
-  const featureHtml=featureLabels.map(([key,label])=>'<div class="featureItem '+(featureOn(key)?'included':'locked')+'"><span class="featureState">'+(featureOn(key)?'✓':'🔒')+'</span><span><b>'+esc(label)+'</b><small>'+(featureOn(key)?'Included in '+esc(model.subscription.plan_name||'plan'):'Upgrade required')+'</small></span></div>').join('');
+  const featureHtml=featureLabels.map(([key,label])=>'<div class="featureItem '+(featureOn(key)?'included':'locked')+'"><span class="featureState">'+(featureOn(key)?'✓':'🔒')+'</span><span><b>'+esc(label)+'</b><small>'+(featureOn(key)?'Included in '+esc(model.subscription.plan_name||'plan'):'Upgrade required')+'</small></span></div>').join('')+
+    '<div class="featureItem auditPayItem"><span class="featureState">₨</span><span><b>Pay-per-Audit Service</b><small>'+money(model.audit_service?.per_audit_price||0)+' per audit · available on demand</small></span></div>';
   $('workspaceBody').innerHTML=
     '<div class="stats">'+items.map(([k,v],i)=>'<div class="stat '+(i===6?'wide':'')+'"><span class="statIcon">'+icon(k)+'</span><small>'+k+'</small><b>'+esc(v??0)+'</b><span class="statChevron">›</span></div>').join('')+'</div>'+
     '<div class="card subscription"><h2>Subscription</h2><div class="subgrid"><div><small>Plan</small><b>'+esc(model.subscription.plan_name||'—')+'</b></div><div><small>Expires</small><b>'+date(model.subscription.expires_on)+'</b></div><div><small>Access</small><b>'+esc(model.subscription.access_mode)+'</b></div><div><small>Role</small><b>'+esc(model.user.role)+'</b></div><div><small>User Limit</small><b>'+esc(model.limits.user_limit??'Unlimited')+'</b></div><div><small>Warehouse Limit</small><b>'+esc(model.limits.warehouse_limit??'Unlimited')+'</b></div></div></div>'+
@@ -251,20 +252,50 @@ async function openReports(advanced=false){
   $('runReport').onclick=()=>load().catch(e=>alert(e.message));await load();
 }
 async function openAuditCenter(){
-  $('workspaceTitle').textContent='Audit Center';
-  $('workspaceSubtitle').textContent=model.company.name+' · Tenant Audit Trail';
+  $('workspaceTitle').textContent='Audit Service';
+  $('workspaceSubtitle').textContent=model.company.name+' · Pay per Audit';
   $('addRecord').classList.add('hidden');
-  $('workspaceBody').innerHTML='<div class="card reportCard">'+reportDateControls('AUDIT CENTER')+'<div id="reportContent" class="emptyLines">Loading audit trail…</div></div>';
-  const load=async()=>{
-    const from=$('reportFrom').value,to=$('reportTo').value,box=$('reportContent');
-    box.className='';box.innerHTML='<div class="emptyLines">Loading audit trail…</div>';
-    const d=await json('/api/bizora-company?action=audit_events&date_from='+encodeURIComponent(from)+'&date_to='+encodeURIComponent(to)),rows=d.records||[];
-    box.innerHTML='<div class="reportSectionTitle"><b>Audit Events</b><span>'+rows.length+' events · '+date(d.date_from)+' → '+date(d.date_to)+'</span></div>'+
-      '<div class="tablewrap"><table><thead><tr><th>Date / Time</th><th>Actor</th><th>Event</th><th>Entity</th><th>ID</th><th>Details</th></tr></thead><tbody>'+
-      (rows.length?rows.map(x=>'<tr><td>'+esc(new Date(x.created_at).toLocaleString('en-GB'))+'</td><td><b>'+esc(x.actor_name)+'</b></td><td>'+esc(x.event_type)+'</td><td>'+esc(x.entity_type||'—')+'</td><td>'+esc(x.entity_id||'—')+'</td><td class="auditMeta">'+esc(JSON.stringify(x.metadata||{}))+'</td></tr>').join(''):'<tr><td colspan="6">No audit events in this period</td></tr>')+
-      '</tbody></table></div>';
+  $('workspaceBody').innerHTML='<div class="card reportCard"><div class="emptyLines">Loading audit service…</div></div>';
+  const data=await json('/api/bizora-company?action=audit_service'),price=data.price,requests=data.requests||[];
+  const today=new Date().toISOString().slice(0,10),month=today.slice(0,8)+'01';
+  $('workspaceBody').innerHTML=
+    '<div class="card auditServiceCard">'+
+      '<div class="auditServiceHero"><div><span class="capEyebrow">PAY-PER-AUDIT</span><h2>'+esc(model.subscription.plan_name||'Plan')+' Audit</h2><p>Jab zarurat ho tab ek audit buy karein. Har audit ka charge sirf ek martaba lagega.</p></div><div class="auditPrice"><small>Per Audit</small><b>'+money(price?.per_audit_price||0)+'</b><span>'+esc(price?.plan_name||model.subscription.plan_name||'Plan')+'</span></div></div>'+
+      '<form id="auditRequestForm" class="auditRequestForm">'+
+        '<div class="formGrid"><label>Audit From<input name="period_from" type="date" value="'+month+'" required></label><label>Audit To<input name="period_to" type="date" value="'+today+'" required></label>'+
+        '<label>Payment Method<select name="payment_method" required><option>CASH</option><option>BANK</option><option>ONLINE</option><option>CHEQUE</option><option>EASYPAISA</option><option>JAZZCASH</option></select></label>'+
+        '<label>Payment Reference<input name="payment_reference" required placeholder="Transaction / receipt reference"></label></div>'+
+        '<label>Notes<textarea name="notes" placeholder="Optional notes for Bizora audit team"></textarea></label>'+
+        '<div class="auditApplyBar"><div><small>Audit Charge</small><b>'+money(price?.per_audit_price||0)+'</b></div><button class="primary" id="applyAudit" '+(!price?.active?'disabled':'')+'>Pay & Apply Audit</button></div>'+
+      '</form>'+
+    '</div>'+
+    '<div class="card auditHistoryCard"><div class="reportSectionTitle"><b>Your Audit Requests</b><span>'+requests.length+' total</span></div>'+
+      '<div class="tablewrap"><table><thead><tr><th>Requested</th><th>Period</th><th>Price</th><th>Payment</th><th>Status</th><th>Action</th></tr></thead><tbody>'+
+      (requests.length?requests.map(r=>'<tr><td>'+esc(new Date(r.requested_at).toLocaleString('en-GB'))+'</td><td>'+date(r.period_from)+' → '+date(r.period_to)+'</td><td>'+money(r.price)+'</td><td><span class="auditStatus '+esc(r.payment_status)+'">'+esc(r.payment_status)+'</span><br><small>'+esc(r.payment_reference||'')+'</small></td><td><span class="auditStatus '+esc(r.status)+'">'+esc(r.status)+'</span></td><td>'+(r.payment_status==='verified'&&['approved','completed'].includes(r.status)?'<button class="secondary viewAudit" data-id="'+r.id+'">View Audit</button>':'—')+'</td></tr>').join(''):'<tr><td colspan="6">No audit requests yet</td></tr>')+
+      '</tbody></table></div></div>';
+  $('auditRequestForm').onsubmit=async e=>{
+    e.preventDefault();const btn=$('applyAudit');btn.disabled=true;btn.textContent='Submitting…';
+    try{
+      const body=Object.fromEntries(new FormData(e.currentTarget));
+      await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'request_audit',...body})});
+      alert('Audit request submitted. Super Admin payment verify karne ke baad audit available ho jayega.');
+      await openAuditCenter();
+    }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Pay & Apply Audit'}
   };
-  $('runReport').onclick=()=>load().catch(e=>alert(e.message));await load();
+  document.querySelectorAll('.viewAudit').forEach(b=>b.onclick=()=>viewPurchasedAudit(Number(b.dataset.id)).catch(e=>alert(e.message)));
+}
+async function viewPurchasedAudit(requestId){
+  $('workspaceTitle').textContent='Purchased Audit';
+  $('workspaceSubtitle').textContent=model.company.name+' · Approved Audit';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading purchased audit…</div></div>';
+  const d=await json('/api/bizora-company?action=audit_events&request_id='+requestId),rows=d.records||[],r=d.request||{};
+  $('workspaceBody').innerHTML='<div class="detailToolbar"><button id="backToAuditService" class="secondary">← Audit Service</button><span class="auditStatus completed">Paid Audit</span></div>'+
+    '<div class="card reportCard"><div class="auditPurchasedHead"><div><small>Audit Period</small><b>'+date(r.period_from)+' → '+date(r.period_to)+'</b></div><div><small>Audit Price</small><b>'+money(r.price)+'</b></div><div><small>Events</small><b>'+rows.length+'</b></div></div>'+
+    '<div class="tablewrap"><table><thead><tr><th>Date / Time</th><th>Actor</th><th>Event</th><th>Entity</th><th>ID</th><th>Details</th></tr></thead><tbody>'+
+    (rows.length?rows.map(x=>'<tr><td>'+esc(new Date(x.created_at).toLocaleString('en-GB'))+'</td><td><b>'+esc(x.actor_name)+'</b></td><td>'+esc(x.event_type)+'</td><td>'+esc(x.entity_type||'—')+'</td><td>'+esc(x.entity_id||'—')+'</td><td class="auditMeta">'+esc(JSON.stringify(x.metadata||{}))+'</td></tr>').join(''):'<tr><td colspan="6">No audit events in this purchased period</td></tr>')+
+    '</tbody></table></div></div>';
+  $('backToAuditService').onclick=()=>openAuditCenter().catch(e=>alert(e.message));
 }
 async function openPaymentForm(kind){
   const isSupplier=kind==='supplier',parties=await partyOptions(kind),today=new Date().toISOString().slice(0,10);
