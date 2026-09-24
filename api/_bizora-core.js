@@ -216,6 +216,15 @@ export async function ensureBizoraSchema(sql){
     created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_supplier_payment_allocations(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    supplier_payment_id BIGINT NOT NULL REFERENCES erp_supplier_payments(id) ON DELETE RESTRICT,
+    supplier_invoice_id BIGINT NOT NULL REFERENCES erp_supplier_invoices(id) ON DELETE RESTRICT,
+    amount NUMERIC(14,2) NOT NULL CHECK(amount>0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(supplier_payment_id,supplier_invoice_id)
+  )`;
   await sql`CREATE TABLE IF NOT EXISTS erp_grns(
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
@@ -341,6 +350,15 @@ export async function ensureBizoraSchema(sql){
     created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_client_receipt_allocations(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    client_receipt_id BIGINT NOT NULL REFERENCES erp_client_receipts(id) ON DELETE RESTRICT,
+    client_invoice_id BIGINT NOT NULL REFERENCES erp_client_invoices(id) ON DELETE RESTRICT,
+    amount NUMERIC(14,2) NOT NULL CHECK(amount>0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(client_receipt_id,client_invoice_id)
+  )`;
   await sql`CREATE TABLE IF NOT EXISTS audit_events(
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT REFERENCES companies(id) ON DELETE RESTRICT,
@@ -373,6 +391,8 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_invoice_items_company_invoice_idx ON erp_supplier_invoice_items(company_id,supplier_invoice_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_grn_items_invoice_item_idx ON erp_grn_items(company_id,supplier_invoice_item_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_payments_company_idx ON erp_supplier_payments(company_id,payment_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_supplier_payment_allocations_company_idx ON erp_supplier_payment_allocations(company_id,supplier_invoice_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_client_receipt_allocations_company_idx ON erp_client_receipt_allocations(company_id,client_invoice_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_grns_company_idx ON erp_grns(company_id,received_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_grn_items_company_grn_idx ON erp_grn_items(company_id,grn_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_inventory_movements_company_idx ON erp_inventory_movements(company_id,movement_date DESC)`;
