@@ -191,3 +191,12 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
 @media(max-width:420px){
   .hero{grid-template-columns:1fr!important}.heroArt{display:none!important}
 }
+
+
+/* Super Admin plan feature chips */
+.planFeatures{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.planFeatures span{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;background:#eef6ff;color:#175db8;border:1px solid #d3e6ff;font-size:9px;font-weight:800}
+@media(max-width:620px){
+  .planFeatures{margin-top:10px}
+  .planFeatures span{font-size:8px;padding:4px 7px}
+}
