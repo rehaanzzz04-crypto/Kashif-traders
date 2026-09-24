@@ -908,3 +908,8 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
 .publishCard h3{margin:5px 0;color:#17213a;font-size:24px}.publishCard>p{color:#65748a;font-size:10px;line-height:1.6}.publishStatus{display:grid;gap:4px;margin:14px 0;padding:14px;border-radius:15px;border:1px solid #dce7f2}.publishStatus.live{background:#eefaf4;border-color:#bde5d2}.publishStatus.draft{background:#fff7e7;border-color:#efd9aa}.publishStatus b{color:#17345e}.publishStatus span{font-size:9px;color:#6f7d91}.publishActions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 @media(max-width:980px){.storeBuilderShell{grid-template-columns:1fr}.storeBuilderNav{position:static;display:flex;overflow:auto;padding:6px}.storeBuilderNav button{min-width:max-content}.builderTwoCol,.productsBuilder{grid-template-columns:1fr}.builderForm{position:static}.themePicker{grid-template-columns:1fr 1fr}}
 @media(max-width:620px){.storeBuilderHead{align-items:stretch;flex-direction:column}.storeBuilderHeadActions{justify-content:space-between}.themePicker{grid-template-columns:1fr 1fr}.builderToggleGrid{grid-template-columns:1fr}.publishActions{display:grid;grid-template-columns:1fr}.publishActions a,.publishActions button{text-align:center}}
+
+.assetUploadRow{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
+.assetUploadRow .storeAssetInput{font-size:10px;padding:7px!important;min-height:36px;background:#f8fbff;border:1px dashed #b9c9dd;border-radius:10px;max-width:100%}
+.assetUploadRow .assetStatus{font-size:9px;color:#66758c;font-weight:700}
+@media(max-width:620px){.assetUploadRow{align-items:stretch;flex-direction:column}.assetUploadRow .storeAssetInput{width:100%}}
