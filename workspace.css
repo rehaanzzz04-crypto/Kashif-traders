@@ -638,3 +638,25 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
   .invoiceLine>label:first-child,.invoiceLine>label:nth-child(4),.grnLine .lineProductName{grid-column:auto}
   .lineHead{align-items:flex-start}.lineHead button{font-size:10px!important}
 }
+
+
+/* Supplier invoice GRN status + detail view + warehouse filters */
+.grnPill{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.4px;border:1px solid transparent}
+.grnPill.pending{background:#fff6df;color:#9b6500;border-color:#f4dfa2}
+.grnPill.partial{background:#eef3ff;color:#335cc9;border-color:#cddaff}
+.grnPill.complete{background:#e9fbf2;color:#0a8f60;border-color:#bfead7}
+.grnPill.not_itemized{background:#f2f4f7;color:#667085;border-color:#e1e5ea}
+.clickableRow{cursor:pointer}.clickableRow:hover td{background:#f6f9ff!important}
+.detailToolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.invoiceDetailCard{padding-top:14px!important}
+.invoiceDetailHead{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.invoiceDetailHead>div{padding:12px;border:1px solid #e2e9f2;border-radius:14px;background:#f9fbfe}
+.invoiceDetailHead span{display:block;color:#7c879b;font-size:9px;text-transform:uppercase;letter-spacing:.5px}
+.invoiceDetailHead b{display:block;margin-top:4px;color:#18233d;font-size:13px}
+.warehouseFilter{display:flex;justify-content:flex-end;margin-bottom:12px}
+.warehouseFilter label{min-width:220px;margin:0}.warehouseFilter select{margin-top:4px}
+@media(max-width:620px){
+  .invoiceDetailHead{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .warehouseFilter{justify-content:stretch}.warehouseFilter label{width:100%;min-width:0}
+}
+@media(max-width:420px){.invoiceDetailHead{grid-template-columns:1fr}}
