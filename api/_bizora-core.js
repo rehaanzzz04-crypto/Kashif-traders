@@ -359,6 +359,34 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(client_receipt_id,client_invoice_id)
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS audit_service_prices(
+    id BIGSERIAL PRIMARY KEY,
+    plan_id BIGINT NOT NULL UNIQUE REFERENCES plans(id) ON DELETE RESTRICT,
+    per_audit_price NUMERIC(14,2) NOT NULL CHECK(per_audit_price>0),
+    active BOOLEAN NOT NULL DEFAULT true,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS audit_requests(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    subscription_id BIGINT REFERENCES subscriptions(id) ON DELETE SET NULL,
+    plan_id BIGINT NOT NULL REFERENCES plans(id) ON DELETE RESTRICT,
+    price NUMERIC(14,2) NOT NULL CHECK(price>0),
+    period_from DATE NOT NULL,
+    period_to DATE NOT NULL,
+    payment_method TEXT NOT NULL,
+    payment_reference TEXT,
+    payment_status TEXT NOT NULL DEFAULT 'submitted' CHECK(payment_status IN ('submitted','verified','rejected')),
+    status TEXT NOT NULL DEFAULT 'submitted' CHECK(status IN ('submitted','approved','completed','rejected')),
+    notes TEXT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    reviewed_by_admin_id BIGINT REFERENCES bizora_admins(id) ON DELETE SET NULL,
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    reviewed_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    CHECK(period_to>=period_from)
+  )`;
+
   await sql`CREATE TABLE IF NOT EXISTS audit_events(
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT REFERENCES companies(id) ON DELETE RESTRICT,
@@ -403,6 +431,8 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_client_invoices_company_idx ON erp_client_invoices(company_id,invoice_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_invoice_items_company_invoice_idx ON erp_client_invoice_items(company_id,client_invoice_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_receipts_company_idx ON erp_client_receipts(company_id,receipt_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS audit_requests_company_idx ON audit_requests(company_id,requested_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS audit_requests_status_idx ON audit_requests(status,payment_status,requested_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS audit_events_company_idx ON audit_events(company_id,created_at DESC)`;
 
   // Canonical Bizora subscription matrix. Keeping this as an UPSERT means
@@ -412,9 +442,9 @@ export async function ensureBizoraSchema(sql){
     ('basic','Basic',2000,20000,3,1,
       '{"core_erp":true,"supplier_management":true,"customer_management":true,"products":true,"warehouses":true,"basic_reports":true,"inventory_ledger":false,"grn":false,"audit_reports":false,"advanced_reports":false,"cashier":false,"ecommerce":false,"ocr":false,"automation":false,"priority_support":false}'::jsonb),
     ('standard','Standard',5000,50000,10,5,
-      '{"core_erp":true,"supplier_management":true,"customer_management":true,"products":true,"warehouses":true,"basic_reports":true,"inventory_ledger":true,"grn":true,"audit_reports":true,"advanced_reports":true,"cashier":true,"ecommerce":true,"ocr":false,"automation":false,"priority_support":false}'::jsonb),
+      '{"core_erp":true,"supplier_management":true,"customer_management":true,"products":true,"warehouses":true,"basic_reports":true,"inventory_ledger":true,"grn":true,"audit_reports":false,"advanced_reports":true,"cashier":true,"ecommerce":true,"ocr":false,"automation":false,"priority_support":false}'::jsonb),
     ('premium','Premium',10000,100000,NULL,NULL,
-      '{"core_erp":true,"supplier_management":true,"customer_management":true,"products":true,"warehouses":true,"basic_reports":true,"inventory_ledger":true,"grn":true,"audit_reports":true,"advanced_reports":true,"cashier":true,"ecommerce":true,"ocr":true,"automation":true,"priority_support":true}'::jsonb)
+      '{"core_erp":true,"supplier_management":true,"customer_management":true,"products":true,"warehouses":true,"basic_reports":true,"inventory_ledger":true,"grn":true,"audit_reports":false,"advanced_reports":true,"cashier":true,"ecommerce":true,"ocr":true,"automation":true,"priority_support":true}'::jsonb)
     ON CONFLICT(plan_code) DO UPDATE SET
       plan_name=EXCLUDED.plan_name,
       monthly_price=EXCLUDED.monthly_price,
@@ -423,6 +453,14 @@ export async function ensureBizoraSchema(sql){
       warehouse_limit=EXCLUDED.warehouse_limit,
       features=EXCLUDED.features,
       active=true`;
+
+  await sql`INSERT INTO audit_service_prices(plan_id,per_audit_price,active)
+    SELECT id,
+      CASE plan_code WHEN 'basic' THEN 1500 WHEN 'standard' THEN 2500 WHEN 'premium' THEN 4000 ELSE 2500 END,
+      true
+    FROM plans
+    WHERE plan_code IN ('basic','standard','premium')
+    ON CONFLICT(plan_id) DO NOTHING`;
 
   const adminCount=await sql`SELECT COUNT(*)::int count FROM bizora_admins`;
   if(!Number(adminCount[0]?.count||0)){
