@@ -766,3 +766,13 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
   body.invoice-print .invoicePrintable table{min-width:0!important}
   body.invoice-print .invoicePrintable th,body.invoice-print .invoicePrintable td{font-size:8px!important;padding:6px!important;color:#111!important;border-color:#d9dee7!important}
 }
+
+
+/* Product return workflows */
+.returnToolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.returnToolbar h2{margin:3px 0 0;color:#14213d;font-size:20px}
+.returnForm{padding-top:16px!important}.returnLine{grid-template-columns:minmax(220px,2fr) 130px 130px;align-items:end}
+.returnTotal{display:flex;align-items:center;justify-content:flex-end;gap:20px;margin:12px 0;padding:12px 14px;border-radius:14px;background:#f4f8ff;border:1px solid #dbe7f7;color:#61708a;font-size:11px}.returnTotal b{min-width:140px;text-align:right;color:#10265a;font-size:18px}
+.returnSubmit{display:flex;justify-content:flex-end}.returnSubmit button{min-width:170px}
+@media(max-width:700px){.returnToolbar{align-items:stretch;flex-direction:column}.returnToolbar button{align-self:flex-start}.returnLine{grid-template-columns:1fr 1fr}.returnLine .lineProductName{grid-column:1/-1}}
+@media(max-width:430px){.returnLine{grid-template-columns:1fr}.returnLine .lineProductName{grid-column:auto}.returnTotal{justify-content:space-between}.returnSubmit button{width:100%}}

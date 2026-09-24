@@ -18,11 +18,13 @@ async function overview(sql,u){
     (
       COALESCE((SELECT SUM(opening_balance) FROM erp_suppliers WHERE company_id=${u.company_id}),0)
       + COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
+      - COALESCE((SELECT SUM(amount) FROM erp_supplier_returns WHERE company_id=${u.company_id} AND status='posted'),0)
       - COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id}),0)
     )::numeric supplier_payable,
     (
       COALESCE((SELECT SUM(opening_balance) FROM erp_clients WHERE company_id=${u.company_id}),0)
       + COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
+      - COALESCE((SELECT SUM(amount) FROM erp_client_returns WHERE company_id=${u.company_id} AND status='posted'),0)
       - COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id}),0)
     )::numeric client_receivable`;
   const auditPriceRows=await sql`SELECT asp.per_audit_price,asp.active FROM audit_service_prices asp WHERE asp.plan_id=${u.plan_id} LIMIT 1`;
@@ -47,7 +49,7 @@ export default async function handler(req,res){
       grns:'grn',create_grn:'grn',
       inventory_stock:'inventory_ledger',inventory_ledger:'inventory_ledger',
       stock_transfers:'inventory_ledger',create_stock_transfer:'inventory_ledger',
-      stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',
+      stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',supplier_returns:'inventory_ledger',supplier_return_items:'inventory_ledger',create_supplier_return:'inventory_ledger',client_returns:'inventory_ledger',client_return_items:'inventory_ledger',create_client_return:'inventory_ledger',
       ecommerce_dashboard:'ecommerce',ecommerce_products:'ecommerce',ecommerce_orders:'ecommerce',ecommerce_order_detail:'ecommerce',ecommerce_sales_report:'ecommerce',save_ecommerce_product:'ecommerce',set_ecommerce_product_status:'ecommerce',save_ecommerce_settings:'ecommerce',create_ecommerce_order:'ecommerce',set_ecommerce_order_status:'ecommerce',set_ecommerce_payment_status:'ecommerce',
       reports_summary:'basic_reports',advanced_reports:'advanced_reports'
     };
@@ -124,6 +126,9 @@ export default async function handler(req,res){
         SELECT i.invoice_date::date entry_date,'INVOICE'::text entry_type,i.invoice_number reference,i.amount::numeric debit,0::numeric credit,i.notes,i.id sort_id
         FROM erp_supplier_invoices i WHERE i.company_id=${u.company_id} AND i.supplier_id=${supplierId} AND i.status<>'cancelled'
         UNION ALL
+        SELECT r.return_date::date,'RETURN',r.return_number,0::numeric,r.amount::numeric,r.notes,500000000+r.id
+        FROM erp_supplier_returns r WHERE r.company_id=${u.company_id} AND r.supplier_id=${supplierId} AND r.status='posted'
+        UNION ALL
         SELECT p.payment_date::date,'PAYMENT',COALESCE(p.reference_number,''),0::numeric,p.amount::numeric,p.notes,1000000000+p.id
         FROM erp_supplier_payments p WHERE p.company_id=${u.company_id} AND p.supplier_id=${supplierId}
       )
@@ -184,6 +189,9 @@ export default async function handler(req,res){
         SELECT i.invoice_date::date entry_date,'INVOICE'::text entry_type,i.invoice_number reference,i.amount::numeric debit,0::numeric credit,i.notes,i.id sort_id
         FROM erp_client_invoices i WHERE i.company_id=${u.company_id} AND i.client_id=${clientId} AND i.status<>'cancelled'
         UNION ALL
+        SELECT cr.return_date::date,'RETURN',cr.return_number,0::numeric,cr.amount::numeric,cr.notes,500000000+cr.id
+        FROM erp_client_returns cr WHERE cr.company_id=${u.company_id} AND cr.client_id=${clientId} AND cr.status='posted'
+        UNION ALL
         SELECT r.receipt_date::date,'PAYMENT',COALESCE(r.reference_number,''),0::numeric,r.amount::numeric,r.notes,1000000000+r.id
         FROM erp_client_receipts r WHERE r.company_id=${u.company_id} AND r.client_id=${clientId}
       )
@@ -215,6 +223,68 @@ export default async function handler(req,res){
         WHERE g.company_id=${u.company_id}
         GROUP BY g.id,s.business_name,w.warehouse_name,i.invoice_number
         ORDER BY g.received_date DESC,g.id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='supplier_returns'){
+      const rows=await sql`SELECT r.id,r.return_number,r.return_date,r.amount,r.status,r.notes,r.created_at,
+        s.business_name,i.invoice_number,w.warehouse_name
+        FROM erp_supplier_returns r
+        JOIN erp_suppliers s ON s.id=r.supplier_id AND s.company_id=r.company_id
+        JOIN erp_supplier_invoices i ON i.id=r.supplier_invoice_id AND i.company_id=r.company_id
+        JOIN erp_warehouses w ON w.id=r.warehouse_id AND w.company_id=r.company_id
+        WHERE r.company_id=${u.company_id}
+        ORDER BY r.return_date DESC,r.id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='supplier_return_items'){
+      const invoiceId=positiveInt(req.query?.invoice_id,0);
+      if(!invoiceId)return res.status(400).json({error:'Valid supplier invoice required'});
+      const rows=await sql`SELECT ii.id supplier_invoice_item_id,ii.product_id,p.sku,p.product_name,p.unit,ii.unit_price,
+        COALESCE(g.received_quantity,0)::numeric received_quantity,
+        COALESCE(r.returned_quantity,0)::numeric returned_quantity,
+        GREATEST(COALESCE(g.received_quantity,0)-COALESCE(r.returned_quantity,0),0)::numeric returnable_quantity
+        FROM erp_supplier_invoice_items ii
+        JOIN erp_products p ON p.id=ii.product_id AND p.company_id=ii.company_id
+        LEFT JOIN LATERAL(
+          SELECT COALESCE(SUM(gi.quantity),0)::numeric received_quantity
+          FROM erp_grn_items gi JOIN erp_grns gr ON gr.id=gi.grn_id AND gr.company_id=gi.company_id
+          WHERE gi.company_id=ii.company_id AND gi.supplier_invoice_item_id=ii.id AND gr.status='posted'
+        ) g ON true
+        LEFT JOIN LATERAL(
+          SELECT COALESCE(SUM(ri.quantity),0)::numeric returned_quantity
+          FROM erp_supplier_return_items ri JOIN erp_supplier_returns rr ON rr.id=ri.supplier_return_id AND rr.company_id=ri.company_id
+          WHERE ri.company_id=ii.company_id AND ri.supplier_invoice_item_id=ii.id AND rr.status='posted'
+        ) r ON true
+        WHERE ii.company_id=${u.company_id} AND ii.supplier_invoice_id=${invoiceId}
+        ORDER BY ii.id`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='client_returns'){
+      const rows=await sql`SELECT r.id,r.return_number,r.return_date,r.amount,r.status,r.notes,r.created_at,
+        c.business_name,i.invoice_number
+        FROM erp_client_returns r
+        JOIN erp_clients c ON c.id=r.client_id AND c.company_id=r.company_id
+        JOIN erp_client_invoices i ON i.id=r.client_invoice_id AND i.company_id=r.company_id
+        WHERE r.company_id=${u.company_id}
+        ORDER BY r.return_date DESC,r.id DESC LIMIT 1000`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='client_return_items'){
+      const invoiceId=positiveInt(req.query?.invoice_id,0);
+      if(!invoiceId)return res.status(400).json({error:'Valid customer invoice required'});
+      const rows=await sql`SELECT ii.id client_invoice_item_id,ii.product_id,ii.warehouse_id,p.sku,p.product_name,p.unit,ii.quantity sold_quantity,ii.unit_price,ii.unit_cost,w.warehouse_name,
+        COALESCE(r.returned_quantity,0)::numeric returned_quantity,
+        GREATEST(ii.quantity-COALESCE(r.returned_quantity,0),0)::numeric returnable_quantity
+        FROM erp_client_invoice_items ii
+        JOIN erp_products p ON p.id=ii.product_id AND p.company_id=ii.company_id
+        LEFT JOIN erp_warehouses w ON w.id=ii.warehouse_id AND w.company_id=ii.company_id
+        LEFT JOIN LATERAL(
+          SELECT COALESCE(SUM(ri.quantity),0)::numeric returned_quantity
+          FROM erp_client_return_items ri JOIN erp_client_returns rr ON rr.id=ri.client_return_id AND rr.company_id=ri.company_id
+          WHERE ri.company_id=ii.company_id AND ri.client_invoice_item_id=ii.id AND rr.status='posted'
+        ) r ON true
+        WHERE ii.company_id=${u.company_id} AND ii.client_invoice_id=${invoiceId}
+        ORDER BY ii.id`;
       return res.status(200).json({records:rows});
     }
     if(req.method==='GET'&&action==='inventory_stock'){
@@ -342,13 +412,17 @@ export default async function handler(req,res){
       const rows=await sql`SELECT
         COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_purchases,
         COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id} AND payment_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_payments,
+        COALESCE((SELECT SUM(amount) FROM erp_supplier_returns WHERE company_id=${u.company_id} AND status='posted' AND return_date BETWEEN ${from}::date AND ${to}::date),0)::numeric supplier_returns,
         COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled' AND invoice_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_sales,
         COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id} AND receipt_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_receipts,
+        COALESCE((SELECT SUM(amount) FROM erp_client_returns WHERE company_id=${u.company_id} AND status='posted' AND return_date BETWEEN ${from}::date AND ${to}::date),0)::numeric customer_returns,
         (COALESCE((SELECT SUM(opening_balance) FROM erp_suppliers WHERE company_id=${u.company_id}),0)
           +COALESCE((SELECT SUM(amount) FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
+          -COALESCE((SELECT SUM(amount) FROM erp_supplier_returns WHERE company_id=${u.company_id} AND status='posted'),0)
           -COALESCE((SELECT SUM(amount) FROM erp_supplier_payments WHERE company_id=${u.company_id}),0))::numeric supplier_payable,
         (COALESCE((SELECT SUM(opening_balance) FROM erp_clients WHERE company_id=${u.company_id}),0)
           +COALESCE((SELECT SUM(amount) FROM erp_client_invoices WHERE company_id=${u.company_id} AND status<>'cancelled'),0)
+          -COALESCE((SELECT SUM(amount) FROM erp_client_returns WHERE company_id=${u.company_id} AND status='posted'),0)
           -COALESCE((SELECT SUM(amount) FROM erp_client_receipts WHERE company_id=${u.company_id}),0))::numeric customer_receivable,
         COALESCE((SELECT SUM((qty_in-qty_out)*unit_cost) FROM erp_inventory_movements WHERE company_id=${u.company_id}),0)::numeric stock_value`;
       const daily=await sql`WITH d AS(
@@ -656,20 +730,23 @@ export default async function handler(req,res){
         RETURNING id,supplier_id,payment_date,amount,payment_method,reference_number,notes,created_at`;
       if(!rows[0])return res.status(404).json({error:'Supplier not found'});
       let remaining=amount;
-      const invoices=await sql`SELECT i.id,i.amount,COALESCE(SUM(a.amount),0)::numeric paid
-        FROM erp_supplier_invoices i LEFT JOIN erp_supplier_payment_allocations a ON a.supplier_invoice_id=i.id AND a.company_id=i.company_id
+      const invoices=await sql`SELECT i.id,i.amount,
+        COALESCE((SELECT SUM(a.amount) FROM erp_supplier_payment_allocations a WHERE a.supplier_invoice_id=i.id AND a.company_id=i.company_id),0)::numeric paid,
+        COALESCE((SELECT SUM(r.amount) FROM erp_supplier_returns r WHERE r.supplier_invoice_id=i.id AND r.company_id=i.company_id AND r.status='posted'),0)::numeric returned
+        FROM erp_supplier_invoices i
         WHERE i.company_id=${u.company_id} AND i.supplier_id=${supplierId} AND i.status<>'cancelled'
           AND (${selectedInvoiceId}::bigint IS NULL OR i.id=${selectedInvoiceId})
-        GROUP BY i.id HAVING i.amount>COALESCE(SUM(a.amount),0)
+          AND i.amount-COALESCE((SELECT SUM(r.amount) FROM erp_supplier_returns r WHERE r.supplier_invoice_id=i.id AND r.company_id=i.company_id AND r.status='posted'),0)
+            >COALESCE((SELECT SUM(a.amount) FROM erp_supplier_payment_allocations a WHERE a.supplier_invoice_id=i.id AND a.company_id=i.company_id),0)
         ORDER BY CASE WHEN i.id=${selectedInvoiceId} THEN 0 ELSE 1 END,i.invoice_date,i.id`;
       for(const inv of invoices){
         if(remaining<=0)break;
-        const outstanding=number(inv.amount)-number(inv.paid),allocated=Math.min(remaining,outstanding);
+        const netAmount=Math.max(0,number(inv.amount)-number(inv.returned)),outstanding=netAmount-number(inv.paid),allocated=Math.min(remaining,outstanding);
         if(allocated<=0)continue;
         await sql`INSERT INTO erp_supplier_payment_allocations(company_id,supplier_payment_id,supplier_invoice_id,amount)
           VALUES(${u.company_id},${rows[0].id},${inv.id},${allocated})`;
         remaining-=allocated;
-        const newPaid=number(inv.paid)+allocated,newStatus=newPaid+0.000001>=number(inv.amount)?'paid':'partial';
+        const newPaid=number(inv.paid)+allocated,newStatus=newPaid+0.000001>=netAmount?'paid':'partial';
         await sql`UPDATE erp_supplier_invoices SET status=${newStatus},updated_at=now() WHERE id=${inv.id} AND company_id=${u.company_id}`;
       }
       await companyAudit(sql,u,'SUPPLIER_PAYMENT_CREATED',{entityType:'supplier_payment',entityId:String(rows[0].id),metadata:{amount,method,allocated:amount-remaining,unallocated:remaining}});
@@ -757,20 +834,23 @@ export default async function handler(req,res){
         RETURNING id,client_id,receipt_date,amount,payment_method,reference_number,notes,created_at`;
       if(!rows[0])return res.status(404).json({error:'Customer not found'});
       let remaining=amount;
-      const invoices=await sql`SELECT i.id,i.amount,COALESCE(SUM(a.amount),0)::numeric paid
-        FROM erp_client_invoices i LEFT JOIN erp_client_receipt_allocations a ON a.client_invoice_id=i.id AND a.company_id=i.company_id
+      const invoices=await sql`SELECT i.id,i.amount,
+        COALESCE((SELECT SUM(a.amount) FROM erp_client_receipt_allocations a WHERE a.client_invoice_id=i.id AND a.company_id=i.company_id),0)::numeric paid,
+        COALESCE((SELECT SUM(r.amount) FROM erp_client_returns r WHERE r.client_invoice_id=i.id AND r.company_id=i.company_id AND r.status='posted'),0)::numeric returned
+        FROM erp_client_invoices i
         WHERE i.company_id=${u.company_id} AND i.client_id=${clientId} AND i.status<>'cancelled'
           AND (${selectedInvoiceId}::bigint IS NULL OR i.id=${selectedInvoiceId})
-        GROUP BY i.id HAVING i.amount>COALESCE(SUM(a.amount),0)
+          AND i.amount-COALESCE((SELECT SUM(r.amount) FROM erp_client_returns r WHERE r.client_invoice_id=i.id AND r.company_id=i.company_id AND r.status='posted'),0)
+            >COALESCE((SELECT SUM(a.amount) FROM erp_client_receipt_allocations a WHERE a.client_invoice_id=i.id AND a.company_id=i.company_id),0)
         ORDER BY CASE WHEN i.id=${selectedInvoiceId} THEN 0 ELSE 1 END,i.invoice_date,i.id`;
       for(const inv of invoices){
         if(remaining<=0)break;
-        const outstanding=number(inv.amount)-number(inv.paid),allocated=Math.min(remaining,outstanding);
+        const netAmount=Math.max(0,number(inv.amount)-number(inv.returned)),outstanding=netAmount-number(inv.paid),allocated=Math.min(remaining,outstanding);
         if(allocated<=0)continue;
         await sql`INSERT INTO erp_client_receipt_allocations(company_id,client_receipt_id,client_invoice_id,amount)
           VALUES(${u.company_id},${rows[0].id},${inv.id},${allocated})`;
         remaining-=allocated;
-        const newPaid=number(inv.paid)+allocated,newStatus=newPaid+0.000001>=number(inv.amount)?'paid':'partial';
+        const newPaid=number(inv.paid)+allocated,newStatus=newPaid+0.000001>=netAmount?'paid':'partial';
         await sql`UPDATE erp_client_invoices SET status=${newStatus},updated_at=now() WHERE id=${inv.id} AND company_id=${u.company_id}`;
       }
       await companyAudit(sql,u,'CLIENT_RECEIPT_CREATED',{entityType:'client_receipt',entityId:String(rows[0].id),metadata:{amount,method,allocated:amount-remaining,unallocated:remaining}});
@@ -847,6 +927,88 @@ export default async function handler(req,res){
       await companyAudit(sql,u,'GRN_POSTED',{entityType:'grn',entityId:String(g[0].id),metadata:{grn_number:grnNumber,invoice_id:supplierInvoiceId,item_count:items.filter(x=>x.quantity>0).length}});
       return res.status(201).json({record:g[0]});
     }
+    if(req.method==='POST'&&action==='create_supplier_return'){
+      const invoiceId=positiveInt(b.supplier_invoice_id,0),warehouseId=positiveInt(b.warehouse_id,0),returnDate=clean(b.return_date)||new Date().toISOString().slice(0,10),notes=clean(b.notes)||null;
+      const items=Array.isArray(b.items)?b.items.map(x=>({invoice_item_id:positiveInt(x.supplier_invoice_item_id,0),product_id:positiveInt(x.product_id,0),quantity:number(x.quantity)})):[];
+      if(!invoiceId||!warehouseId||!items.length||items.some(x=>!x.invoice_item_id||!x.product_id||x.quantity<=0))return res.status(400).json({error:'Supplier invoice, warehouse and valid return quantities required'});
+      const inv=await sql`SELECT id,supplier_id,invoice_number,amount,status FROM erp_supplier_invoices WHERE id=${invoiceId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!inv[0]||inv[0].status==='cancelled')return res.status(400).json({error:'Valid active supplier invoice required'});
+      const wh=await sql`SELECT id FROM erp_warehouses WHERE id=${warehouseId} AND company_id=${u.company_id} AND active=true`;
+      if(!wh[0])return res.status(400).json({error:'Valid warehouse required'});
+      let amount=0;const prepared=[];
+      for(const item of items){
+        const row=await sql`SELECT ii.id,ii.product_id,ii.unit_price,
+          COALESCE((SELECT SUM(gi.quantity) FROM erp_grn_items gi JOIN erp_grns g ON g.id=gi.grn_id AND g.company_id=gi.company_id WHERE gi.company_id=ii.company_id AND gi.supplier_invoice_item_id=ii.id AND g.status='posted'),0)::numeric received,
+          COALESCE((SELECT SUM(ri.quantity) FROM erp_supplier_return_items ri JOIN erp_supplier_returns rr ON rr.id=ri.supplier_return_id AND rr.company_id=ri.company_id WHERE ri.company_id=ii.company_id AND ri.supplier_invoice_item_id=ii.id AND rr.status='posted'),0)::numeric returned
+          FROM erp_supplier_invoice_items ii
+          WHERE ii.id=${item.invoice_item_id} AND ii.supplier_invoice_id=${invoiceId} AND ii.company_id=${u.company_id} LIMIT 1`;
+        if(!row[0]||Number(row[0].product_id)!==item.product_id)return res.status(400).json({error:'Supplier return product does not match invoice'});
+        const returnable=number(row[0].received)-number(row[0].returned);
+        if(item.quantity>returnable+0.000001)return res.status(400).json({error:'Supplier return quantity exceeds received remaining quantity'});
+        const stock=await sql`SELECT COALESCE(SUM(qty_in-qty_out),0)::numeric quantity FROM erp_inventory_movements WHERE company_id=${u.company_id} AND warehouse_id=${warehouseId} AND product_id=${item.product_id}`;
+        if(number(stock[0]?.quantity)+0.000001<item.quantity)return res.status(400).json({error:'Selected warehouse does not have enough stock for return'});
+        const unitPrice=number(row[0].unit_price);amount+=item.quantity*unitPrice;prepared.push({...item,unit_price:unitPrice});
+      }
+      amount=Number(amount.toFixed(2));
+      const balance=await sql`SELECT
+        COALESCE((SELECT SUM(amount) FROM erp_supplier_returns WHERE company_id=${u.company_id} AND supplier_invoice_id=${invoiceId} AND status='posted'),0)::numeric returned,
+        COALESCE((SELECT SUM(amount) FROM erp_supplier_payment_allocations WHERE company_id=${u.company_id} AND supplier_invoice_id=${invoiceId}),0)::numeric paid`;
+      const netAfter=number(inv[0].amount)-number(balance[0].returned)-amount;
+      if(number(balance[0].paid)>netAfter+0.000001)return res.status(409).json({error:'Return cannot be posted because allocated supplier payment would exceed the remaining invoice balance'});
+      const seq=await sql`SELECT COALESCE(MAX(id),0)::bigint+1 next_id FROM erp_supplier_returns WHERE company_id=${u.company_id}`;
+      const returnNumber='SPR-'+String(seq[0]?.next_id||1).padStart(6,'0');
+      const rr=await sql`INSERT INTO erp_supplier_returns(company_id,supplier_id,supplier_invoice_id,warehouse_id,return_number,return_date,amount,status,notes,created_by_user_id)
+        VALUES(${u.company_id},${inv[0].supplier_id},${invoiceId},${warehouseId},${returnNumber},${returnDate}::date,${amount},'posted',${notes},${u.id}) RETURNING *`;
+      for(const item of prepared){
+        await sql`INSERT INTO erp_supplier_return_items(company_id,supplier_return_id,supplier_invoice_item_id,product_id,quantity,unit_price,unit_cost)
+          VALUES(${u.company_id},${rr[0].id},${item.invoice_item_id},${item.product_id},${item.quantity},${item.unit_price},${item.unit_price})`;
+        await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+          VALUES(${u.company_id},${item.product_id},${warehouseId},'RETURN_OUT',0,${item.quantity},${item.unit_price},'SUPPLIER_RETURN',${rr[0].id},${returnNumber},${notes},${u.id})`;
+      }
+      const paid=number(balance[0].paid),newStatus=paid+0.000001>=Math.max(0,netAfter)?'paid':paid>0?'partial':'unpaid';
+      await sql`UPDATE erp_supplier_invoices SET status=${newStatus},updated_at=now() WHERE id=${invoiceId} AND company_id=${u.company_id}`;
+      await companyAudit(sql,u,'SUPPLIER_RETURN_POSTED',{entityType:'supplier_return',entityId:String(rr[0].id),metadata:{return_number:returnNumber,invoice_id:invoiceId,amount,item_count:prepared.length}});
+      return res.status(201).json({record:rr[0]});
+    }
+    if(req.method==='POST'&&action==='create_client_return'){
+      const invoiceId=positiveInt(b.client_invoice_id,0),returnDate=clean(b.return_date)||new Date().toISOString().slice(0,10),notes=clean(b.notes)||null;
+      const items=Array.isArray(b.items)?b.items.map(x=>({invoice_item_id:positiveInt(x.client_invoice_item_id,0),product_id:positiveInt(x.product_id,0),quantity:number(x.quantity)})):[];
+      if(!invoiceId||!items.length||items.some(x=>!x.invoice_item_id||!x.product_id||x.quantity<=0))return res.status(400).json({error:'Customer invoice and valid return quantities required'});
+      const inv=await sql`SELECT id,client_id,invoice_number,amount,status FROM erp_client_invoices WHERE id=${invoiceId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!inv[0]||inv[0].status==='cancelled')return res.status(400).json({error:'Valid active customer invoice required'});
+      let amount=0;const prepared=[];
+      for(const item of items){
+        const row=await sql`SELECT ii.id,ii.product_id,ii.warehouse_id,ii.quantity,ii.unit_price,ii.unit_cost,
+          COALESCE((SELECT SUM(ri.quantity) FROM erp_client_return_items ri JOIN erp_client_returns rr ON rr.id=ri.client_return_id AND rr.company_id=ri.company_id WHERE ri.company_id=ii.company_id AND ri.client_invoice_item_id=ii.id AND rr.status='posted'),0)::numeric returned
+          FROM erp_client_invoice_items ii WHERE ii.id=${item.invoice_item_id} AND ii.client_invoice_id=${invoiceId} AND ii.company_id=${u.company_id} LIMIT 1`;
+        if(!row[0]||Number(row[0].product_id)!==item.product_id||!row[0].warehouse_id)return res.status(400).json({error:'Customer return product/warehouse does not match invoice'});
+        const returnable=number(row[0].quantity)-number(row[0].returned);
+        if(item.quantity>returnable+0.000001)return res.status(400).json({error:'Customer return quantity exceeds sold remaining quantity'});
+        const unitPrice=number(row[0].unit_price);amount+=item.quantity*unitPrice;
+        prepared.push({...item,warehouse_id:positiveInt(row[0].warehouse_id,0),unit_price:unitPrice,unit_cost:number(row[0].unit_cost)});
+      }
+      amount=Number(amount.toFixed(2));
+      const balance=await sql`SELECT
+        COALESCE((SELECT SUM(amount) FROM erp_client_returns WHERE company_id=${u.company_id} AND client_invoice_id=${invoiceId} AND status='posted'),0)::numeric returned,
+        COALESCE((SELECT SUM(amount) FROM erp_client_receipt_allocations WHERE company_id=${u.company_id} AND client_invoice_id=${invoiceId}),0)::numeric paid`;
+      const netAfter=number(inv[0].amount)-number(balance[0].returned)-amount;
+      if(number(balance[0].paid)>netAfter+0.000001)return res.status(409).json({error:'Return cannot be posted because allocated customer payment would exceed the remaining invoice balance'});
+      const seq=await sql`SELECT COALESCE(MAX(id),0)::bigint+1 next_id FROM erp_client_returns WHERE company_id=${u.company_id}`;
+      const returnNumber='CTR-'+String(seq[0]?.next_id||1).padStart(6,'0');
+      const rr=await sql`INSERT INTO erp_client_returns(company_id,client_id,client_invoice_id,return_number,return_date,amount,status,notes,created_by_user_id)
+        VALUES(${u.company_id},${inv[0].client_id},${invoiceId},${returnNumber},${returnDate}::date,${amount},'posted',${notes},${u.id}) RETURNING *`;
+      for(const item of prepared){
+        await sql`INSERT INTO erp_client_return_items(company_id,client_return_id,client_invoice_item_id,product_id,warehouse_id,quantity,unit_price,unit_cost)
+          VALUES(${u.company_id},${rr[0].id},${item.invoice_item_id},${item.product_id},${item.warehouse_id},${item.quantity},${item.unit_price},${item.unit_cost})`;
+        await sql`INSERT INTO erp_inventory_movements(company_id,product_id,warehouse_id,movement_type,qty_in,qty_out,unit_cost,reference_type,reference_id,reference_number,notes,created_by_user_id)
+          VALUES(${u.company_id},${item.product_id},${item.warehouse_id},'RETURN_IN',${item.quantity},0,${item.unit_cost},'CUSTOMER_RETURN',${rr[0].id},${returnNumber},${notes},${u.id})`;
+      }
+      const paid=number(balance[0].paid),newStatus=paid+0.000001>=Math.max(0,netAfter)?'paid':paid>0?'partial':'unpaid';
+      await sql`UPDATE erp_client_invoices SET status=${newStatus},updated_at=now() WHERE id=${invoiceId} AND company_id=${u.company_id}`;
+      await companyAudit(sql,u,'CLIENT_RETURN_POSTED',{entityType:'client_return',entityId:String(rr[0].id),metadata:{return_number:returnNumber,invoice_id:invoiceId,amount,item_count:prepared.length}});
+      return res.status(201).json({record:rr[0]});
+    }
+
     if(req.method==='POST'&&action==='create_stock_transfer'){
       const fromWarehouseId=positiveInt(b.from_warehouse_id,0),toWarehouseId=positiveInt(b.to_warehouse_id,0);
       const transferDate=clean(b.transfer_date)||new Date().toISOString().slice(0,10),notes=clean(b.notes)||null;

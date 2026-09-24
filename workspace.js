@@ -23,7 +23,7 @@ const defs={
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -73,6 +73,8 @@ async function show(view){
   }
   if(view==='supplier-statement')return openPartyStatement('supplier');
   if(view==='client-statement')return openPartyStatement('client');
+  if(view==='supplier-returns')return openReturns('supplier');
+  if(view==='client-returns')return openReturns('client');
   if(view==='cashier')return openCashier();
   if(view==='ecommerce')return openEcommerce();
   if(view==='reports')return openReports(false);
@@ -264,7 +266,7 @@ async function openReports(advanced=false){
         '</tbody></table></div>';
     }else{
       const d=await json('/api/bizora-company?action=reports_summary&date_from='+encodeURIComponent(from)+'&date_to='+encodeURIComponent(to)),s=d.summary||{},rows=d.daily||[];
-      const k=[['Customer Sales',s.customer_sales],['Customer Receipts',s.customer_receipts],['Supplier Purchases',s.supplier_purchases],['Supplier Payments',s.supplier_payments],['Customer Receivable',s.customer_receivable],['Supplier Payable',s.supplier_payable],['Stock Value',s.stock_value]];
+      const k=[['Customer Sales',s.customer_sales],['Customer Returns',s.customer_returns],['Customer Receipts',s.customer_receipts],['Supplier Purchases',s.supplier_purchases],['Supplier Returns',s.supplier_returns],['Supplier Payments',s.supplier_payments],['Customer Receivable',s.customer_receivable],['Supplier Payable',s.supplier_payable],['Stock Value',s.stock_value]];
       box.innerHTML='<div class="reportKpis">'+k.map(x=>'<div><small>'+esc(x[0])+'</small><b>'+money(x[1])+'</b></div>').join('')+'</div>'+
         '<div class="reportSectionTitle"><b>Daily Activity</b><span>'+date(d.date_from)+' → '+date(d.date_to)+'</span></div>'+
         '<div class="tablewrap"><table><thead><tr><th>Date</th><th>Sales</th><th>Receipts</th><th>Purchases</th><th>Payments</th></tr></thead><tbody>'+
@@ -340,6 +342,73 @@ async function viewPurchasedAudit(requestId){
     '</div>';
   $('backToAuditService').onclick=()=>openAuditCenter().catch(e=>alert(e.message));
   $('printAudit').onclick=()=>window.print();
+}
+
+function installReturnsModule(){
+  if(document.querySelector('[data-view="supplier-returns"]'))return;
+  const sections=[...document.querySelectorAll('#workspaceNav .navSection')];
+  const purchasing=sections.find(x=>/Purchasing/i.test(x.querySelector('.navSectionTitle')?.textContent||''));
+  const sales=sections.find(x=>/^Sales$/i.test((x.querySelector('.navSectionTitle')?.textContent||'').trim()));
+  const make=(view,label)=>{const b=document.createElement('button');b.type='button';b.dataset.view=view;b.dataset.feature='inventory_ledger';b.innerHTML='<span class="navIcon"><svg viewBox="0 0 24 24"><path d="M4 7h13"/><path d="M7 4L4 7l3 3"/><path d="M20 17H7"/><path d="M17 14l3 3-3 3"/></svg></span><span class="navLabel">'+label+'</span><span class="navChevron">›</span>';return b};
+  if(purchasing)purchasing.appendChild(make('supplier-returns','Supplier Returns'));
+  if(sales)sales.appendChild(make('client-returns','Customer Returns'));
+}
+async function openReturns(kind){
+  const isSupplier=kind==='supplier',action=isSupplier?'supplier_returns':'client_returns';
+  $('workspaceTitle').textContent=isSupplier?'Supplier Returns':'Customer Returns';
+  $('workspaceSubtitle').textContent=model.company.name+' · Product Returns';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading returns…</div></div>';
+  const data=await json('/api/bizora-company?action='+action),rows=data.records||[];
+  $('workspaceBody').innerHTML=
+    '<div class="returnToolbar"><div><span class="capEyebrow">'+(isSupplier?'PURCHASE RETURN':'SALES RETURN')+'</span><h2>'+(isSupplier?'Supplier Returns':'Customer Returns')+'</h2></div>'+(model.subscription.access_mode==='write'?'<button id="newReturn" class="primary">+ New Return</button>':'')+'</div>'+
+    '<div class="card"><div class="tablewrap"><table><thead><tr><th>Return</th><th>Date</th><th>'+(isSupplier?'Supplier':'Customer')+'</th><th>Invoice</th>'+(isSupplier?'<th>Warehouse</th>':'')+'<th>Amount</th><th>Status</th></tr></thead><tbody>'+
+      (rows.length?rows.map(r=>'<tr><td><b>'+esc(r.return_number)+'</b></td><td>'+date(r.return_date)+'</td><td>'+esc(r.business_name)+'</td><td>'+esc(r.invoice_number)+'</td>'+(isSupplier?'<td>'+esc(r.warehouse_name)+'</td>':'')+'<td>'+money(r.amount)+'</td><td><span class="pill '+esc(r.status)+'">'+esc(r.status)+'</span></td></tr>').join(''):'<tr><td colspan="'+(isSupplier?7:6)+'">No returns yet</td></tr>')+
+    '</tbody></table></div></div>';
+  if($('newReturn'))$('newReturn').onclick=()=>openReturnForm(kind).catch(e=>alert(e.message));
+}
+async function openReturnForm(kind){
+  const isSupplier=kind==='supplier';
+  $('workspaceTitle').textContent=isSupplier?'New Supplier Return':'New Customer Return';
+  $('workspaceSubtitle').textContent=model.company.name+' · Product-wise Return';
+  $('addRecord').classList.add('hidden');
+  const invoices=(await json('/api/bizora-company?action='+(isSupplier?'supplier_invoices':'client_invoices'))).records||[];
+  const eligible=invoices.filter(x=>String(x.status)!=='cancelled'&&(isSupplier?['partial','complete'].includes(String(x.grn_status)):Number(x.item_count||0)>0));
+  const warehouses=isSupplier?await partyOptions('warehouse'):[];
+  const today=new Date().toISOString().slice(0,10);
+  $('workspaceBody').innerHTML=
+    '<div class="returnToolbar"><button id="returnBack" class="secondary">← '+(isSupplier?'Supplier Returns':'Customer Returns')+'</button></div>'+
+    '<form id="returnForm" class="card returnForm">'+
+      '<div class="formGrid"><label>'+(isSupplier?'Supplier':'Customer')+' Invoice<select id="returnInvoice" name="'+(isSupplier?'supplier_invoice_id':'client_invoice_id')+'" required><option value="">Select Invoice</option>'+eligible.map(x=>'<option value="'+x.id+'">'+esc(x.invoice_number)+' · '+esc(x.business_name)+'</option>').join('')+'</select></label>'+
+      (isSupplier?'<label>Return From Warehouse<select name="warehouse_id" required><option value="">Select Warehouse</option>'+warehouses.map(x=>'<option value="'+x.value+'">'+esc(x.label)+'</option>').join('')+'</select></label>':'')+
+      '<label>Return Date<input name="return_date" type="date" value="'+today+'" required></label></div>'+
+      '<div class="lineHead"><div><b>Return Products</b><small>Only eligible quantities can be returned</small></div></div>'+
+      '<div id="returnItems" class="lineItems"><div class="emptyLines">Select invoice to load returnable products.</div></div>'+
+      '<div class="returnTotal"><span>Return Credit</span><b id="returnTotalAmount">PKR 0</b></div>'+
+      '<label>Notes<textarea name="notes" placeholder="Reason / notes"></textarea></label>'+
+      '<div class="returnSubmit"><button id="postReturn" class="primary">Post Return</button></div>'+
+    '</form>';
+  $('returnBack').onclick=()=>openReturns(kind).catch(e=>alert(e.message));
+  const updateTotal=()=>{const total=[...document.querySelectorAll('.returnLine')].reduce((n,row)=>n+Number(row.querySelector('.returnQty')?.value||0)*Number(row.dataset.price||0),0);$('returnTotalAmount').textContent=money(total)};
+  $('returnInvoice').onchange=async e=>{
+    const id=Number(e.target.value||0),holder=$('returnItems');if(!id){holder.innerHTML='<div class="emptyLines">Select invoice to load returnable products.</div>';return}
+    holder.innerHTML='<div class="emptyLines">Loading returnable products…</div>';
+    const d=await json('/api/bizora-company?action='+(isSupplier?'supplier_return_items&invoice_id=':'client_return_items&invoice_id=')+id),items=(d.records||[]).filter(x=>Number(x.returnable_quantity)>0);
+    holder.innerHTML=items.length?items.map(x=>'<div class="lineItem returnLine" data-item-id="'+(isSupplier?x.supplier_invoice_item_id:x.client_invoice_item_id)+'" data-product-id="'+x.product_id+'" data-price="'+Number(x.unit_price||0)+'">'+
+      '<div class="lineProductName"><b>'+esc(x.product_name)+'</b><small>'+esc(x.sku||'')+' · '+(isSupplier?'Received '+esc(x.received_quantity):'Sold '+esc(x.sold_quantity))+' · Returned '+esc(x.returned_quantity)+' · Returnable '+esc(x.returnable_quantity)+(isSupplier?'':' · '+esc(x.warehouse_name||''))+'</small></div>'+
+      '<label>Return Qty<input class="returnQty" type="number" min="0" max="'+Number(x.returnable_quantity)+'" step="0.001" value="0"></label>'+
+      '<label>Rate<input type="number" value="'+Number(x.unit_price||0)+'" disabled></label>'+
+    '</div>').join(''):'<div class="emptyLines">No returnable quantity available on this invoice.</div>';
+    holder.oninput=updateTotal;updateTotal();
+  };
+  $('returnForm').onsubmit=async e=>{
+    e.preventDefault();const btn=$('postReturn'),fd=Object.fromEntries(new FormData(e.currentTarget));
+    const items=[...document.querySelectorAll('.returnLine')].map(row=>({[isSupplier?'supplier_invoice_item_id':'client_invoice_item_id']:Number(row.dataset.itemId),product_id:Number(row.dataset.productId),quantity:Number(row.querySelector('.returnQty').value||0)})).filter(x=>x.quantity>0);
+    if(!items.length)return alert('At least one return quantity required');
+    btn.disabled=true;btn.textContent='Posting Return…';
+    try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:isSupplier?'create_supplier_return':'create_client_return',...fd,items})});optionCache={};await openReturns(kind)}
+    catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Post Return'}
+  };
 }
 
 function installEcommerceModule(){
@@ -798,4 +867,4 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
   $('recordDialog').close();e.currentTarget.reset();optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
-(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installEcommerceModule();setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
+(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});

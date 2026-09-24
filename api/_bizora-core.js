@@ -359,6 +359,61 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(client_receipt_id,client_invoice_id)
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_supplier_returns(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    supplier_id BIGINT NOT NULL REFERENCES erp_suppliers(id) ON DELETE RESTRICT,
+    supplier_invoice_id BIGINT NOT NULL REFERENCES erp_supplier_invoices(id) ON DELETE RESTRICT,
+    warehouse_id BIGINT NOT NULL REFERENCES erp_warehouses(id) ON DELETE RESTRICT,
+    return_number TEXT NOT NULL,
+    return_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    amount NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(amount>=0),
+    status TEXT NOT NULL DEFAULT 'posted' CHECK(status IN ('posted','cancelled')),
+    notes TEXT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,return_number)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_supplier_return_items(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    supplier_return_id BIGINT NOT NULL REFERENCES erp_supplier_returns(id) ON DELETE RESTRICT,
+    supplier_invoice_item_id BIGINT NOT NULL REFERENCES erp_supplier_invoice_items(id) ON DELETE RESTRICT,
+    product_id BIGINT NOT NULL REFERENCES erp_products(id) ON DELETE RESTRICT,
+    quantity NUMERIC(16,3) NOT NULL CHECK(quantity>0),
+    unit_price NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(unit_price>=0),
+    unit_cost NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(unit_cost>=0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_client_returns(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    client_id BIGINT NOT NULL REFERENCES erp_clients(id) ON DELETE RESTRICT,
+    client_invoice_id BIGINT NOT NULL REFERENCES erp_client_invoices(id) ON DELETE RESTRICT,
+    return_number TEXT NOT NULL,
+    return_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    amount NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(amount>=0),
+    status TEXT NOT NULL DEFAULT 'posted' CHECK(status IN ('posted','cancelled')),
+    notes TEXT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(company_id,return_number)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_client_return_items(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    client_return_id BIGINT NOT NULL REFERENCES erp_client_returns(id) ON DELETE RESTRICT,
+    client_invoice_item_id BIGINT NOT NULL REFERENCES erp_client_invoice_items(id) ON DELETE RESTRICT,
+    product_id BIGINT NOT NULL REFERENCES erp_products(id) ON DELETE RESTRICT,
+    warehouse_id BIGINT NOT NULL REFERENCES erp_warehouses(id) ON DELETE RESTRICT,
+    quantity NUMERIC(16,3) NOT NULL CHECK(quantity>0),
+    unit_price NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(unit_price>=0),
+    unit_cost NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(unit_cost>=0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+
   await sql`CREATE TABLE IF NOT EXISTS ecommerce_store_settings(
     company_id BIGINT PRIMARY KEY REFERENCES companies(id) ON DELETE RESTRICT,
     store_name TEXT NOT NULL,
@@ -489,6 +544,10 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_client_invoices_company_idx ON erp_client_invoices(company_id,invoice_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_invoice_items_company_invoice_idx ON erp_client_invoice_items(company_id,client_invoice_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_receipts_company_idx ON erp_client_receipts(company_id,receipt_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_supplier_returns_company_idx ON erp_supplier_returns(company_id,return_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_supplier_return_items_invoice_item_idx ON erp_supplier_return_items(company_id,supplier_invoice_item_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_client_returns_company_idx ON erp_client_returns(company_id,return_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_client_return_items_invoice_item_idx ON erp_client_return_items(company_id,client_invoice_item_id)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_products_company_idx ON ecommerce_products(company_id,active,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_orders_company_idx ON ecommerce_orders(company_id,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_order_items_company_order_idx ON ecommerce_order_items(company_id,ecommerce_order_id)`;
