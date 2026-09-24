@@ -193,6 +193,17 @@ export async function ensureBizoraSchema(sql){
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(company_id,supplier_id,invoice_number)
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS erp_supplier_invoice_items(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    supplier_invoice_id BIGINT NOT NULL REFERENCES erp_supplier_invoices(id) ON DELETE RESTRICT,
+    product_id BIGINT NOT NULL REFERENCES erp_products(id) ON DELETE RESTRICT,
+    description TEXT,
+    quantity NUMERIC(16,3) NOT NULL CHECK(quantity>0),
+    unit_price NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(unit_price>=0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
   await sql`CREATE TABLE IF NOT EXISTS erp_supplier_payments(
     id BIGSERIAL PRIMARY KEY,
     company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
@@ -287,6 +298,11 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
 
+  await sql`ALTER TABLE erp_grn_items ADD COLUMN IF NOT EXISTS supplier_invoice_item_id BIGINT REFERENCES erp_supplier_invoice_items(id) ON DELETE RESTRICT`;
+  await sql`ALTER TABLE erp_grn_items ADD COLUMN IF NOT EXISTS ordered_qty NUMERIC(16,3) NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE erp_grn_items ADD COLUMN IF NOT EXISTS rejected_qty NUMERIC(16,3) NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE erp_grn_items ADD COLUMN IF NOT EXISTS batch_no TEXT`;
+  await sql`ALTER TABLE erp_grn_items ADD COLUMN IF NOT EXISTS expiry_date DATE`;
   await sql`ALTER TABLE company_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`;
   await sql`ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS actor_company_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL`;
 
@@ -298,6 +314,8 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_clients_company_idx ON erp_clients(company_id,status)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_products_company_idx ON erp_products(company_id,active)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_invoices_company_idx ON erp_supplier_invoices(company_id,invoice_date DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_supplier_invoice_items_company_invoice_idx ON erp_supplier_invoice_items(company_id,supplier_invoice_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS erp_grn_items_invoice_item_idx ON erp_grn_items(company_id,supplier_invoice_item_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_payments_company_idx ON erp_supplier_payments(company_id,payment_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_grns_company_idx ON erp_grns(company_id,received_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_grn_items_company_grn_idx ON erp_grn_items(company_id,grn_id)`;
