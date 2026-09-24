@@ -23,7 +23,7 @@ const defs={
 };
 function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger',cashier:'cashier',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -73,6 +73,7 @@ async function show(view){
   }
   if(view==='supplier-statement')return openPartyStatement('supplier');
   if(view==='client-statement')return openPartyStatement('client');
+  if(view==='cashier')return openCashier();
   if(view==='reports')return openReports(false);
   if(view==='advanced-reports')return openReports(true);
   if(view==='audit-center')return openAuditCenter();
@@ -318,6 +319,178 @@ async function viewPurchasedAudit(requestId){
   $('backToAuditService').onclick=()=>openAuditCenter().catch(e=>alert(e.message));
   $('printAudit').onclick=()=>window.print();
 }
+
+function installCashierModule(){
+  if(document.querySelector('[data-view="cashier"]'))return;
+  const salesButtons=[...document.querySelectorAll('#workspaceNav .navSection')].find(x=>/Sales/i.test(x.querySelector('.navSectionTitle')?.textContent||''));
+  if(!salesButtons)return;
+  const btn=document.createElement('button');
+  btn.type='button';btn.dataset.view='cashier';btn.dataset.feature='cashier';
+  btn.innerHTML='<span class="navIcon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M7 9h10M7 13h4"/><circle cx="17" cy="15" r="2"/></svg></span><span class="navLabel">Cashier / Counter Sale</span><span class="navChevron">›</span>';
+  salesButtons.appendChild(btn);
+  if(!document.getElementById('bizoraCashierStyles')){
+    const style=document.createElement('style');style.id='bizoraCashierStyles';style.textContent=`
+      .cashierShell{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,.85fr);gap:14px}
+      .cashierPanel,.cashierCart{padding:16px!important}
+      .cashierTop{display:grid;grid-template-columns:1fr 220px;gap:10px;margin-bottom:12px}
+      .cashierSearch{position:relative}.cashierSearch input{width:100%;font-size:14px}
+      .cashierSuggestions{position:absolute;left:0;right:0;top:100%;z-index:12;margin-top:5px;max-height:280px;overflow:auto;border:1px solid #dbe6f3;border-radius:14px;background:#fff;box-shadow:0 18px 40px rgba(26,55,102,.16)}
+      .cashierSuggestions button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:0;border-bottom:1px solid #edf1f6;background:#fff;color:#17213a;text-align:left}
+      .cashierSuggestions button:last-child{border-bottom:0}.cashierSuggestions button:hover{background:#f3f7ff}
+      .cashierSuggestions small{display:block;color:#74829a;font-size:9px;margin-top:2px}
+      .cashierStockTag{font-size:9px;font-weight:900;color:#0c7a59;background:#eaf9f2;border:1px solid #c8eadb;padding:4px 7px;border-radius:999px;white-space:nowrap}
+      .cashierCartHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.cashierCartHead h2{margin:0;color:#14213d;font-size:18px}.cashierCartHead small{color:#76839a}
+      .cashierItems{display:grid;gap:8px;max-height:480px;overflow:auto;padding-right:2px}
+      .cashierItem{display:grid;grid-template-columns:minmax(0,1fr) 92px 105px 34px;gap:7px;align-items:center;padding:10px;border:1px solid #dfe7f2;border-radius:14px;background:#fbfdff}
+      .cashierItemName b{display:block;color:#17213a;font-size:12px}.cashierItemName small{display:block;color:#7a879e;font-size:9px;margin-top:2px}
+      .cashierItem input{min-width:0;width:100%;padding:8px!important}.cashierRemove{width:34px;height:34px;padding:0!important;border-radius:10px!important}
+      .cashierEmpty{padding:28px 14px;text-align:center;border:1px dashed #cad8e9;border-radius:16px;color:#7a879e;background:#fbfdff}
+      .cashierTotals{margin-top:12px;border-top:1px solid #e1e8f2;padding-top:12px;display:grid;gap:7px}.cashierTotals div{display:flex;justify-content:space-between;gap:12px;color:#5f6f89;font-size:11px}.cashierTotals .grand{font-size:16px;color:#10265a;font-weight:900}
+      .cashierCheckout{display:grid;gap:9px}.cashierCheckout label{margin:0}.cashierCheckout .formGrid{grid-template-columns:1fr 1fr}
+      .cashierPayModes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.cashierPayModes label{display:flex;align-items:center;justify-content:center;gap:5px;padding:9px;border:1px solid #dbe5f2;border-radius:12px;background:#fff;color:#33415c;font-size:10px;font-weight:800;cursor:pointer}.cashierPayModes input{width:auto}
+      .cashierCheckoutBtn{width:100%;margin-top:4px;min-height:46px!important}
+      .cashierRecent{margin-top:14px}.cashierRecent h3{margin:0 0 9px;color:#17213a;font-size:14px}
+      .cashierRecentRow{display:grid;grid-template-columns:1fr auto;gap:8px;padding:9px 0;border-bottom:1px solid #edf1f6}.cashierRecentRow:last-child{border-bottom:0}.cashierRecentRow b{display:block;color:#1b2944;font-size:11px}.cashierRecentRow small{display:block;color:#7a879e;font-size:9px;margin-top:2px}
+      .cashierStatus{display:inline-flex;padding:4px 7px;border-radius:999px;font-size:8px;font-weight:900;text-transform:uppercase}.cashierStatus.paid{background:#e9fbf2;color:#087f58}.cashierStatus.partial{background:#eef3ff;color:#365cc5}.cashierStatus.unpaid{background:#fff5df;color:#946200}
+      .cashierReceipt{padding:18px!important}.cashierReceiptHead{text-align:center;padding-bottom:12px;border-bottom:1px dashed #cbd5e1}.cashierReceiptHead h2{margin:3px 0;color:#111827}.cashierReceiptMeta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}.cashierReceiptMeta div{padding:9px;border-radius:10px;background:#f7f9fc}.cashierReceiptMeta small{display:block;color:#7a879e;font-size:8px}.cashierReceiptMeta b{display:block;margin-top:2px;color:#17213a;font-size:11px}
+      .cashierReceiptActions{display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px}
+      @media(max-width:900px){.cashierShell{grid-template-columns:1fr}.cashierItems{max-height:none}}
+      @media(max-width:620px){.cashierTop{grid-template-columns:1fr}.cashierItem{grid-template-columns:minmax(0,1fr) 80px 92px 32px}.cashierCheckout .formGrid{grid-template-columns:1fr}.cashierPayModes{grid-template-columns:1fr 1fr 1fr}}
+      @media(max-width:430px){.cashierItem{grid-template-columns:1fr 1fr}.cashierItemName{grid-column:1/-1}.cashierRemove{position:absolute;right:8px;top:8px}.cashierItem{position:relative;padding-top:13px}.cashierPayModes{grid-template-columns:1fr}.cashierReceiptMeta{grid-template-columns:1fr}}
+      @media print{body.cashier-print .topbar,body.cashier-print .sidenav,body.cashier-print .navbackdrop,body.cashier-print .hero,body.cashier-print #readOnlyNote,body.cashier-print .cashierReceiptActions{display:none!important}body.cashier-print .shell{padding:0!important;margin:0!important}body.cashier-print #workspaceBody>*:not(.cashierReceipt){display:none!important}body.cashier-print .cashierReceipt{display:block!important;box-shadow:none!important;border:0!important}}
+    `;document.head.appendChild(style);
+  }
+}
+async function ensureWalkInCustomer(){
+  let clients=optionCache.clients;
+  if(!clients)clients=(await json('/api/bizora-company?action=clients')).records||[],optionCache.clients=clients;
+  let walk=clients.find(x=>String(x.client_code||'').toUpperCase()==='WALKIN'||String(x.business_name||'').toLowerCase()==='walking customer');
+  if(walk)return walk;
+  try{
+    const created=await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create_client',client_code:'WALKIN',business_name:'Walking Customer',contact_person:'Counter Sale',mobile_number:'',credit_limit:0,opening_balance:0})});
+    walk=created.record;optionCache.clients=[walk,...clients];return walk;
+  }catch(e){
+    optionCache.clients=(await json('/api/bizora-company?action=clients')).records||[];
+    walk=optionCache.clients.find(x=>String(x.client_code||'').toUpperCase()==='WALKIN'||String(x.business_name||'').toLowerCase()==='walking customer');
+    if(walk)return walk;throw e;
+  }
+}
+async function openCashier(){
+  $('workspaceTitle').textContent='Cashier / Counter Sale';
+  $('workspaceSubtitle').textContent=model.company.name+' · Fast Billing';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading cashier…</div></div>';
+  const [clients,warehouses,products,stock,walk]=await Promise.all([
+    partyOptions('client'),partyOptions('warehouse'),
+    json('/api/bizora-company?action=products').then(x=>x.records||[]),
+    json('/api/bizora-company?action=inventory_stock').then(x=>x.records||[]),
+    ensureWalkInCustomer()
+  ]);
+  const productRows=products.filter(x=>x.active!==false);
+  const stockByKey=new Map(stock.map(x=>[String(x.warehouse_id)+':'+String(x.product_id),Number(x.quantity||0)]));
+  let cart=[];
+  $('workspaceBody').innerHTML=
+    '<div class="cashierShell">'+
+      '<div class="card cashierPanel">'+
+        '<div class="cashierTop"><div class="cashierSearch"><input id="cashierSearch" autocomplete="off" placeholder="Search product / SKU / barcode..."><div id="cashierSuggestions" class="cashierSuggestions hidden"></div></div><label>Warehouse<select id="cashierWarehouse"><option value="">Select Warehouse</option>'+warehouses.map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label></div>'+
+        '<div id="cashierItems" class="cashierItems"><div class="cashierEmpty">Search or scan a product to start billing.</div></div>'+
+        '<div class="cashierTotals"><div><span>Items</span><b id="cashierItemCount">0</b></div><div class="grand"><span>Bill Total</span><b id="cashierGrandTotal">PKR 0</b></div></div>'+
+      '</div>'+
+      '<div class="card cashierCart">'+
+        '<div class="cashierCartHead"><div><h2>Checkout</h2><small>Counter sale payment</small></div></div>'+
+        '<div class="cashierCheckout">'+
+          '<label>Customer<select id="cashierCustomer"><option value="'+walk.id+'">Walking Customer</option>'+clients.filter(o=>Number(o.value)!==Number(walk.id)).map(o=>'<option value="'+o.value+'">'+esc(o.label)+'</option>').join('')+'</select></label>'+
+          '<div class="cashierPayModes"><label><input type="radio" name="cashierSaleType" value="paid" checked> Paid</label><label><input type="radio" name="cashierSaleType" value="partial"> Partial</label><label><input type="radio" name="cashierSaleType" value="credit"> Credit</label></div>'+
+          '<div class="formGrid"><label>Paid Amount<input id="cashierPaidAmount" type="number" min="0" step="0.01" value="0"></label><label>Payment Method<select id="cashierPaymentMethod"><option>CASH</option><option>BANK</option><option>EASYPAISA</option><option>JAZZCASH</option><option>ONLINE</option><option>CHEQUE</option></select></label></div>'+
+          '<label>Reference<input id="cashierReference" placeholder="Optional payment reference"></label>'+
+          '<button id="cashierCheckoutBtn" class="primary cashierCheckoutBtn">Create Invoice & Complete Sale</button>'+
+        '</div>'+
+        '<div class="cashierRecent"><h3>Recent Counter Sales</h3><div id="cashierRecentRows"><div class="emptyLines">Loading…</div></div></div>'+
+      '</div>'+
+    '</div>';
+  const search=$('cashierSearch'),suggestions=$('cashierSuggestions'),warehouse=$('cashierWarehouse'),itemsEl=$('cashierItems'),paid=$('cashierPaidAmount');
+  const total=()=>cart.reduce((n,x)=>n+Number(x.qty)*Number(x.price),0);
+  const renderCart=()=>{
+    if(!cart.length)itemsEl.innerHTML='<div class="cashierEmpty">Search or scan a product to start billing.</div>';
+    else itemsEl.innerHTML=cart.map((x,i)=>'<div class="cashierItem" data-index="'+i+'"><div class="cashierItemName"><b>'+esc(x.product_name)+'</b><small>'+esc(x.sku||'')+(x.barcode?' · '+esc(x.barcode):'')+'</small></div><input class="cashierQty" type="number" min="0.001" step="0.001" value="'+x.qty+'"><input class="cashierPrice" type="number" min="0" step="0.01" value="'+x.price+'"><button class="secondary cashierRemove" type="button">×</button></div>').join('');
+    $('cashierItemCount').textContent=cart.reduce((n,x)=>n+Number(x.qty||0),0).toLocaleString('en-PK',{maximumFractionDigits:3});
+    $('cashierGrandTotal').textContent=money(total());
+    const type=document.querySelector('input[name="cashierSaleType"]:checked')?.value||'paid';
+    if(type==='paid')paid.value=Number(total().toFixed(2));
+  };
+  const addProduct=p=>{
+    if(!warehouse.value){alert('Pehla warehouse select karein');return}
+    const available=stockByKey.get(String(warehouse.value)+':'+String(p.id))||0;
+    if(available<=0){alert('Selected warehouse mein is product ka stock available nahi');return}
+    const found=cart.find(x=>Number(x.id)===Number(p.id));
+    if(found){if(found.qty+1>available){alert('Available stock '+available);return}found.qty+=1}
+    else cart.push({...p,qty:1,price:Number(p.sale_price||0),available});
+    renderCart();search.value='';suggestions.classList.add('hidden');search.focus();
+  };
+  const showSuggestions=()=>{
+    const q=search.value.trim().toLowerCase();if(!q){suggestions.classList.add('hidden');return}
+    const exact=productRows.find(p=>String(p.barcode||'').toLowerCase()===q||String(p.sku||'').toLowerCase()===q);
+    if(exact&&q.length>=3){addProduct(exact);return}
+    const rows=productRows.filter(p=>[p.product_name,p.sku,p.barcode].join(' ').toLowerCase().includes(q)).slice(0,12);
+    suggestions.innerHTML=rows.length?rows.map(p=>{const available=warehouse.value?(stockByKey.get(String(warehouse.value)+':'+String(p.id))||0):0;return '<button type="button" data-id="'+p.id+'"><span><b>'+esc(p.product_name)+'</b><small>'+esc(p.sku||'')+(p.barcode?' · '+esc(p.barcode):'')+' · '+money(p.sale_price)+'</small></span><span class="cashierStockTag">'+(warehouse.value?'Stock '+available:'Select WH')+'</span></button>'}).join(''):'<div class="cashierEmpty">No matching product</div>';
+    suggestions.classList.remove('hidden');
+  };
+  search.oninput=showSuggestions;warehouse.onchange=()=>{cart=[];renderCart();showSuggestions()};
+  suggestions.onclick=e=>{const b=e.target.closest('button[data-id]');if(b){const p=productRows.find(x=>String(x.id)===b.dataset.id);if(p)addProduct(p)}};
+  itemsEl.oninput=e=>{
+    const row=e.target.closest('.cashierItem');if(!row)return;const x=cart[Number(row.dataset.index)];if(!x)return;
+    if(e.target.classList.contains('cashierQty')){const q=Math.max(.001,Number(e.target.value||0));if(q>x.available){e.target.value=x.available;x.qty=x.available;alert('Available stock '+x.available)}else x.qty=q}
+    if(e.target.classList.contains('cashierPrice'))x.price=Math.max(0,Number(e.target.value||0));renderCart();
+  };
+  itemsEl.onclick=e=>{const b=e.target.closest('.cashierRemove');if(!b)return;const row=b.closest('.cashierItem');cart.splice(Number(row.dataset.index),1);renderCart()};
+  document.querySelectorAll('input[name="cashierSaleType"]').forEach(r=>r.onchange=()=>{
+    const t=r.value,box=$('cashierPaidAmount');if(!r.checked)return;
+    if(t==='paid')box.value=Number(total().toFixed(2));else if(t==='credit')box.value=0;else box.value=Math.min(Number(box.value||0),total());
+    box.disabled=t==='credit';
+  });
+  async function loadRecent(){
+    const invoices=(await json('/api/bizora-company?action=client_invoices')).records||[];
+    const rows=invoices.filter(x=>String(x.invoice_number||'').startsWith('CS-')).slice(0,8);
+    $('cashierRecentRows').innerHTML=rows.length?rows.map(x=>'<div class="cashierRecentRow"><div><b>'+esc(x.invoice_number)+' · '+esc(x.business_name)+'</b><small>'+date(x.invoice_date)+' · '+money(x.amount)+'</small></div><span class="cashierStatus '+esc(x.status||'unpaid')+'">'+esc(x.status||'unpaid')+'</span></div>').join(''):'<div class="emptyLines">No counter sales yet</div>';
+  }
+  $('cashierCheckoutBtn').onclick=async()=>{
+    const btn=$('cashierCheckoutBtn'),bill=total(),type=document.querySelector('input[name="cashierSaleType"]:checked')?.value||'paid',paidAmount=type==='credit'?0:Number(paid.value||0);
+    if(!warehouse.value)return alert('Warehouse select karein');
+    if(!cart.length)return alert('Bill mein products add karein');
+    if(type==='paid'&&Math.abs(paidAmount-bill)>.01)return alert('Paid sale mein paid amount bill total ke barabar hona chahye');
+    if(type==='partial'&&(paidAmount<=0||paidAmount>=bill))return alert('Partial payment 0 se zyada aur bill total se kam honi chahye');
+    if(cart.some(x=>x.qty>x.available))return alert('Cart quantity available stock se zyada hai');
+    btn.disabled=true;btn.textContent='Saving Sale…';
+    try{
+      const now=new Date(),invoiceNumber='CS-'+now.toISOString().slice(0,10).replaceAll('-','')+'-'+String(now.getTime()).slice(-8);
+      const inv=await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        action:'create_client_invoice',client_id:Number($('cashierCustomer').value),warehouse_id:Number(warehouse.value),invoice_number:invoiceNumber,
+        invoice_date:now.toISOString().slice(0,10),due_date:now.toISOString().slice(0,10),notes:'Cashier / Counter Sale',
+        items:cart.map(x=>({product_id:x.id,quantity:x.qty,unit_price:x.price,description:'Counter Sale'}))
+      })});
+      if(paidAmount>0){
+        await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+          action:'create_client_receipt',client_id:Number($('cashierCustomer').value),invoice_id:inv.record.id,receipt_date:now.toISOString().slice(0,10),amount:paidAmount,
+          payment_method:$('cashierPaymentMethod').value,reference_number:$('cashierReference').value||invoiceNumber,notes:'Cashier payment'
+        })});
+      }
+      const receipt={invoiceNumber,date:now.toISOString(),customer:$('cashierCustomer').selectedOptions[0]?.textContent||'Walking Customer',warehouse:warehouse.selectedOptions[0]?.textContent||'',items:cart.map(x=>({...x})),total:bill,paid:paidAmount,balance:bill-paidAmount,method:paidAmount>0?$('cashierPaymentMethod').value:'CREDIT'};
+      cart=[];renderCart();optionCache={};await showCashierReceipt(receipt,loadRecent);
+    }catch(e){alert(e.message)}finally{btn.disabled=false;btn.textContent='Create Invoice & Complete Sale'}
+  };
+  renderCart();await loadRecent();search.focus();
+}
+async function showCashierReceipt(r,back){
+  const rows=r.items||[];
+  const html='<div class="cashierReceiptActions"><button id="cashierBack" class="secondary">← New Sale</button><button id="cashierPrint" class="primary">Print Receipt</button></div>'+
+    '<div class="card cashierReceipt"><div class="cashierReceiptHead"><span class="capEyebrow">BIZORA ERP</span><h2>'+esc(model.company.name)+'</h2><small>Counter Sale Receipt</small></div>'+
+    '<div class="cashierReceiptMeta"><div><small>Invoice</small><b>'+esc(r.invoiceNumber)+'</b></div><div><small>Date / Time</small><b>'+esc(new Date(r.date).toLocaleString('en-GB'))+'</b></div><div><small>Customer</small><b>'+esc(r.customer)+'</b></div><div><small>Warehouse</small><b>'+esc(r.warehouse)+'</b></div></div>'+
+    '<div class="tablewrap"><table><thead><tr><th>Product</th><th>Qty</th><th>Rate</th><th>Total</th></tr></thead><tbody>'+rows.map(x=>'<tr><td>'+esc(x.product_name)+'</td><td>'+esc(x.qty)+'</td><td>'+money(x.price)+'</td><td>'+money(Number(x.qty)*Number(x.price))+'</td></tr>').join('')+'</tbody></table></div>'+
+    '<div class="cashierTotals"><div class="grand"><span>Bill Total</span><b>'+money(r.total)+'</b></div><div><span>Paid</span><b>'+money(r.paid)+'</b></div><div><span>Balance</span><b>'+money(r.balance)+'</b></div><div><span>Method</span><b>'+esc(r.method)+'</b></div></div></div>';
+  $('workspaceBody').innerHTML=html;
+  $('cashierBack').onclick=()=>openCashier().catch(e=>alert(e.message));
+  $('cashierPrint').onclick=()=>{document.body.classList.add('cashier-print');window.print();setTimeout(()=>document.body.classList.remove('cashier-print'),500)};
+}
 async function openPaymentForm(kind){
   const isSupplier=kind==='supplier',parties=await partyOptions(kind),today=new Date().toISOString().slice(0,10);
   const invoices=(await json('/api/bizora-company?action='+(isSupplier?'supplier_invoices':'client_invoices'))).records||[];
@@ -479,4 +652,4 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
   $('recordDialog').close();e.currentTarget.reset();optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
-(async()=>{model=await json('/api/bizora-company?action=overview');setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
+(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
