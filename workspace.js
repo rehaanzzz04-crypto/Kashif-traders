@@ -25,7 +25,7 @@ function isMoney(key){return /price|amount|balance|credit_limit/.test(key)}
 const featureOn=key=>model?.subscription?.features?.[key]===true;
 const roleCanView=view=>view==='dashboard'||model?.role_access?.views?.includes(view)===true;
 const roleCanWrite=view=>model?.subscription?.access_mode==='write'&&model?.role_access?.write_views?.includes(view)===true;
-const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
+const viewFeatures={users:'core_erp',suppliers:'supplier_management','supplier-bills':'supplier_management','supplier-payments':'supplier_management','supplier-statement':'supplier_management',clients:'customer_management','client-bills':'customer_management','client-payments':'customer_management','client-statement':'customer_management',products:'products',warehouses:'warehouses',grns:'grn','inventory-stock':'inventory_ledger','inventory-ledger':'inventory_ledger','stock-transfers':'inventory_ledger','stock-adjustments':'inventory_ledger','supplier-returns':'inventory_ledger','client-returns':'inventory_ledger',cashier:'cashier',ecommerce:'ecommerce','ocr-drafts':'ocr',reports:'basic_reports','advanced-reports':'advanced_reports','audit-center':'core_erp'};
 function setHeader(){
   $('navCompany').textContent=model.company.name;
   $('accessBadge').textContent=(model.subscription.plan_name||'No Plan')+' · '+(model.subscription.access_mode==='write'?'ACTIVE':'READ ONLY');
@@ -82,6 +82,7 @@ async function show(view){
   if(view==='client-returns')return openReturns('client');
   if(view==='cashier')return openCashier();
   if(view==='ecommerce')return openEcommerce();
+  if(view==='ocr-drafts')return openOcrDrafts();
   if(view==='reports')return openReports(false);
   if(view==='advanced-reports')return openReports(true);
   if(view==='audit-center')return openAuditCenter();
@@ -513,7 +514,7 @@ async function openReturnDetail(kind,row){
   $('addRecord').classList.add('hidden');
   $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading return…</div></div>';
   const d=await json('/api/bizora-company?action='+action+row.id),r=d.record||row,items=d.items||[],status=String(r.status||'posted').toLowerCase();
-  const canCancel=status==='posted'&&roleCanWrite(isGrn?'grns':isTransfer?'stock-transfers':'stock-adjustments');
+  const canCancel=status==='posted'&&roleCanWrite(isSupplier?'supplier-returns':'client-returns');
   $('workspaceBody').innerHTML=
     '<div class="returnDetailActions"><button id="returnDetailBack" class="secondary">← '+(isSupplier?'Supplier Returns':'Customer Returns')+'</button><div><span class="returnDocStatus '+esc(status)+'">'+esc(status)+'</span><button id="printReturnDoc" class="secondary">Print / Save PDF</button>'+(canCancel?'<button id="cancelReturnDoc" class="dangerAction">Cancel & Reverse</button>':'')+'</div></div>'+
     '<div class="card returnDocument returnPrintable">'+
@@ -579,6 +580,143 @@ async function openReturnForm(kind){
     try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:isSupplier?'create_supplier_return':'create_client_return',...fd,items})});optionCache={};await openReturns(kind)}
     catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Post Return'}
   };
+}
+
+function installOcrModule(){
+  if(document.querySelector('[data-view="ocr-drafts"]'))return;
+  const nav=document.querySelector('#workspaceNav .navScroll');if(!nav)return;
+  const section=document.createElement('div');section.className='navSection';
+  section.innerHTML='<div class="navSectionTitle">Automation</div><button data-view="ocr-drafts" data-feature="ocr"><span class="navIcon"><svg viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5z"/><path d="M15 3v5h5"/><path d="M8 12h8M8 16h6"/></svg></span><span class="navLabel">OCR Draft Review</span><span class="navChevron">›</span></button>';
+  nav.appendChild(section);
+}
+async function openOcrDrafts(){
+  $('workspaceTitle').textContent='OCR Draft Review';
+  $('workspaceSubtitle').textContent=model.company.name+' · Premium Invoice Intake';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML='<div class="card"><div class="emptyLines">Loading OCR drafts…</div></div>';
+  const d=await json('/api/bizora-company?action=ocr_drafts'),rows=d.records||[];
+  $('workspaceBody').innerHTML=
+    '<div class="ocrToolbar"><div><span class="capEyebrow">PREMIUM OCR AUTOMATION</span><h2>Supplier Invoice Drafts</h2><p>Scan image locally, review extracted data, then post a verified supplier invoice.</p></div>'+(roleCanWrite('ocr-drafts')?'<button id="newOcrDraft" class="primary">+ Scan Invoice</button>':'')+'</div>'+
+    '<div class="card"><div class="tablewrap"><table><thead><tr><th>Draft</th><th>Created</th><th>Supplier</th><th>Invoice</th><th>Detected Total</th><th>ERP Total</th><th>Confidence</th><th>Status</th></tr></thead><tbody>'+
+      (rows.length?rows.map(r=>'<tr><td><b>'+esc(r.draft_number)+'</b><small>'+esc(r.source_file_name||'Manual OCR text')+'</small></td><td>'+esc(new Date(r.created_at).toLocaleString('en-GB'))+'</td><td>'+esc(r.supplier_name||'—')+'</td><td>'+esc(r.invoice_number||'—')+'</td><td>'+money(r.detected_total||0)+'</td><td>'+money(r.calculated_total||0)+'</td><td>'+esc(r.ocr_confidence===null||r.ocr_confidence===undefined?'—':Number(r.ocr_confidence).toFixed(1)+'%')+'</td><td><span class="ocrStatus '+esc(r.status)+'">'+esc(r.status)+'</span></td></tr>').join(''):'<tr><td colspan="8">No OCR drafts yet</td></tr>')+
+    '</tbody></table></div></div>';
+  document.querySelectorAll('#workspaceBody tbody tr').forEach((tr,i)=>{const row=rows[i];if(row){tr.classList.add('clickableRow');tr.onclick=()=>openOcrDraftReview(row.id).catch(e=>alert(e.message))}});
+  if($('newOcrDraft'))$('newOcrDraft').onclick=()=>openOcrCapture().catch(e=>alert(e.message));
+}
+async function loadTesseract(){
+  if(window.Tesseract)return window.Tesseract;
+  await new Promise((resolve,reject)=>{
+    const existing=document.getElementById('bizoraTesseract');
+    if(existing){existing.addEventListener('load',resolve,{once:true});existing.addEventListener('error',()=>reject(new Error('OCR library could not load')),{once:true});return}
+    const s=document.createElement('script');s.id='bizoraTesseract';s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.async=true;s.crossOrigin='anonymous';s.onload=resolve;s.onerror=()=>reject(new Error('OCR library could not load. You can still paste OCR text manually.'));document.head.appendChild(s);
+  });
+  if(!window.Tesseract)throw new Error('OCR library unavailable');
+  return window.Tesseract;
+}
+function normalizeOcrDate(raw){
+  const s=String(raw||'').trim();
+  let m=s.match(/(20\d{2})[-\/.](\d{1,2})[-\/.](\d{1,2})/);if(m)return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  m=s.match(/(\d{1,2})[-\/.](\d{1,2})[-\/.](20\d{2})/);if(m)return m[3]+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0');
+  return '';
+}
+function parseOcrInvoiceText(text,products){
+  const raw=String(text||''),lines=raw.split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+  let invoice_number='',invoice_date='',detected_total=null;
+  for(const line of lines){
+    if(!invoice_number&&/(invoice|inv\.?)[\s#:.-]*(no|number)?/i.test(line)){
+      const m=line.match(/(?:invoice|inv\.?)\s*(?:no|number)?\s*[:#.-]?\s*([A-Z0-9\/_-]{3,})/i);if(m)invoice_number=m[1];
+    }
+    if(!invoice_date&&/(date|dated)/i.test(line)){const m=line.match(/(20\d{2}[-\/.]\d{1,2}[-\/.]\d{1,2}|\d{1,2}[-\/.]\d{1,2}[-\/.]20\d{2})/);if(m)invoice_date=normalizeOcrDate(m[1])}
+    if(/grand\s*total|net\s*total|invoice\s*total|total\s*amount/i.test(line)){
+      const nums=line.match(/\d[\d,]*(?:\.\d+)?/g);if(nums?.length)detected_total=Number(nums[nums.length-1].replaceAll(',',''));
+    }
+  }
+  if(detected_total===null){
+    const totals=lines.filter(x=>/^total\b/i.test(x));if(totals.length){const nums=totals[totals.length-1].match(/\d[\d,]*(?:\.\d+)?/g);if(nums?.length)detected_total=Number(nums[nums.length-1].replaceAll(',',''))}
+  }
+  const suggestions=[];
+  for(const line of lines){
+    if(/total|subtotal|tax|discount|balance|amount due/i.test(line))continue;
+    const nums=[...(line.matchAll(/\d[\d,]*(?:\.\d+)?/g))].map(m=>({text:m[0],index:m.index,value:Number(m[0].replaceAll(',',''))}));
+    if(nums.length<3)continue;
+    const q=nums[nums.length-3].value,p=nums[nums.length-2].value,t=nums[nums.length-1].value;
+    if(q<=0||p<0||t<0||Math.abs(q*p-t)>Math.max(2,t*.04))continue;
+    const desc=line.slice(0,nums[nums.length-3].index).replace(/[|:-]+$/,'').trim();if(desc.length<2)continue;
+    const n=desc.toLowerCase();
+    const match=products.find(x=>n.includes(String(x.sku||'').toLowerCase())&&String(x.sku||'').length>2)||products.find(x=>n.includes(String(x.product_name||'').toLowerCase()));
+    suggestions.push({product_id:match?.id||null,description:desc,quantity:q,unit_price:p});
+    if(suggestions.length>=80)break;
+  }
+  return {invoice_number,invoice_date,detected_total,items:suggestions};
+}
+function ocrLine(products,item={}){
+  return '<div class="ocrLine" data-id="'+esc(item.id||'')+'"><label>Product<select class="ocrProduct"><option value="">Map Product</option>'+products.map(p=>'<option value="'+p.id+'" '+(Number(item.product_id)===Number(p.id)?'selected':'')+'>'+esc(p.product_name)+' · '+esc(p.sku||'')+'</option>').join('')+'</select></label><label>Description<input class="ocrDescription" value="'+esc(item.description||item.product_name||'')+'"></label><label>Qty<input class="ocrQty" type="number" min="0.001" step="0.001" value="'+esc(item.quantity??1)+'"></label><label>Price<input class="ocrPrice" type="number" min="0" step="0.01" value="'+esc(item.unit_price??0)+'"></label><button type="button" class="secondary ocrRemove">×</button></div>';
+}
+async function openOcrCapture(){
+  $('workspaceTitle').textContent='Scan Supplier Invoice';
+  $('workspaceSubtitle').textContent=model.company.name+' · OCR Intake';
+  $('addRecord').classList.add('hidden');
+  $('workspaceBody').innerHTML=
+    '<div class="ocrCaptureGrid"><div class="card ocrCaptureCard"><span class="capEyebrow">LOCAL IMAGE OCR</span><h2>Capture / Upload Invoice</h2><p>The image is processed in your browser. Bizora saves the OCR text and reviewed draft; this phase does not upload the original image file.</p><label>Invoice Image<input id="ocrImage" type="file" accept="image/*" capture="environment"></label><button id="runOcr" class="primary">Run OCR</button><div id="ocrProgress" class="ocrProgress hidden"><div><span id="ocrProgressBar"></span></div><small id="ocrProgressText">Starting OCR…</small></div></div>'+
+    '<div class="card ocrTextCard"><label>OCR Text<textarea id="ocrText" placeholder="OCR text will appear here. You can also paste text manually."></textarea></label><div class="ocrTextActions"><button id="ocrBack" class="secondary">← Drafts</button><button id="reviewOcrText" class="primary">Review Draft</button></div></div></div>';
+  $('ocrBack').onclick=()=>openOcrDrafts().catch(e=>alert(e.message));
+  $('runOcr').onclick=async()=>{
+    const file=$('ocrImage').files?.[0];if(!file)return alert('Invoice image select karein');
+    const btn=$('runOcr'),box=$('ocrProgress');btn.disabled=true;box.classList.remove('hidden');
+    try{
+      const T=await loadTesseract();
+      const result=await T.recognize(file,'eng',{logger:m=>{if(m.status){$('ocrProgressText').textContent=m.status+(m.progress!==undefined?' '+Math.round(m.progress*100)+'%':'');$('ocrProgressBar').style.width=Math.round((m.progress||0)*100)+'%'}}});
+      $('ocrText').value=result?.data?.text||'';$('ocrText').dataset.confidence=String(result?.data?.confidence??'');$('ocrText').dataset.filename=file.name;
+      $('ocrProgressText').textContent='OCR complete';$('ocrProgressBar').style.width='100%';
+    }catch(e){alert(e.message)}finally{btn.disabled=false}
+  };
+  $('reviewOcrText').onclick=async()=>{
+    const text=$('ocrText').value.trim();if(!text)return alert('OCR text required');
+    const products=(await json('/api/bizora-company?action=products')).records||[],parsed=parseOcrInvoiceText(text,products);
+    await openOcrDraftReview(null,{source_text:text,source_file_name:$('ocrText').dataset.filename||null,ocr_confidence:$('ocrText').dataset.confidence||null,...parsed});
+  };
+}
+async function openOcrDraftReview(draftId=null,seed=null){
+  $('workspaceTitle').textContent='OCR Draft Review';
+  $('workspaceSubtitle').textContent=model.company.name+' · Verify Before Posting';
+  $('addRecord').classList.add('hidden');
+  const [suppliers,products]=await Promise.all([
+    json('/api/bizora-company?action=suppliers').then(x=>x.records||[]),
+    json('/api/bizora-company?action=products').then(x=>x.records||[])
+  ]);
+  let record=seed||{},items=seed?.items||[];
+  if(draftId){const d=await json('/api/bizora-company?action=ocr_draft_detail&draft_id='+draftId);record=d.record||{};items=d.items||[]}
+  const locked=['posted','rejected'].includes(String(record.status||'draft')),today=new Date().toISOString().slice(0,10);
+  $('workspaceBody').innerHTML=
+    '<div class="ocrReviewActions"><button id="ocrReviewBack" class="secondary">← OCR Drafts</button><div><span class="ocrStatus '+esc(record.status||'draft')+'">'+esc(record.status||'draft')+'</span>'+(record.status==='posted'&&record.posted_invoice_number?'<span class="ocrPostedInvoice">Posted: '+esc(record.posted_invoice_number)+'</span>':'')+'</div></div>'+
+    '<div class="card ocrReviewCard"><div class="ocrReviewHead"><div><span class="capEyebrow">DRAFT REVIEW</span><h2>'+esc(record.draft_number||'New OCR Draft')+'</h2><p>Correct OCR lines until detected total and ERP calculated total match.</p></div><div class="ocrConfidence"><small>OCR Confidence</small><b>'+esc(record.ocr_confidence===null||record.ocr_confidence===undefined||record.ocr_confidence===''?'—':Number(record.ocr_confidence).toFixed(1)+'%')+'</b></div></div>'+
+      '<form id="ocrDraftForm">'+
+        '<div class="formGrid"><label>Supplier<select name="supplier_id" '+(locked?'disabled':'')+'><option value="">Select Supplier</option>'+suppliers.filter(x=>String(x.status||'active')==='active').map(x=>'<option value="'+x.id+'" '+(Number(record.supplier_id)===Number(x.id)?'selected':'')+'>'+esc(x.business_name)+' · '+esc(x.supplier_code)+'</option>').join('')+'</select></label><label>Invoice Number<input name="invoice_number" value="'+esc(record.invoice_number||'')+'" '+(locked?'disabled':'')+'></label><label>Invoice Date<input name="invoice_date" type="date" value="'+esc(record.invoice_date?date(record.invoice_date):record.invoice_date||today)+'" '+(locked?'disabled':'')+'></label><label>Due Date<input name="due_date" type="date" value="'+esc(record.due_date?date(record.due_date):'')+'" '+(locked?'disabled':'')+'></label></div>'+
+        '<div class="ocrTotals"><label>Detected Total<input id="ocrDetectedTotal" name="detected_total" type="number" min="0" step="0.01" value="'+esc(record.detected_total??'')+'" '+(locked?'disabled':'')+'></label><div><small>ERP Calculated Total</small><b id="ocrCalculatedTotal">'+money(record.calculated_total||0)+'</b></div><div id="ocrMatch" class="ocrMatch"></div></div>'+
+        '<div class="lineHead"><div><b>OCR Line Items</b><small>Map each line to a Bizora product before posting.</small></div>'+(!locked?'<button id="addOcrLine" type="button" class="secondary">+ Line</button>':'')+'</div>'+
+        '<div id="ocrLines" class="ocrLines">'+(items.length?items.map(x=>ocrLine(products,x)).join(''):(!locked?ocrLine(products,{}):'<div class="emptyLines">No OCR lines</div>'))+'</div>'+
+        '<label>OCR Source Text<textarea name="source_text" class="ocrSourceText" '+(locked?'disabled':'')+'>'+esc(record.source_text||'')+'</textarea></label>'+
+        '<label>Notes<textarea name="notes" '+(locked?'disabled':'')+'>'+esc(record.notes||'')+'</textarea></label>'+
+        (!locked?'<div class="ocrDraftButtons"><button id="rejectOcrDraft" type="button" class="dangerAction" '+(!draftId?'disabled':'')+'>Reject Draft</button><button id="saveOcrDraft" type="submit" class="secondary">Save Draft</button><button id="postOcrDraft" type="button" class="primary">Verify & Post Invoice</button></div>':'')+
+      '</form>'+
+    '</div>';
+  $('ocrReviewBack').onclick=()=>openOcrDrafts().catch(e=>alert(e.message));
+  if(locked)return;
+  const lines=$('ocrLines'),calc=()=>{
+    const total=[...lines.querySelectorAll('.ocrLine')].reduce((n,row)=>n+Number(row.querySelector('.ocrQty').value||0)*Number(row.querySelector('.ocrPrice').value||0),0);
+    $('ocrCalculatedTotal').textContent=money(total);
+    const detected=Number($('ocrDetectedTotal').value||0),hasDetected=$('ocrDetectedTotal').value!=='';
+    $('ocrMatch').className='ocrMatch '+(!hasDetected?'neutral':Math.abs(detected-total)<=.01?'ok':'mismatch');
+    $('ocrMatch').textContent=!hasDetected?'No detected total':Math.abs(detected-total)<=.01?'✓ Totals match':'Mismatch '+money(Math.abs(detected-total));
+    return total;
+  };
+  lines.oninput=calc;lines.onclick=e=>{const b=e.target.closest('.ocrRemove');if(b&&lines.querySelectorAll('.ocrLine').length>1){b.closest('.ocrLine').remove();calc()}};
+  $('ocrDetectedTotal').oninput=calc;$('addOcrLine').onclick=()=>{lines.insertAdjacentHTML('beforeend',ocrLine(products,{}));calc()};calc();
+  const payload=()=>{const fd=Object.fromEntries(new FormData($('ocrDraftForm')));return {action:'save_ocr_draft',draft_id:draftId||null,source_file_name:record.source_file_name||null,ocr_confidence:record.ocr_confidence??null,...fd,items:[...lines.querySelectorAll('.ocrLine')].map(row=>({product_id:Number(row.querySelector('.ocrProduct').value||0)||null,description:row.querySelector('.ocrDescription').value,quantity:Number(row.querySelector('.ocrQty').value||0),unit_price:Number(row.querySelector('.ocrPrice').value||0)})).filter(x=>x.quantity>0)}};
+  const save=async()=>{const saved=await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload())});draftId=saved.record.id;record={...record,...saved.record};return saved.record};
+  $('ocrDraftForm').onsubmit=async e=>{e.preventDefault();const b=$('saveOcrDraft');b.disabled=true;b.textContent='Saving…';try{await save();alert('OCR draft saved');await openOcrDraftReview(draftId)}catch(err){alert(err.message)}finally{b.disabled=false;b.textContent='Save Draft'}};
+  $('postOcrDraft').onclick=async()=>{const b=$('postOcrDraft');b.disabled=true;b.textContent='Verifying…';try{await save();const posted=await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'post_ocr_draft',draft_id:draftId})});alert('Verified supplier invoice posted: '+posted.invoice.invoice_number);optionCache={};await openOcrDraftReview(draftId)}catch(err){alert(err.message)}finally{b.disabled=false;b.textContent='Verify & Post Invoice'}};
+  $('rejectOcrDraft').onclick=async()=>{if(!draftId||!confirm('Reject this OCR draft?'))return;try{await json('/api/bizora-company',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reject_ocr_draft',draft_id:draftId})});await openOcrDrafts()}catch(err){alert(err.message)}};
 }
 
 function installEcommerceModule(){
@@ -1070,4 +1208,4 @@ $('recordForm').onsubmit=async e=>{e.preventDefault();const d=defs[currentView],
   $('recordDialog').close();e.currentTarget.reset();invoiceEditContext=null;optionCache={};model=await json('/api/bizora-company?action=overview');setHeader();await show(currentView)
 }catch(err){alert(err.message)}finally{btn.disabled=false;btn.textContent='Save'}};
 $('companyLogout').onclick=async()=>{await fetch('/api/bizora-company-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'logout'})});location.replace('/company-login.html')};
-(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});
+(async()=>{model=await json('/api/bizora-company?action=overview');installCashierModule();installReturnsModule();installEcommerceModule();installOcrModule();setHeader();dashboard()})().catch(e=>{$('workspaceBody').innerHTML='<div class="card error">'+esc(e.message)+'</div>'});

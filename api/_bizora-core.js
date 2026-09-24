@@ -414,6 +414,40 @@ export async function ensureBizoraSchema(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
 
+  await sql`CREATE TABLE IF NOT EXISTS ocr_supplier_drafts(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    draft_number TEXT NOT NULL,
+    source_file_name TEXT,
+    source_text TEXT,
+    ocr_confidence NUMERIC(6,2),
+    supplier_id BIGINT REFERENCES erp_suppliers(id) ON DELETE RESTRICT,
+    invoice_number TEXT,
+    invoice_date DATE,
+    due_date DATE,
+    detected_total NUMERIC(14,2),
+    calculated_total NUMERIC(14,2) NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','posted','rejected')),
+    notes TEXT,
+    posted_supplier_invoice_id BIGINT REFERENCES erp_supplier_invoices(id) ON DELETE RESTRICT,
+    created_by_user_id BIGINT REFERENCES company_users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    posted_at TIMESTAMPTZ,
+    UNIQUE(company_id,draft_number)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS ocr_supplier_draft_items(
+    id BIGSERIAL PRIMARY KEY,
+    company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+    draft_id BIGINT NOT NULL REFERENCES ocr_supplier_drafts(id) ON DELETE RESTRICT,
+    product_id BIGINT REFERENCES erp_products(id) ON DELETE RESTRICT,
+    description TEXT,
+    quantity NUMERIC(16,3) NOT NULL CHECK(quantity>0),
+    unit_price NUMERIC(14,2) NOT NULL DEFAULT 0 CHECK(unit_price>=0),
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+
   await sql`CREATE TABLE IF NOT EXISTS ecommerce_store_settings(
     company_id BIGINT PRIMARY KEY REFERENCES companies(id) ON DELETE RESTRICT,
     store_name TEXT NOT NULL,
@@ -556,6 +590,8 @@ export async function ensureBizoraSchema(sql){
   await sql`CREATE INDEX IF NOT EXISTS erp_supplier_return_items_invoice_item_idx ON erp_supplier_return_items(company_id,supplier_invoice_item_id)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_returns_company_idx ON erp_client_returns(company_id,return_date DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS erp_client_return_items_invoice_item_idx ON erp_client_return_items(company_id,client_invoice_item_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS ocr_supplier_drafts_company_idx ON ocr_supplier_drafts(company_id,status,created_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS ocr_supplier_draft_items_draft_idx ON ocr_supplier_draft_items(company_id,draft_id,sort_order)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_products_company_idx ON ecommerce_products(company_id,active,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_orders_company_idx ON ecommerce_orders(company_id,created_at DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS ecommerce_order_items_company_order_idx ON ecommerce_order_items(company_id,ecommerce_order_id)`;

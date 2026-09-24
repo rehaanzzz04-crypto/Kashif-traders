@@ -8,18 +8,18 @@ const ecommerceOrderStatuses=new Set(['pending','confirmed','packed','shipped','
 const ecommercePaymentStatuses=new Set(['unpaid','paid','refunded']);
 const userRoles=new Set(['company_admin','manager','accountant','salesman','cashier']);
 
-const allWorkspaceViews=['users','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','reports','advanced-reports','audit-center'];
+const allWorkspaceViews=['users','suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','stock-transfers','stock-adjustments','supplier-returns','client-returns','cashier','ecommerce','ocr-drafts','reports','advanced-reports','audit-center'];
 const roleViews={
   company_admin:allWorkspaceViews,
   manager:allWorkspaceViews.filter(x=>x!=='users'),
-  accountant:['suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','supplier-returns','client-returns','reports','advanced-reports'],
+  accountant:['suppliers','supplier-bills','supplier-payments','supplier-statement','clients','client-bills','client-payments','client-statement','products','warehouses','grns','inventory-stock','inventory-ledger','supplier-returns','client-returns','ocr-drafts','reports','advanced-reports'],
   salesman:['clients','client-bills','client-payments','client-statement','products','warehouses','inventory-stock','client-returns','cashier','reports'],
   cashier:['clients','products','warehouses','inventory-stock','cashier']
 };
 const roleWriteViews={
   company_admin:allWorkspaceViews,
   manager:allWorkspaceViews.filter(x=>x!=='users'),
-  accountant:['suppliers','supplier-bills','supplier-payments','clients','client-bills','client-payments','supplier-returns','client-returns'],
+  accountant:['suppliers','supplier-bills','supplier-payments','clients','client-bills','client-payments','supplier-returns','client-returns','ocr-drafts'],
   salesman:['clients','client-bills','client-payments','client-returns','cashier'],
   cashier:['cashier']
 };
@@ -32,6 +32,7 @@ const roleActionSets={
     'products','warehouses','grns','grn_detail','inventory_stock','inventory_ledger',
     'supplier_returns','supplier_return_items','supplier_return_detail','create_supplier_return','cancel_supplier_return',
     'client_returns','client_return_items','client_return_detail','create_client_return','cancel_client_return',
+    'ocr_drafts','ocr_draft_detail','save_ocr_draft','post_ocr_draft','reject_ocr_draft',
     'reports_summary','advanced_reports'
   ]),
   salesman:new Set([
@@ -96,6 +97,7 @@ export default async function handler(req,res){
       stock_transfers:'inventory_ledger',stock_transfer_detail:'inventory_ledger',create_stock_transfer:'inventory_ledger',cancel_stock_transfer:'inventory_ledger',
       stock_adjustments:'inventory_ledger',create_stock_adjustment:'inventory_ledger',cancel_stock_adjustment:'inventory_ledger',supplier_returns:'inventory_ledger',supplier_return_items:'inventory_ledger',supplier_return_detail:'inventory_ledger',create_supplier_return:'inventory_ledger',cancel_supplier_return:'inventory_ledger',client_returns:'inventory_ledger',client_return_items:'inventory_ledger',client_return_detail:'inventory_ledger',create_client_return:'inventory_ledger',cancel_client_return:'inventory_ledger',
       ecommerce_dashboard:'ecommerce',ecommerce_products:'ecommerce',ecommerce_orders:'ecommerce',ecommerce_order_detail:'ecommerce',ecommerce_sales_report:'ecommerce',save_ecommerce_product:'ecommerce',set_ecommerce_product_status:'ecommerce',save_ecommerce_settings:'ecommerce',create_ecommerce_order:'ecommerce',set_ecommerce_order_status:'ecommerce',set_ecommerce_payment_status:'ecommerce',
+      ocr_drafts:'ocr',ocr_draft_detail:'ocr',save_ocr_draft:'ocr',post_ocr_draft:'ocr',reject_ocr_draft:'ocr',
       reports_summary:'basic_reports',advanced_reports:'advanced_reports'
     };
     const requiredFeature=featureByAction[action];
@@ -547,6 +549,32 @@ export default async function handler(req,res){
         GROUP BY payment_method ORDER BY amount DESC`;
       return res.status(200).json({date_from:from,date_to:to,summary:summary[0]||{},daily,payment_methods:methods});
     }
+    if(req.method==='GET'&&action==='ocr_drafts'){
+      const rows=await sql`SELECT d.id,d.draft_number,d.source_file_name,d.ocr_confidence,d.invoice_number,d.invoice_date,d.detected_total,d.calculated_total,d.status,d.created_at,d.updated_at,
+        s.business_name supplier_name,i.invoice_number posted_invoice_number
+        FROM ocr_supplier_drafts d
+        LEFT JOIN erp_suppliers s ON s.id=d.supplier_id AND s.company_id=d.company_id
+        LEFT JOIN erp_supplier_invoices i ON i.id=d.posted_supplier_invoice_id AND i.company_id=d.company_id
+        WHERE d.company_id=${u.company_id}
+        ORDER BY d.created_at DESC,d.id DESC LIMIT 500`;
+      return res.status(200).json({records:rows});
+    }
+    if(req.method==='GET'&&action==='ocr_draft_detail'){
+      const draftId=positiveInt(req.query?.draft_id,0);
+      if(!draftId)return res.status(400).json({error:'Valid OCR draft required'});
+      const rows=await sql`SELECT d.*,s.business_name supplier_name,i.invoice_number posted_invoice_number
+        FROM ocr_supplier_drafts d
+        LEFT JOIN erp_suppliers s ON s.id=d.supplier_id AND s.company_id=d.company_id
+        LEFT JOIN erp_supplier_invoices i ON i.id=d.posted_supplier_invoice_id AND i.company_id=d.company_id
+        WHERE d.id=${draftId} AND d.company_id=${u.company_id} LIMIT 1`;
+      if(!rows[0])return res.status(404).json({error:'OCR draft not found'});
+      const items=await sql`SELECT x.id,x.product_id,p.sku,p.product_name,p.unit,x.description,x.quantity,x.unit_price,(x.quantity*x.unit_price)::numeric line_total,x.sort_order
+        FROM ocr_supplier_draft_items x
+        LEFT JOIN erp_products p ON p.id=x.product_id AND p.company_id=x.company_id
+        WHERE x.draft_id=${draftId} AND x.company_id=${u.company_id}
+        ORDER BY x.sort_order,x.id`;
+      return res.status(200).json({record:rows[0],items});
+    }
     if(req.method==='GET'&&action==='reports_summary'){
       const today=new Date().toISOString().slice(0,10),monthStart=today.slice(0,8)+'01';
       const from=clean(req.query?.date_from)||monthStart,to=clean(req.query?.date_to)||today;
@@ -764,6 +792,80 @@ export default async function handler(req,res){
       }
       const rows=await sql`UPDATE ecommerce_orders SET status=${status},updated_at=now() WHERE id=${orderId} AND company_id=${u.company_id} RETURNING *`;
       await companyAudit(sql,u,'ECOM_ORDER_STATUS_CHANGED',{entityType:'ecommerce_order',entityId:String(orderId),metadata:{from:current[0].status,to:status}});
+      return res.status(200).json({record:rows[0]});
+    }
+
+    if(req.method==='POST'&&action==='save_ocr_draft'){
+      const draftId=positiveInt(b.draft_id,0)||null,supplierId=positiveInt(b.supplier_id,0)||null,invoiceNumber=clean(b.invoice_number)||null,
+        invoiceDate=clean(b.invoice_date)||null,dueDate=clean(b.due_date)||null,detectedTotal=b.detected_total===''||b.detected_total===null||b.detected_total===undefined?null:number(b.detected_total),
+        sourceText=String(b.source_text||'').slice(0,120000),sourceFileName=clean(b.source_file_name)||null,confidence=b.ocr_confidence===null||b.ocr_confidence===undefined||b.ocr_confidence===''?null:number(b.ocr_confidence);
+      const items=Array.isArray(b.items)?b.items.slice(0,500).map((x,i)=>({product_id:positiveInt(x.product_id,0)||null,description:clean(x.description)||null,quantity:number(x.quantity),unit_price:number(x.unit_price),sort_order:i})):[];
+      if(detectedTotal!==null&&detectedTotal<0)return res.status(400).json({error:'Detected total cannot be negative'});
+      if(items.some(x=>x.quantity<=0||x.unit_price<0))return res.status(400).json({error:'Draft item quantities and prices must be valid'});
+      if(supplierId){
+        const supplier=await sql`SELECT id FROM erp_suppliers WHERE id=${supplierId} AND company_id=${u.company_id} LIMIT 1`;
+        if(!supplier[0])return res.status(400).json({error:'Valid supplier required'});
+      }
+      for(const item of items){
+        if(item.product_id){
+          const p=await sql`SELECT id FROM erp_products WHERE id=${item.product_id} AND company_id=${u.company_id} LIMIT 1`;
+          if(!p[0])return res.status(400).json({error:'One or more mapped products are invalid'});
+        }
+      }
+      const calculatedTotal=Number(items.reduce((n,x)=>n+x.quantity*x.unit_price,0).toFixed(2));
+      let rows;
+      if(draftId){
+        const current=await sql`SELECT id,status FROM ocr_supplier_drafts WHERE id=${draftId} AND company_id=${u.company_id} LIMIT 1`;
+        if(!current[0])return res.status(404).json({error:'OCR draft not found'});
+        if(current[0].status!=='draft')return res.status(409).json({error:'Posted or rejected OCR draft cannot be edited'});
+        rows=await sql`UPDATE ocr_supplier_drafts SET source_file_name=${sourceFileName},source_text=${sourceText},ocr_confidence=${confidence},
+          supplier_id=${supplierId},invoice_number=${invoiceNumber},invoice_date=${invoiceDate}::date,due_date=${dueDate}::date,
+          detected_total=${detectedTotal},calculated_total=${calculatedTotal},notes=${clean(b.notes)||null},updated_at=now()
+          WHERE id=${draftId} AND company_id=${u.company_id} RETURNING *`;
+        await sql`DELETE FROM ocr_supplier_draft_items WHERE draft_id=${draftId} AND company_id=${u.company_id}`;
+      }else{
+        const draftNumber='OCR-'+new Date().toISOString().slice(0,10).replaceAll('-','')+'-'+String(Date.now()).slice(-7);
+        rows=await sql`INSERT INTO ocr_supplier_drafts(company_id,draft_number,source_file_name,source_text,ocr_confidence,supplier_id,invoice_number,invoice_date,due_date,detected_total,calculated_total,status,notes,created_by_user_id)
+          VALUES(${u.company_id},${draftNumber},${sourceFileName},${sourceText},${confidence},${supplierId},${invoiceNumber},${invoiceDate}::date,${dueDate}::date,${detectedTotal},${calculatedTotal},'draft',${clean(b.notes)||null},${u.id})
+          RETURNING *`;
+      }
+      const id=rows[0].id;
+      for(const item of items)await sql`INSERT INTO ocr_supplier_draft_items(company_id,draft_id,product_id,description,quantity,unit_price,sort_order)
+        VALUES(${u.company_id},${id},${item.product_id},${item.description},${item.quantity},${item.unit_price},${item.sort_order})`;
+      await companyAudit(sql,u,draftId?'OCR_DRAFT_UPDATED':'OCR_DRAFT_CREATED',{entityType:'ocr_supplier_draft',entityId:String(id),metadata:{item_count:items.length,calculated_total:calculatedTotal,detected_total:detectedTotal}});
+      return res.status(draftId?200:201).json({record:rows[0]});
+    }
+    if(req.method==='POST'&&action==='post_ocr_draft'){
+      const draftId=positiveInt(b.draft_id,0);
+      if(!draftId)return res.status(400).json({error:'Valid OCR draft required'});
+      const d=await sql`SELECT * FROM ocr_supplier_drafts WHERE id=${draftId} AND company_id=${u.company_id} LIMIT 1`;
+      if(!d[0])return res.status(404).json({error:'OCR draft not found'});
+      if(d[0].status==='posted')return res.status(200).json({record:d[0]});
+      if(d[0].status!=='draft')return res.status(409).json({error:'Rejected OCR draft cannot be posted'});
+      if(!d[0].supplier_id||!d[0].invoice_number||!d[0].invoice_date)return res.status(400).json({error:'Supplier, invoice number and invoice date are required before posting'});
+      const items=await sql`SELECT * FROM ocr_supplier_draft_items WHERE draft_id=${draftId} AND company_id=${u.company_id} ORDER BY sort_order,id`;
+      if(!items.length||items.some(x=>!x.product_id||number(x.quantity)<=0||number(x.unit_price)<0))return res.status(400).json({error:'Every OCR line must be mapped to a valid product before posting'});
+      const calculatedTotal=Number(items.reduce((n,x)=>n+number(x.quantity)*number(x.unit_price),0).toFixed(2));
+      if(d[0].detected_total!==null&&Math.abs(number(d[0].detected_total)-calculatedTotal)>0.01)return res.status(409).json({error:'OCR total mismatch. Correct line items or detected total in Draft Review before posting'});
+      const duplicate=await sql`SELECT id FROM erp_supplier_invoices WHERE company_id=${u.company_id} AND supplier_id=${d[0].supplier_id} AND invoice_number=${d[0].invoice_number} LIMIT 1`;
+      if(duplicate[0])return res.status(409).json({error:'This supplier invoice number already exists'});
+      const invoice=await sql`INSERT INTO erp_supplier_invoices(company_id,supplier_id,invoice_number,invoice_date,due_date,amount,status,notes,created_by_user_id)
+        VALUES(${u.company_id},${d[0].supplier_id},${d[0].invoice_number},${d[0].invoice_date},${d[0].due_date},${calculatedTotal},'unpaid',${d[0].notes},${u.id})
+        RETURNING *`;
+      for(const item of items)await sql`INSERT INTO erp_supplier_invoice_items(company_id,supplier_invoice_id,product_id,description,quantity,unit_price)
+        VALUES(${u.company_id},${invoice[0].id},${item.product_id},${item.description},${item.quantity},${item.unit_price})`;
+      const rows=await sql`UPDATE ocr_supplier_drafts SET status='posted',calculated_total=${calculatedTotal},posted_supplier_invoice_id=${invoice[0].id},posted_at=now(),updated_at=now()
+        WHERE id=${draftId} AND company_id=${u.company_id} RETURNING *`;
+      await companyAudit(sql,u,'OCR_DRAFT_POSTED',{entityType:'ocr_supplier_draft',entityId:String(draftId),metadata:{supplier_invoice_id:invoice[0].id,invoice_number:invoice[0].invoice_number,amount:calculatedTotal}});
+      return res.status(201).json({record:rows[0],invoice:invoice[0]});
+    }
+    if(req.method==='POST'&&action==='reject_ocr_draft'){
+      const draftId=positiveInt(b.draft_id,0);
+      if(!draftId)return res.status(400).json({error:'Valid OCR draft required'});
+      const rows=await sql`UPDATE ocr_supplier_drafts SET status='rejected',notes=COALESCE(${clean(b.notes)||null},notes),updated_at=now()
+        WHERE id=${draftId} AND company_id=${u.company_id} AND status='draft' RETURNING *`;
+      if(!rows[0])return res.status(409).json({error:'Only draft OCR entries can be rejected'});
+      await companyAudit(sql,u,'OCR_DRAFT_REJECTED',{entityType:'ocr_supplier_draft',entityId:String(draftId)});
       return res.status(200).json({record:rows[0]});
     }
 
