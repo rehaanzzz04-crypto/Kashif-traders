@@ -200,3 +200,22 @@ dialog{background:#fff!important;color:#111827!important;border-color:#d8e2ef!im
   .planFeatures{margin-top:10px}
   .planFeatures span{font-size:8px;padding:4px 7px}
 }
+
+
+/* Super Admin pay-per-audit control */
+.auditAdminCard{margin-top:16px}
+.auditPricing{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:20px}
+.auditPriceForm{padding:14px;border:1px solid #cfe0fb;border-radius:18px;background:linear-gradient(145deg,#fff,#f4f8ff);color:#17213a}
+.auditPriceForm>div:first-child span{display:block;font-size:17px;font-weight:900}.auditPriceForm>div:first-child small{display:block;margin-top:3px;color:#74829a;font-size:10px}
+.auditPriceEdit{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:7px;align-items:center;margin-top:12px}.auditPriceEdit>span{font-size:11px;font-weight:900;color:#315d9e}
+.auditPriceEdit input{min-width:0;width:100%;padding:10px;border:1px solid #bfd3f0;border-radius:10px;background:#fff;color:#17213a}.auditPriceEdit button{min-height:39px;white-space:nowrap}
+.auditAdminSubhead{display:flex;align-items:center;justify-content:space-between;margin:4px 0 10px}.auditAdminSubhead h3{margin:0;color:#17213a}.auditAdminSubhead p{margin:3px 0 0;color:#718096;font-size:11px}
+.auditAdminStatus{display:inline-flex;margin-top:4px;padding:5px 8px;border-radius:999px;font-size:9px;font-weight:900;text-transform:uppercase;border:1px solid #d9e2ef;background:#f4f6f9;color:#667085}
+.auditAdminStatus.verified,.auditAdminStatus.approved,.auditAdminStatus.completed{background:#e7fbf2;color:#087c58;border-color:#b9e6d2}
+.auditAdminStatus.submitted{background:#fff7df;color:#946200;border-color:#f0dda6}
+.auditAdminStatus.rejected{background:#fff0f2;color:#b4233c;border-color:#f0c9d0}
+#auditRequestRows small{display:block;margin-top:3px;color:#72809a;font-size:9px}
+.auditApprove{background:linear-gradient(135deg,#087d61,#10a77e)!important;border-color:#31cba2!important;color:#fff!important}
+.auditReject{background:linear-gradient(135deg,#9d1f3d,#d83259)!important;border-color:#ef6a88!important;color:#fff!important}
+@media(max-width:800px){.auditPricing{grid-template-columns:1fr}}
+@media(max-width:620px){.auditPriceEdit{grid-template-columns:auto 1fr}.auditPriceEdit button{grid-column:1/-1}.auditAdminCard .tablewrap{overflow:auto}}
