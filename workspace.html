@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#07112d"><title>Bizora ERP — Company Workspace</title><link rel="stylesheet" href="/workspace.css"></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#0b1d4d"><title>Bizora ERP — Company Workspace</title><link rel="stylesheet" href="/workspace.css"></head><body>
 <header class="topbar">
   <button id="menuToggle" class="menubtn" type="button" aria-controls="workspaceNav" aria-expanded="false">☰</button>
   <div class="bizora-logo" aria-label="Bizora"></div>
@@ -22,7 +22,24 @@
   <button data-view="warehouses">Warehouses</button>
 </nav>
 <main class="shell">
-  <section class="hero"><div><span class="eyebrow">BIZORA ERP</span><h1 id="workspaceTitle">Company Dashboard</h1><p id="workspaceSubtitle">Tenant-isolated ERP workspace</p></div><button id="addRecord" class="primary hidden">+ Add Record</button></section>
+  <section class="hero">
+  <div class="heroCopy">
+    <span class="eyebrow">BIZORA ERP</span>
+    <h1 id="workspaceTitle">Company Dashboard</h1>
+    <p id="workspaceSubtitle">Tenant-isolated ERP workspace</p>
+    <button id="addRecord" class="primary hidden">+ Add Record</button>
+  </div>
+  <div class="heroArt" aria-hidden="true">
+    <div class="cityArt">
+      <span class="artHalo"></span>
+      <div class="building buildingA"><i></i><i></i><i></i><i></i></div>
+      <div class="building buildingB"><i></i><i></i><i></i></div>
+      <div class="building buildingC"><i></i><i></i></div>
+      <div class="peopleBadge">●●●</div>
+      <span class="tree treeA"></span><span class="tree treeB"></span>
+    </div>
+  </div>
+</section>
   <div id="readOnlyNote" class="readonly hidden"></div>
   <section id="workspaceBody"></section>
 </main>
