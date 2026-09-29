@@ -26,12 +26,6 @@
     report.textContent = "▥ Sales Report";
     report.onclick = () => location.href = "/cashier-sales-report.html";
     head.appendChild(report);
-    const accounts = document.createElement("button");
-    accounts.className = "cashier-report-link";
-    accounts.type = "button";
-    accounts.textContent = "👥 Customer Accounts";
-    accounts.onclick = () => location.href = "/cash-sale-customers.html";
-    head.appendChild(accounts);
     const style = document.createElement("style");
     style.textContent = ".cashier-report-link{border:0;border-radius:10px;background:var(--cs-green);color:#fff;padding:9px 12px;font-weight:800;cursor:pointer}.cashier-head>div:first-child+.cashier-report-link{margin-left:auto}@media(max-width:560px){.cashier-head{flex-wrap:wrap}.cashier-report-link{width:100%;margin-left:0!important;min-height:46px}}";
     document.head.appendChild(style);
