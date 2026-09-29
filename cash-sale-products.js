@@ -3,6 +3,32 @@
   const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
   const money = v => "PKR " + Number(v || 0).toLocaleString("en-PK",{maximumFractionDigits:2});
   let products = [], editing = null, imageFile = null;
+  let scannerStream = null, scannerFrame = 0, scannerDetector = null;
+
+  const fileLabel = bytes => window.KT_MEDIA?.label ? window.KT_MEDIA.label(bytes) : Math.max(1,Math.round(Number(bytes||0)/1024)) + " KB";
+  const CODE39 = {
+    "0":"nnnwwnwnn","1":"wnnwnnnnw","2":"nnwwnnnnw","3":"wnwwnnnnn","4":"nnnwwnnnw","5":"wnnwwnnnn","6":"nnwwwnnnn","7":"nnnwnnwnw","8":"wnnwnnwnn","9":"nnwwnnwnn",
+    "A":"wnnnnwnnw","B":"nnwnnwnnw","C":"wnwnnwnnn","D":"nnnnwwnnw","E":"wnnnwwnnn","F":"nnwnwwnnn","G":"nnnnnwwnw","H":"wnnnnwwnn","I":"nnwnnwwnn","J":"nnnnwwwnn",
+    "K":"wnnnnnnww","L":"nnwnnnnww","M":"wnwnnnnwn","N":"nnnnwnnww","O":"wnnnwnnwn","P":"nnwnwnnwn","Q":"nnnnnnwww","R":"wnnnnnwwn","S":"nnwnnnwwn","T":"nnnnwnwwn",
+    "U":"wwnnnnnnw","V":"nwwnnnnnw","W":"wwwnnnnnn","X":"nwnnwnnnw","Y":"wwnnwnnnn","Z":"nwwnwnnnn","-":"nwnnnnwnw",".":"wwnnnnwnn"," ":"nwwnnnwnn","$":"nwnwnwnnn","/":"nwnwnnnwn","+":"nwnnnwnwn","%":"nnnwnwnwn","*":"nwnnwnwnn"
+  };
+  function barcodeSvg(value){
+    const raw=("*"+String(value||"").toUpperCase().replace(/[^0-9A-Z. $/+%\-]/g,"")+"*");
+    const narrow=2,wide=5,gap=2,height=70,quiet=10;
+    let x=quiet,bars="";
+    for(const ch of raw){
+      const pattern=CODE39[ch]; if(!pattern) continue;
+      for(let i=0;i<9;i++){
+        const w=pattern[i]==="w"?wide:narrow;
+        if(i%2===0) bars += '<rect x="'+x+'" y="0" width="'+w+'" height="'+height+'" fill="#000"/>';
+        x+=w;
+      }
+      x+=gap;
+    }
+    const width=x+quiet;
+    return {bars,width,height};
+  }
+  function generatedBarcode(product){ return "KT"+String(product.id).padStart(10,"0"); }
 
   $("mpBack").onclick = () => location.href = "/cash-sale.html";
   $("mpAdd").onclick = () => openForm();
@@ -50,12 +76,16 @@
         <div class="mp-price">${money(p.sale_price)}</div>
         <div class="mp-actions">
           <button class="mp-edit" data-edit="${p.id}" type="button">Edit</button>
+          <button class="mp-barcode" data-barcode="${p.id}" type="button">${p.barcode ? "Barcode" : "Generate Barcode"}</button>
           <button class="mp-delete" data-delete="${p.id}" type="button">Delete</button>
         </div>
       </article>`).join("") : '<div class="mp-empty">Koi product nahi mila.</div>';
 
     $("mpList").querySelectorAll("[data-edit]").forEach(btn => {
       btn.onclick = () => openForm(products.find(p => String(p.id) === btn.dataset.edit));
+    });
+    $("mpList").querySelectorAll("[data-barcode]").forEach(btn => {
+      btn.onclick = () => showBarcode(products.find(p => String(p.id) === btn.dataset.barcode), btn);
     });
     $("mpList").querySelectorAll("[data-delete]").forEach(btn => {
       btn.onclick = () => deleteProduct(btn.dataset.delete, btn);
@@ -99,11 +129,18 @@
 
   $("mpCameraBtn").onclick = () => $("mpCamera").click();
   $("mpGalleryBtn").onclick = () => $("mpGallery").click();
-  const pickImage = input => {
+  const pickImage = async input => {
     const file = input.files?.[0];
     if (!file) return;
-    imageFile = file;
-    $("mpImageStatus").textContent = file.name + " selected";
+    $("mpImageStatus").textContent = "Compressing " + fileLabel(file.size) + "...";
+    try {
+      imageFile = window.KT_MEDIA?.image ? await window.KT_MEDIA.image(file) : file;
+      $("mpImageStatus").textContent = file.name + " · " + fileLabel(file.size) + " → " + fileLabel(imageFile.size);
+    } catch (e) {
+      imageFile = null;
+      $("mpImageStatus").textContent = e.message || "Image compression failed";
+      alert(e.message || "Image compression failed");
+    }
     input.value = "";
   };
   $("mpCamera").onchange = () => pickImage($("mpCamera"));
@@ -120,6 +157,83 @@
     if (!r.ok) throw Error(j.error || "Product image upload failed");
     return j.url;
   }
+
+
+  function stopBarcodeScanner(){
+    cancelAnimationFrame(scannerFrame);
+    if(scannerStream) scannerStream.getTracks().forEach(track=>track.stop());
+    scannerStream=null;
+    $("mpScannerVideo").srcObject=null;
+  }
+  function closeBarcodeScanner(){
+    stopBarcodeScanner();
+    $("mpBarcodeScanner").classList.add("mp-hidden");
+  }
+  async function scanLoop(){
+    if(!scannerStream || !scannerDetector) return;
+    try{
+      const found=await scannerDetector.detect($("mpScannerVideo"));
+      if(found[0]?.rawValue){
+        $("mpScannerValue").value=found[0].rawValue;
+        $("mpScannerStatus").textContent="Barcode found: "+found[0].rawValue;
+        $("mpBarcode").value=found[0].rawValue;
+        closeBarcodeScanner();
+        return;
+      }
+    }catch{}
+    scannerFrame=requestAnimationFrame(scanLoop);
+  }
+  $("mpScanBarcode").onclick=()=>{ $("mpScannerValue").value=$("mpBarcode").value||""; $("mpScannerStatus").textContent="Start Camera tap karein."; $("mpBarcodeScanner").classList.remove("mp-hidden"); };
+  $("mpScannerClose").onclick=closeBarcodeScanner;
+  $("mpScannerCancel").onclick=closeBarcodeScanner;
+  $("mpScannerUse").onclick=()=>{ const v=$("mpScannerValue").value.trim(); if(!v)return $("mpScannerStatus").textContent="Barcode scan ya enter karein."; $("mpBarcode").value=v; closeBarcodeScanner(); };
+  $("mpScannerStart").onclick=async()=>{
+    if(!navigator.mediaDevices?.getUserMedia){ $("mpScannerStatus").textContent="Camera unavailable—barcode manually enter karein."; return; }
+    $("mpScannerStart").disabled=true; $("mpScannerStatus").textContent="Opening camera...";
+    try{
+      scannerStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+      $("mpScannerVideo").srcObject=scannerStream; await $("mpScannerVideo").play();
+      if("BarcodeDetector" in window){
+        scannerDetector=new BarcodeDetector({formats:["ean_13","ean_8","code_128","code_39","upc_a","upc_e"]});
+        $("mpScannerStatus").textContent="Barcode camera ke samne rakhein...";
+        scanLoop();
+      } else {
+        $("mpScannerStatus").textContent="Is device par auto barcode detect unavailable hai. Barcode manually enter karein.";
+      }
+    }catch(e){ $("mpScannerStatus").textContent="Camera open nahi hua—barcode manually enter karein."; }
+    finally{ $("mpScannerStart").disabled=false; }
+  };
+
+  async function showBarcode(product,button){
+    if(!product) return;
+    let value=String(product.barcode||"").trim();
+    if(!value){
+      value=generatedBarcode(product);
+      button.disabled=true;
+      try{
+        const r=await fetch("/api/data?resource=sale_products&id="+encodeURIComponent(product.id),{
+          method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({barcode:value})
+        });
+        const j=await r.json().catch(()=>({}));
+        if(!r.ok) throw Error(j.error||"Barcode generate nahi ho saka");
+        product.barcode=j.record.barcode||value;
+        value=product.barcode;
+        renderProducts();
+        $("mpStatus").textContent=product.name+" ka barcode generate ho gaya.";
+      }catch(e){ $("mpStatus").textContent=e.message; alert(e.message); button.disabled=false; return; }
+      button.disabled=false;
+    }
+    const svg=barcodeSvg(value);
+    $("mpBarcodeSvg").setAttribute("viewBox","0 0 "+svg.width+" "+svg.height);
+    $("mpBarcodeSvg").innerHTML=svg.bars;
+    $("mpBarcodeProduct").textContent=product.name;
+    $("mpBarcodeValue").textContent=value;
+    $("mpBarcodePrice").textContent=money(product.sale_price);
+    $("mpBarcodeModal").classList.remove("mp-hidden");
+  }
+  $("mpBarcodeClose").onclick=()=>$("mpBarcodeModal").classList.add("mp-hidden");
+  $("mpBarcodeModal").onclick=e=>{ if(e.target===$("mpBarcodeModal")) $("mpBarcodeModal").classList.add("mp-hidden"); };
+  $("mpBarcodePrint").onclick=()=>window.print();
 
   $("mpForm").onsubmit = async e => {
     e.preventDefault();
