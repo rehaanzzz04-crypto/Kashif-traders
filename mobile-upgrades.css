@@ -35,3 +35,35 @@
 .kt-delete-note{margin:0 0 14px;color:var(--muted);line-height:1.45}
 @media(max-width:760px){.modulehead:has(>.employee-head-actions){flex-direction:column;align-items:stretch;gap:14px}.modulehead:has(>.employee-head-actions)>div:first-child{width:100%}.employee-head-actions{width:100%;flex-basis:auto}.modulehead:has(+.kt-module-action-grid){display:block}.modulehead:has(+.kt-module-action-grid)>div:first-child{width:100%}}
 @media(max-width:620px){.modulehead{align-items:flex-start}.employee-excel-slot{justify-content:flex-start}.employee-excel-slot .btn{min-height:38px;padding:8px 10px}.employee-head-actions{gap:8px!important}.employee-head-actions .btn{height:68px;min-height:68px!important;padding:9px 8px!important;font-size:14px}.kt-module-action-grid{gap:8px}.kt-module-action-grid .btn{min-height:62px!important;font-size:14px;padding:9px 8px!important}.kt-app-option{padding:11px}.kt-app-icon{width:38px;height:38px;flex-basis:38px}.kt-employee-actions{gap:5px}.kt-employee-actions .btn{padding:7px 9px;font-size:12px}}
+
+/* Native Android APK bottom safe-area fix — website spacing remains unchanged */
+html.kt-native-app,body.kt-native-app{min-height:100dvh}
+body.kt-native-app{
+  padding-bottom:max(28px,env(safe-area-inset-bottom));
+}
+body.kt-native-app .shell,
+body.kt-native-app .content,
+body.kt-native-app #dashboard,
+body.kt-native-app #module{
+  padding-bottom:calc(28px + env(safe-area-inset-bottom));
+}
+body.kt-native-app .nav{
+  padding-bottom:calc(30px + env(safe-area-inset-bottom))!important;
+}
+body.kt-native-app #ktOfflineBadge{
+  bottom:calc(18px + env(safe-area-inset-bottom))!important;
+}
+body.kt-native-app #ktSyncTrack{
+  bottom:calc(35px + env(safe-area-inset-bottom))!important;
+}
+body.kt-native-app #ktSyncMessage{
+  bottom:calc(72px + env(safe-area-inset-bottom))!important;
+}
+@media(max-width:900px){
+  body.kt-native-app .shell{padding-bottom:calc(34px + env(safe-area-inset-bottom))!important}
+  body.kt-native-app .module,
+  body.kt-native-app .panel:last-child,
+  body.kt-native-app .statement:last-child{
+    margin-bottom:calc(28px + env(safe-area-inset-bottom))!important;
+  }
+}
