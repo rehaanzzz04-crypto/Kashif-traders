@@ -104,6 +104,13 @@ async function ensureCashSaleSchema(sql) {
   await sql`CREATE INDEX IF NOT EXISTS cash_sale_queue_customer_idx ON cash_sale_queue(customer_id,created_at,id)`;
   await sql`ALTER TABLE cash_sale_customers ADD COLUMN IF NOT EXISTS portal_pin_salt TEXT`;
   await sql`ALTER TABLE cash_sale_customers ADD COLUMN IF NOT EXISTS portal_pin_hash TEXT`;
+  await sql`ALTER TABLE cash_sale_customers ADD COLUMN IF NOT EXISTS portal_username TEXT`;
+  await sql`ALTER TABLE cash_sale_customers ADD COLUMN IF NOT EXISTS portal_password_salt TEXT`;
+  await sql`ALTER TABLE cash_sale_customers ADD COLUMN IF NOT EXISTS portal_password_hash TEXT`;
+  await sql`ALTER TABLE cash_sale_customers ADD COLUMN IF NOT EXISTS portal_username_reset_used BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE cash_sale_customers ADD COLUMN IF NOT EXISTS portal_username_set_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE cash_sale_customers ADD COLUMN IF NOT EXISTS portal_password_set_at TIMESTAMPTZ`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS cash_sale_customers_portal_username_lower_uq ON cash_sale_customers(lower(portal_username)) WHERE portal_username IS NOT NULL`;
   await sql`CREATE TABLE IF NOT EXISTS cash_customer_orders(id BIGSERIAL PRIMARY KEY,order_number TEXT UNIQUE NOT NULL,customer_id BIGINT NOT NULL REFERENCES cash_sale_customers(id),items JSONB NOT NULL DEFAULT '[]'::jsonb,status TEXT NOT NULL DEFAULT 'pending',cash_sale_id BIGINT REFERENCES cash_sale_queue(id),created_at TIMESTAMPTZ NOT NULL DEFAULT now(),updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   await sql`INSERT INTO cash_sale_customers(customer_code,name)
     SELECT 'CSC-LEG-'||x.id::text, trim(x.customer_name)
@@ -554,12 +561,77 @@ async function customerPortal(sql,req,res,staffUser=null){
   await sql`CREATE TABLE IF NOT EXISTS cash_customer_sessions(id BIGSERIAL PRIMARY KEY,customer_id BIGINT NOT NULL REFERENCES cash_sale_customers(id) ON DELETE CASCADE,token_hash TEXT UNIQUE NOT NULL,expires_at TIMESTAMPTZ NOT NULL,last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),created_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   const action=cleanText(req.query?.action)||"dashboard",b=bodyOf(req),digest=v=>crypto.createHash("sha256").update(String(v)).digest("hex");
   const sessionToken=customerCookie(req,"kt_customer");
-  if(req.method==="POST"&&action==="login"){
-    const code=cleanText(b.customer_code),pin=cleanText(b.pin);
+  const verifyRecovery=async(code,pin)=>{
     const c=(await sql`SELECT * FROM cash_sale_customers WHERE upper(customer_code)=upper(${code}) AND status='active' LIMIT 1`)[0];
-    if(!c||!c.portal_pin_hash||crypto.scryptSync(String(pin||""),c.portal_pin_salt,64).toString("hex")!==c.portal_pin_hash)return res.status(401).json({error:"Customer code ya PIN ghalat hai"});
-    const t=crypto.randomBytes(32).toString("hex");await sql`INSERT INTO cash_customer_sessions(customer_id,token_hash,expires_at) VALUES(${c.id},${digest(t)},now()+interval '30 days')`;
-    res.setHeader("Set-Cookie",`kt_customer=${encodeURIComponent(t)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=2592000`);return res.status(200).json({ok:true,name:c.name});
+    if(!c||!c.portal_pin_hash||!c.portal_pin_salt)return null;
+    const ok=crypto.scryptSync(String(pin||""),c.portal_pin_salt,64).toString("hex")===c.portal_pin_hash;
+    return ok?c:null;
+  };
+  const validUsername=v=>/^[A-Za-z0-9._-]{4,30}$/.test(String(v||""));
+  const validPassword=v=>String(v||"").length>=6&&String(v||"").length<=64;
+
+  if(req.method==="POST"&&action==="login"){
+    const username=cleanText(b.username),password=String(b.password||"");
+    if(!username||!password)return res.status(400).json({error:"Username aur password required hain"});
+    const c=(await sql`SELECT * FROM cash_sale_customers WHERE lower(portal_username)=lower(${username}) AND status='active' LIMIT 1`)[0];
+    if(!c||!c.portal_password_hash||!c.portal_password_salt||crypto.scryptSync(password,c.portal_password_salt,64).toString("hex")!==c.portal_password_hash)
+      return res.status(401).json({error:"Username ya password ghalat hai"});
+    const t=crypto.randomBytes(32).toString("hex");
+    await sql`INSERT INTO cash_customer_sessions(customer_id,token_hash,expires_at) VALUES(${c.id},${digest(t)},now()+interval '30 days')`;
+    res.setHeader("Set-Cookie",`kt_customer=${encodeURIComponent(t)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=2592000`);
+    return res.status(200).json({ok:true,name:c.name});
+  }
+
+  if(req.method==="POST"&&action==="credential_status"){
+    const code=cleanText(b.customer_code),pin=cleanText(b.pin),c=await verifyRecovery(code,pin);
+    if(!c)return res.status(401).json({error:"Customer code ya PIN ghalat hai"});
+    return res.status(200).json({
+      verified:true,
+      has_credentials:Boolean(c.portal_username&&c.portal_password_hash),
+      username:c.portal_username||"",
+      username_reset_available:Boolean(c.portal_username&&!c.portal_username_reset_used)
+    });
+  }
+
+  if(req.method==="POST"&&action==="setup_credentials"){
+    const code=cleanText(b.customer_code),pin=cleanText(b.pin),username=cleanText(b.username),password=String(b.password||"");
+    const c=await verifyRecovery(code,pin);
+    if(!c)return res.status(401).json({error:"Customer code ya PIN ghalat hai"});
+    if(c.portal_username||c.portal_password_hash)return res.status(409).json({error:"Portal account pehle setup ho chuka hai"});
+    if(!validUsername(username))return res.status(400).json({error:"Username 4-30 characters ka ho aur sirf letters, numbers, dot, dash ya underscore use karein"});
+    if(!validPassword(password))return res.status(400).json({error:"Password 6 se 64 characters ka hona chahiye"});
+    const taken=(await sql`SELECT id FROM cash_sale_customers WHERE lower(portal_username)=lower(${username}) AND id<>${c.id} LIMIT 1`)[0];
+    if(taken)return res.status(409).json({error:"Ye username already use ho raha hai"});
+    const salt=crypto.randomBytes(16).toString("hex"),hash=crypto.scryptSync(password,salt,64).toString("hex");
+    await sql`UPDATE cash_sale_customers SET portal_username=${username},portal_password_salt=${salt},portal_password_hash=${hash},portal_username_set_at=now(),portal_password_set_at=now(),updated_at=now() WHERE id=${c.id}`;
+    await sql`DELETE FROM cash_customer_sessions WHERE customer_id=${c.id}`;
+    return res.status(200).json({ok:true,username});
+  }
+
+  if(req.method==="POST"&&action==="reset_password"){
+    const code=cleanText(b.customer_code),pin=cleanText(b.pin),password=String(b.password||"");
+    const c=await verifyRecovery(code,pin);
+    if(!c)return res.status(401).json({error:"Customer code ya PIN ghalat hai"});
+    if(!c.portal_username)return res.status(409).json({error:"Pehle portal username setup karein"});
+    if(!validPassword(password))return res.status(400).json({error:"Password 6 se 64 characters ka hona chahiye"});
+    const salt=crypto.randomBytes(16).toString("hex"),hash=crypto.scryptSync(password,salt,64).toString("hex");
+    await sql`UPDATE cash_sale_customers SET portal_password_salt=${salt},portal_password_hash=${hash},portal_password_set_at=now(),updated_at=now() WHERE id=${c.id}`;
+    await sql`DELETE FROM cash_customer_sessions WHERE customer_id=${c.id}`;
+    return res.status(200).json({ok:true});
+  }
+
+  if(req.method==="POST"&&action==="reset_username"){
+    const code=cleanText(b.customer_code),pin=cleanText(b.pin),username=cleanText(b.username);
+    const c=await verifyRecovery(code,pin);
+    if(!c)return res.status(401).json({error:"Customer code ya PIN ghalat hai"});
+    if(!c.portal_username)return res.status(409).json({error:"Pehle portal account setup karein"});
+    if(c.portal_username_reset_used)return res.status(409).json({error:"Username reset pehle hi use ho chuka hai; username dobara change nahi ho sakta"});
+    if(!validUsername(username))return res.status(400).json({error:"Username 4-30 characters ka ho aur sirf letters, numbers, dot, dash ya underscore use karein"});
+    const taken=(await sql`SELECT id FROM cash_sale_customers WHERE lower(portal_username)=lower(${username}) AND id<>${c.id} LIMIT 1`)[0];
+    if(taken)return res.status(409).json({error:"Ye username already use ho raha hai"});
+    await sql`UPDATE cash_sale_customers SET portal_username=${username},portal_username_reset_used=true,updated_at=now() WHERE id=${c.id}`;
+    await sql`DELETE FROM cash_customer_sessions WHERE customer_id=${c.id}`;
+    return res.status(200).json({ok:true,username});
   }
   if(req.method==="POST"&&action==="logout"){if(sessionToken)await sql`DELETE FROM cash_customer_sessions WHERE token_hash=${digest(sessionToken)}`;res.setHeader("Set-Cookie","kt_customer=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0");return res.status(200).json({ok:true})}
   if(staffUser&&req.method==="GET"&&action==="admin_orders"){
