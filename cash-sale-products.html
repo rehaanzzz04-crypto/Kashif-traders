@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script src="/offline-sync.js?v=20260922-localserver1"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#173f35">
+  <title>Manage Products | Kashif Traders</title>
+  <link rel="stylesheet" href="/cash-sale.css?v=20260921-mobile4">
+  <style>
+    :root{--mp-green:#173f35;--mp-gold:#c9a85d;--mp-paper:#fbfaf6;--mp-line:#ddd5c6;--mp-muted:#6d776f}
+    *{box-sizing:border-box}
+    body{background:#f3efe5}
+    .mp-wrap{max-width:1120px;margin:0 auto;padding:18px}
+    .mp-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 14px}
+    .mp-title h1{margin:0;font:700 34px Georgia,serif;color:#1f2824}
+    .mp-title p{margin:6px 0 0;color:var(--mp-muted)}
+    .mp-add{border:0;border-radius:12px;background:var(--mp-green);color:#fff;padding:12px 18px;font-weight:800;min-height:46px}
+    .mp-card{border:1px solid var(--mp-line);border-radius:18px;background:#fff;padding:16px;box-shadow:0 8px 24px rgba(23,63,53,.06)}
+    .mp-search{display:flex;gap:10px;margin-bottom:14px}
+    .mp-search input{flex:1;border:1px solid var(--mp-line);border-radius:12px;padding:13px 14px;font-size:16px}
+    .mp-refresh{border:1px solid #cbd8d2;background:#eef4f0;color:var(--mp-green);border-radius:12px;padding:11px 15px;font-weight:800}
+    .mp-list{display:grid;gap:10px}
+    .mp-row{display:grid;grid-template-columns:74px minmax(0,1fr) auto;align-items:center;gap:13px;border:1px solid var(--mp-line);border-radius:15px;background:var(--mp-paper);padding:12px}
+    .mp-pic,.mp-row img{width:74px;height:74px;border-radius:13px;object-fit:cover;background:#eee7d8}
+    .mp-pic{display:grid;place-items:center;font:bold 24px Georgia;color:var(--mp-green)}
+    .mp-info b{display:block;font-size:18px;color:#202923}
+    .mp-info small{display:block;margin-top:5px;color:var(--mp-muted);line-height:1.55}
+    .mp-price{font-weight:900;color:var(--mp-green);margin-top:5px}
+    .mp-actions{display:flex;gap:7px}
+    .mp-actions button{border:0;border-radius:9px;padding:9px 12px;font-weight:800}
+    .mp-edit{background:var(--mp-green);color:#fff}
+    .mp-delete{background:#9f3e35;color:#fff}
+    .mp-empty{text-align:center;padding:34px 12px;color:var(--mp-muted)}
+    .mp-status{margin-top:12px;color:var(--mp-green);font-weight:700;min-height:22px}
+    .mp-modal{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:14px;background:rgba(7,27,21,.78)}
+    .mp-hidden{display:none!important}
+    .mp-box{width:min(850px,100%);max-height:94vh;overflow:auto;border-radius:20px;background:var(--mp-paper);padding:18px;border-top:4px solid var(--mp-gold)}
+    .mp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
+    .mp-head h2{margin:0;font:700 27px Georgia,serif}
+    .mp-head p{margin:5px 0 0;color:var(--mp-muted);font-size:13px}
+    .mp-close{border:0;background:transparent;font-size:30px;line-height:1}
+    .mp-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+    .mp-field label{display:block;font-weight:800;font-size:13px;margin-bottom:6px;color:#354039}
+    .mp-field input,.mp-field select{width:100%;border:1px solid var(--mp-line);border-radius:11px;padding:12px;background:#fff;font-size:15px}
+    .mp-wide{grid-column:1/-1}
+    .mp-image-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .mp-image-actions button{border:1px solid #cbd8d2;background:#eef4f0;color:var(--mp-green);border-radius:10px;padding:10px 12px;font-weight:800}
+    .mp-image-note{display:block;margin-top:7px;color:var(--mp-muted)}
+    .mp-form-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:16px}
+    .mp-form-actions button{border:0;border-radius:11px;padding:11px 16px;font-weight:800}
+    .mp-cancel{background:#e8ede9;color:#314139}
+    .mp-save{background:var(--mp-green);color:#fff}
+    @media(max-width:700px){
+      .mp-wrap{padding:12px}
+      .mp-toolbar{align-items:stretch;flex-direction:column}
+      .mp-title h1{font-size:29px}
+      .mp-add{width:100%}
+      .mp-search{display:grid;grid-template-columns:1fr auto}
+      .mp-row{grid-template-columns:58px minmax(0,1fr)}
+      .mp-row img,.mp-pic{width:58px;height:58px}
+      .mp-actions{grid-column:1/-1}
+      .mp-actions button{flex:1}
+      .mp-grid{grid-template-columns:1fr}
+      .mp-wide{grid-column:auto}
+    }
+  </style>
+  <script defer src="/offline-register.js?v=20260922-pages1"></script>
+</head>
+<body>
+  <header class="cs-top">
+    <div class="cs-topin">
+      <button class="cs-back" id="mpBack" aria-label="Back to Cash Sale">‹</button>
+      <div class="cs-mark">KT</div>
+      <div class="cs-brand"><b>Manage Products</b><span>KASHIF TRADERS · CASH SALE</span></div>
+    </div>
+  </header>
+
+  <main class="mp-wrap">
+    <div class="mp-toolbar">
+      <div class="mp-title">
+        <h1>Cash Sale Products</h1>
+        <p>Cash Sale ke products yahan add, edit ya delete karein.</p>
+      </div>
+      <button class="mp-add" id="mpAdd" type="button">+ Add Product</button>
+    </div>
+
+    <section class="mp-card">
+      <div class="mp-search">
+        <input id="mpSearch" autocomplete="off" placeholder="Product name, number ya barcode">
+        <button class="mp-refresh" id="mpRefresh" type="button">Refresh</button>
+      </div>
+      <div class="mp-list" id="mpList"><div class="mp-empty">Products loading…</div></div>
+      <div class="mp-status" id="mpStatus"></div>
+    </section>
+  </main>
+
+  <div class="mp-modal mp-hidden" id="mpModal">
+    <form class="mp-box" id="mpForm">
+      <div class="mp-head">
+        <div>
+          <h2 id="mpFormTitle">Add Product</h2>
+          <p>Yeh product sirf Cash Sale catalog mein use hoga.</p>
+        </div>
+        <button class="mp-close" id="mpClose" type="button">×</button>
+      </div>
+
+      <div class="mp-grid">
+        <div class="mp-field"><label>Product No</label><input id="mpSku" name="sku" placeholder="Auto generate hoga"></div>
+        <div class="mp-field"><label>Product Name</label><input name="name" required></div>
+        <div class="mp-field"><label>Category</label><input name="category"></div>
+        <div class="mp-field"><label>Unit</label><input name="unit" value="pcs"></div>
+        <div class="mp-field"><label>Purchase Price</label><input name="purchase_price" type="number" min="0" step="0.01"></div>
+        <div class="mp-field"><label>Sale Price</label><input name="sale_price" type="number" min="0" step="0.01" required></div>
+        <div class="mp-field"><label>Reorder Level</label><input name="reorder_level" type="number" min="0" step="0.001"></div>
+        <div class="mp-field"><label>Barcode</label><input name="barcode"></div>
+        <div class="mp-field"><label>Status</label><select name="status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+        <div class="mp-field mp-wide">
+          <label>Product Image</label>
+          <input id="mpCamera" type="file" accept="image/*" capture="environment" hidden>
+          <input id="mpGallery" type="file" accept="image/*" hidden>
+          <div class="mp-image-actions">
+            <button id="mpCameraBtn" type="button">📷 Camera</button>
+            <button id="mpGalleryBtn" type="button">🖼 Gallery</button>
+          </div>
+          <small class="mp-image-note" id="mpImageStatus">Image optional hai.</small>
+        </div>
+      </div>
+
+      <div class="mp-form-actions">
+        <button class="mp-cancel" id="mpCancel" type="button">Cancel</button>
+        <button class="mp-save" id="mpSave" type="submit">Save Product</button>
+      </div>
+    </form>
+  </div>
+
+  <script defer src="/cash-sale-products.js?v=20260929-manageproducts1"></script>
+</body>
+</html>
