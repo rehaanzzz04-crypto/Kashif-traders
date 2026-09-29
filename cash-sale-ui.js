@@ -16,7 +16,7 @@
           })[c],
       );
   const state = { items: [], timer: null, request: 0, sending: false };
-  let galleryProducts = [], gallerySelected = new Set();
+  let galleryProducts = [], gallerySelected = new Set(), galleryPopularity = new Map();
   $("csDate").value = new Date().toISOString().slice(0, 10);
   $("csBack").onclick = () => (location.href = "/");
 
@@ -225,14 +225,20 @@
 
   function renderProductGallery() {
     const q = $("csGallerySearch").value.trim().toLowerCase();
-    const rows = galleryProducts.filter(p => !q || [p.name,p.sku,p.category,p.barcode].some(v => String(v||"").toLowerCase().includes(q)));
+    const rows = galleryProducts
+      .filter(p => !q || [p.name,p.sku,p.category,p.barcode].some(v => String(v||"").toLowerCase().includes(q)))
+      .sort((a,b) => {
+        const soldA = Number(galleryPopularity.get(String(a.id)) || 0);
+        const soldB = Number(galleryPopularity.get(String(b.id)) || 0);
+        return soldB - soldA || String(a.name||"").localeCompare(String(b.name||""));
+      });
     $("csProductGallery").innerHTML = rows.length ? rows.map(p => {
       const selected = gallerySelected.has(String(p.id));
       return '<button type="button" class="cs-gallery-item'+(selected?' selected':'')+'" data-gallery-id="'+p.id+'">' +
         (p.product_image_url ? '<img src="'+esc(p.product_image_url)+'" alt="">' : '<div class="cs-gallery-placeholder">KT</div>') +
         '<span class="cs-gallery-check">✓</span>' +
         '<span class="cs-gallery-name">'+esc(p.name)+'</span>' +
-        '<span class="cs-gallery-price">'+money(p.sale_price)+'</span>' +
+        '<span class="cs-gallery-price">'+money(p.sale_price)+(Number(galleryPopularity.get(String(p.id))||0)>0?' · Sold '+Number(galleryPopularity.get(String(p.id))||0).toLocaleString("en-PK"):'')+'</span>' +
       '</button>';
     }).join("") : '<div class="cs-empty">Koi product nahi mila.</div>';
     $("csProductGallery").querySelectorAll("[data-gallery-id]").forEach(btn => {
@@ -247,16 +253,35 @@
 
   async function openProductGallery() {
     gallerySelected = new Set();
+    galleryPopularity = new Map();
     $("csGallerySearch").value = "";
     $("csGalleryCount").textContent = "0 selected";
     $("csGalleryAdd").disabled = true;
     $("csProductGallery").innerHTML = '<div class="cs-empty">Products loading…</div>';
     $("csGalleryModal").classList.remove("cs-hidden");
     try {
-      const r = await fetch("/api/data?resource=sale_products&status=active",{cache:"no-store"});
-      const j = await r.json().catch(()=>({}));
-      if (!r.ok) throw Error(j.error || "Products load nahi ho sakay");
-      galleryProducts = j.records || [];
+      const [productResponse,salesResponse] = await Promise.all([
+        fetch("/api/data?resource=sale_products&status=active",{cache:"no-store"}),
+        fetch("/api/data?resource=cash_sales&status=all&limit=1000",{cache:"no-store"})
+      ]);
+      const productsJson = await productResponse.json().catch(()=>({}));
+      const salesJson = await salesResponse.json().catch(()=>({}));
+      if (!productResponse.ok) throw Error(productsJson.error || "Products load nahi ho sakay");
+      galleryProducts = productsJson.records || [];
+      if (salesResponse.ok) {
+        for (const sale of (salesJson.records || [])) {
+          if (!["paid","partial","credit"].includes(String(sale.status||""))) continue;
+          let items = sale.items;
+          if (typeof items === "string") { try { items = JSON.parse(items); } catch { items = []; } }
+          if (!Array.isArray(items)) continue;
+          for (const item of items) {
+            const id = String(item.id || item.product_id || "");
+            if (!id) continue;
+            const qty = Math.max(0, Number(item.qty) || 0);
+            galleryPopularity.set(id, Number(galleryPopularity.get(id)||0) + qty);
+          }
+        }
+      }
       renderProductGallery();
     } catch (e) {
       $("csProductGallery").innerHTML = '<div class="cs-empty">'+esc(e.message)+'</div>';
