@@ -1,1 +1,237 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#173f35"><title>Kashif Traders Login</title><link rel="stylesheet" href="/app.css?v=20260910-complete2"><style>body{min-height:100vh;display:grid;place-items:center;padding:18px}.loginwrap{width:min(460px,100%)}.loginbrand{text-align:center;margin-bottom:16px}.loginmark{width:76px;height:76px;margin:0 auto 12px;border-radius:20px;display:grid;place-items:center;background:#173f35;color:#e8d4a3;font:800 30px Georgia,serif;box-shadow:var(--shadow)}.loginbrand h1{margin:0;font:700 30px Georgia,serif}.loginbrand p{margin:7px 0 0;color:var(--muted)}.loginbox{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:var(--shadow)}.loginbox h2{margin:0 0 6px;font:700 24px Georgia,serif}.loginbox .sub{margin:0 0 16px;color:var(--muted);font-size:13px}.loginbox .field{margin-bottom:12px}.loginbox .btn{width:100%;padding:12px}.loginmsg{min-height:22px;margin-top:10px;color:var(--danger);font-size:13px;font-weight:700}.rolehint{margin-top:13px;padding:11px;border-radius:12px;background:#f5efe1;color:#5b654f;font-size:12px;line-height:1.5} .login-alt{margin-top:10px;width:100%;padding:12px;border:1px solid #173f35;border-radius:10px;background:#fff;color:#173f35;font-weight:800}.setup{display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.setup.show{display:block}</style><script defer src="/offline-register.js?v=20260922-pages1"></script></head><body><main class="loginwrap"><div class="loginbrand"><div class="loginmark">KT</div><h1>Kashif Traders</h1><p>Trading & Accounts Workspace</p></div><section class="loginbox"><h2 id="title">Employee Login</h2><p class="sub" id="sub">Use your employee code and PIN.</p><form id="loginForm"><div class="field" id="nameField" style="display:none"><label>Admin Name</label><input id="fullName" autocomplete="name"></div><div class="field" id="mobileField" style="display:none"><label>Mobile Number</label><input id="mobileNumber" inputmode="tel"></div><div class="field" id="codeField"><label>Employee Code</label><input id="employeeCode" autocomplete="username" placeholder="e.g. ADM-0001"></div><div class="field"><label>PIN</label><input id="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="current-password" placeholder="4 to 8 digits"></div><button class="btn" type="submit" id="submitBtn">Sign In</button></form><button class="login-alt" type="button" id="passwordMode">Login with Username & Password</button><button class="login-alt" type="button" id="setupToggle">Set / Reset My Login</button><div class="setup" id="setupBox"><h2>Set / Reset My Login</h2><p class="sub">Employee Code aur PIN verify karke apna username aur new password set karein.</p><form id="setupForm"><div class="field"><label>Employee Code</label><input id="setupCode" placeholder="e.g. ADM-0001" required></div><div class="field"><label>PIN</label><input id="setupPin" type="password" inputmode="numeric" maxlength="8" required></div><div class="field"><label>Username</label><input id="setupUsername" autocomplete="username" placeholder="e.g. ali amjad" required></div><div class="field"><label>New Password</label><input id="setupPassword" type="password" minlength="6" required></div><div class="field"><label>Confirm Password</label><input id="setupConfirm" type="password" minlength="6" required></div><button class="btn" type="submit" id="setupBtn">Save New Login</button></form><div class="loginmsg" id="setupMsg"></div></div><div class="loginmsg" id="msg"></div><div class="rolehint" id="hint">Admin, Manager, Accountant and Salesman accounts use designation-based access.</div></section></main><script>let bootstrap=false;const $=id=>document.getElementById(id);async function status(){try{const r=await fetch('/api/auth?action=status',{cache:'no-store'});const j=await r.json();if(j.user){location.replace('/');return;}bootstrap=!j.hasEmployees;if(bootstrap){$('title').textContent='Create First Admin';$('sub').textContent='Set up the first administrator account for Kashif Traders.';$('nameField').style.display='flex';$('mobileField').style.display='flex';$('codeField').style.display='none';$('submitBtn').textContent='Create Admin';$('hint').textContent='The first admin code will be generated automatically as ADM-0001.';}}catch(e){$('msg').textContent='Unable to connect. Please refresh.';}}$('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('msg').textContent='';$('submitBtn').disabled=true;try{const payload=bootstrap?{full_name:$('fullName').value,mobile_number:$('mobileNumber').value,pin:$('pin').value}:passwordLogin?{username:$('employeeCode').value,password:$('pin').value}:{employee_code:$('employeeCode').value,pin:$('pin').value};const r=await fetch('/api/auth?action='+(bootstrap?'bootstrap':passwordLogin?'password-login':'login'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const j=await r.json();if(!r.ok)throw new Error(j.error||'Login failed');location.replace('/');}catch(err){$('msg').textContent=err.message;$('submitBtn').disabled=false;}});let passwordLogin=false;$('setupToggle').onclick=()=>$('setupBox').classList.toggle('show');$('passwordMode').onclick=()=>{passwordLogin=!passwordLogin;$('codeField').querySelector('label').textContent=passwordLogin?'Username':'Employee Code';$('employeeCode').placeholder=passwordLogin?'Username':'e.g. ADM-0001';$('pin').previousElementSibling.textContent=passwordLogin?'Password':'PIN';$('pin').inputMode=passwordLogin?'text':'numeric';$('pin').maxLength=passwordLogin?128:8;$('passwordMode').textContent=passwordLogin?'Login with Employee Code & PIN':'Login with Username & Password'};$('setupForm').addEventListener('submit',async e=>{e.preventDefault();$('setupMsg').textContent='';if($('setupPassword').value!==$('setupConfirm').value){$('setupMsg').textContent='Passwords do not match';return}$('setupBtn').disabled=true;try{const r=await fetch('/api/auth?action=setup-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({employee_code:$('setupCode').value,pin:$('setupPin').value,username:$('setupUsername').value,password:$('setupPassword').value})}),j=await r.json();if(!r.ok)throw Error(j.error||'Unable to save login');$('setupMsg').style.color='#17633f';$('setupMsg').textContent='Login updated. Ab username aur password se sign in karein.';$('setupForm').reset()}catch(err){$('setupMsg').textContent=err.message}finally{$('setupBtn').disabled=false}});status();</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#123f34">
+<title>Kashif Traders Login</title>
+<link rel="stylesheet" href="/app.css?v=20260929-liveui2">
+<style>
+:root{--login-green:#123f34;--login-green2:#17604c;--login-gold:#c39a3a;--login-cream:#f7f2e8;--login-card:#fffdf8;--login-line:#dfd6c5;--login-muted:#738078}
+*{box-sizing:border-box}
+html,body{min-height:100%}
+body{
+  margin:0;min-height:100dvh;padding:max(18px,env(safe-area-inset-top)) 18px max(24px,env(safe-area-inset-bottom));
+  display:grid;place-items:center;
+  background:
+    radial-gradient(circle at 12% 12%,rgba(195,154,58,.10),transparent 26%),
+    radial-gradient(circle at 90% 85%,rgba(18,63,52,.07),transparent 30%),
+    linear-gradient(145deg,#faf7ef,#f2ecdf);
+  color:#18231f;
+}
+.login-shell{width:min(1040px,100%);display:grid;grid-template-columns:minmax(0,.95fr) minmax(420px,1.05fr);gap:18px;align-items:stretch}
+.login-brand-panel{
+  position:relative;overflow:hidden;border-radius:28px;padding:34px;
+  background:linear-gradient(145deg,#0d3d32,#17604c 64%,#1e6e59);
+  border:1px solid rgba(216,182,93,.36);box-shadow:0 20px 55px rgba(15,58,48,.17);color:white;
+}
+.login-brand-panel:before{content:"KT";position:absolute;right:-22px;bottom:-50px;font:900 210px/1 Georgia,serif;color:rgba(255,255,255,.045)}
+.login-brand-panel:after{content:"";position:absolute;width:260px;height:260px;border-radius:50%;right:-120px;top:-110px;border:1px solid rgba(255,255,255,.07);box-shadow:0 0 0 55px rgba(255,255,255,.02),0 0 0 110px rgba(255,255,255,.014)}
+.brand-lockup{position:relative;z-index:1}
+.loginmark{width:70px;height:70px;border-radius:20px;display:grid;place-items:center;background:#f0deb0;color:var(--login-green);font:900 28px Georgia,serif;box-shadow:0 10px 30px #0002}
+.brand-kicker{display:inline-block;margin-top:26px;color:#e5c76d;font-size:10px;font-weight:900;letter-spacing:1.6px}
+.login-brand-panel h1{margin:8px 0 6px;font:700 42px/1.05 Georgia,serif}
+.login-brand-panel>div>p{margin:0;color:#d6e3dd;font-size:14px;line-height:1.55;max-width:420px}
+.brand-features{position:relative;z-index:1;display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:30px}
+.brand-feature{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.055);border-radius:14px;padding:12px}
+.brand-feature b{display:block;color:#fff;font-size:11px}.brand-feature span{display:block;margin-top:4px;color:#c7d8d1;font-size:9px;line-height:1.35}
+.brand-foot{position:absolute;left:34px;bottom:28px;color:#bcd0c7;font-size:9px;letter-spacing:.4px}
+
+.loginbox{
+  align-self:stretch;background:rgba(255,253,248,.96);border:1px solid var(--login-line);border-radius:28px;
+  padding:27px;box-shadow:0 18px 48px rgba(27,58,47,.10);backdrop-filter:blur(10px);
+}
+.login-eyebrow{color:var(--login-gold);font-size:9px;font-weight:900;letter-spacing:1.3px}
+.loginbox h2{margin:6px 0 5px;font:700 31px/1.05 Georgia,serif;color:var(--login-green)}
+.loginbox .sub{margin:0 0 16px;color:var(--login-muted);font-size:11px;line-height:1.5}
+.login-modes{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:5px;border:1px solid #e1d9ca;border-radius:13px;background:#f5f0e5;margin-bottom:16px}
+.login-mode{min-height:40px;border:0;border-radius:9px;background:transparent;color:#65716b;font:800 10px/1.2 inherit;cursor:pointer}
+.login-mode.active{background:#fff;color:var(--login-green);box-shadow:0 3px 9px rgba(21,64,52,.08)}
+.loginbox .field{margin-bottom:11px}
+.loginbox .field label{display:block;margin-bottom:5px;color:#35473f;font-size:10px;font-weight:900}
+.loginbox .field input{width:100%;min-height:50px;border:1px solid #d9d0bf;border-radius:12px;background:#fff;padding:11px 13px;font-size:15px;color:#17231f;outline:none;transition:.18s}
+.loginbox .field input:focus{border-color:#9f813e;box-shadow:0 0 0 3px rgba(195,154,58,.11)}
+.loginbox .field input::placeholder{color:#9a9d99}
+.loginbox .btn{width:100%;min-height:50px;padding:11px 14px;border-radius:12px;background:linear-gradient(135deg,#123f34,#0d5947);box-shadow:0 8px 20px rgba(18,63,52,.13);font-size:14px}
+.login-help-row{display:flex;align-items:center;justify-content:center;margin-top:11px}
+.login-alt{border:0;background:transparent;color:var(--login-green);font-weight:850;font-size:10px;padding:8px 10px;cursor:pointer;text-decoration:underline;text-decoration-color:#ceb56e;text-underline-offset:4px}
+.loginmsg{min-height:20px;margin-top:8px;color:var(--danger);font-size:10px;font-weight:800}
+.rolehint{margin-top:12px;padding:10px 11px;border-radius:10px;background:#f6f0e3;color:#657066;font-size:9px;line-height:1.45;border:1px solid #ebe1cc}
+.setup{display:none;margin-top:12px;padding:14px;border:1px solid #ded4c2;border-radius:15px;background:linear-gradient(180deg,#fffdf8,#faf6ed)}
+.setup.show{display:block}
+.setup-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:11px}
+.setup h2{font-size:21px;margin:0 0 4px}.setup .sub{margin:0;font-size:9px}
+.setup-close{width:32px;height:32px;border:1px solid #ddd2be;border-radius:10px;background:#fff;color:var(--login-green);font-weight:900;cursor:pointer}
+.setup-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.setup-grid .field{margin:0}.setup-grid .field.wide{grid-column:1/-1}
+.setup .btn{margin-top:11px;min-height:44px;font-size:12px}
+
+@media(max-width:820px){
+  body{place-items:start center;padding-left:14px;padding-right:14px}
+  .login-shell{grid-template-columns:1fr;max-width:620px;gap:11px}
+  .login-brand-panel{padding:18px 20px;border-radius:21px}
+  .loginmark{width:54px;height:54px;border-radius:16px;font-size:22px}
+  .brand-kicker{margin-top:14px;font-size:8px}
+  .login-brand-panel h1{font-size:30px;margin-top:6px}
+  .login-brand-panel>div>p{font-size:11px}
+  .brand-features,.brand-foot{display:none}
+  .loginbox{padding:18px;border-radius:21px}
+}
+@media(max-width:520px){
+  body{padding-top:max(12px,env(safe-area-inset-top));padding-bottom:max(18px,env(safe-area-inset-bottom))}
+  .login-shell{gap:9px}
+  .login-brand-panel{display:grid;grid-template-columns:52px 1fr;column-gap:12px;align-items:center;padding:14px 15px}
+  .loginmark{grid-row:1/4;width:52px;height:52px;margin:0}
+  .brand-kicker{margin:0;font-size:7px}
+  .login-brand-panel h1{font-size:22px;margin:2px 0 1px}
+  .login-brand-panel>div>p{font-size:9px;line-height:1.35}
+  .loginbox{padding:15px}
+  .loginbox h2{font-size:26px}
+  .loginbox .sub{font-size:10px;margin-bottom:13px}
+  .loginbox .field input{min-height:48px;font-size:14px}
+  .login-modes{margin-bottom:13px}
+  .login-mode{min-height:38px;font-size:9px}
+  .setup-grid{grid-template-columns:1fr}
+  .setup-grid .field.wide{grid-column:auto}
+}
+</style>
+<script defer src="/offline-register.js?v=20260922-pages1"></script>
+</head>
+<body>
+<main class="login-shell">
+  <section class="login-brand-panel">
+    <div class="brand-lockup">
+      <div class="loginmark">KT</div>
+      <span class="brand-kicker">SECURE BUSINESS WORKSPACE</span>
+      <h1>Kashif Traders</h1>
+      <p>Trading & Accounts Workspace</p>
+    </div>
+    <div class="brand-features">
+      <div class="brand-feature"><b>Role-based Access</b><span>Admin, Manager, Accountant & Salesman permissions</span></div>
+      <div class="brand-feature"><b>Secure Sessions</b><span>Protected employee access and controlled permissions</span></div>
+      <div class="brand-feature"><b>Business Operations</b><span>Accounts, inventory, sales and audit workspace</span></div>
+      <div class="brand-feature"><b>Mobile Ready</b><span>Optimized for Android app and browser access</span></div>
+    </div>
+    <div class="brand-foot">KASHIF TRADERS · INTERNAL BUSINESS SYSTEM</div>
+  </section>
+
+  <section class="loginbox">
+    <span class="login-eyebrow">EMPLOYEE ACCESS</span>
+    <h2 id="title">Welcome Back</h2>
+    <p class="sub" id="sub">Sign in securely to continue to your workspace.</p>
+
+    <div class="login-modes" id="loginModes">
+      <button type="button" class="login-mode active" id="pinMode">Employee Code & PIN</button>
+      <button type="button" class="login-mode" id="passwordMode">Username & Password</button>
+    </div>
+
+    <form id="loginForm">
+      <div class="field" id="nameField" style="display:none"><label>Admin Name</label><input id="fullName" autocomplete="name"></div>
+      <div class="field" id="mobileField" style="display:none"><label>Mobile Number</label><input id="mobileNumber" inputmode="tel"></div>
+      <div class="field" id="codeField"><label>Employee Code</label><input id="employeeCode" autocomplete="username" placeholder="e.g. ADM-0001"></div>
+      <div class="field"><label id="pinLabel">PIN</label><input id="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="current-password" placeholder="4 to 8 digits"></div>
+      <button class="btn" type="submit" id="submitBtn">Sign In Securely</button>
+    </form>
+
+    <div class="login-help-row">
+      <button class="login-alt" type="button" id="setupToggle">Set / Reset Username or Password</button>
+    </div>
+
+    <div class="setup" id="setupBox">
+      <div class="setup-head">
+        <div><h2>Set / Reset Login</h2><p class="sub">Employee Code aur PIN verify karke username aur password update karein.</p></div>
+        <button type="button" class="setup-close" id="setupClose">×</button>
+      </div>
+      <form id="setupForm">
+        <div class="setup-grid">
+          <div class="field"><label>Employee Code</label><input id="setupCode" placeholder="e.g. ADM-0001" required></div>
+          <div class="field"><label>PIN</label><input id="setupPin" type="password" inputmode="numeric" maxlength="8" required></div>
+          <div class="field wide"><label>Username</label><input id="setupUsername" autocomplete="username" placeholder="e.g. ali.amjad" required></div>
+          <div class="field"><label>New Password</label><input id="setupPassword" type="password" minlength="6" required></div>
+          <div class="field"><label>Confirm Password</label><input id="setupConfirm" type="password" minlength="6" required></div>
+        </div>
+        <button class="btn" type="submit" id="setupBtn">Save Login Details</button>
+      </form>
+      <div class="loginmsg" id="setupMsg"></div>
+    </div>
+
+    <div class="loginmsg" id="msg"></div>
+    <div class="rolehint" id="hint">Access is controlled by your assigned employee designation and permissions.</div>
+  </section>
+</main>
+
+<script>
+let bootstrap=false,passwordLogin=false;
+const $=id=>document.getElementById(id);
+
+function setMode(mode){
+  passwordLogin=mode==='password';
+  $('pinMode').classList.toggle('active',!passwordLogin);
+  $('passwordMode').classList.toggle('active',passwordLogin);
+  $('codeField').querySelector('label').textContent=passwordLogin?'Username':'Employee Code';
+  $('employeeCode').placeholder=passwordLogin?'Enter your username':'e.g. ADM-0001';
+  $('pinLabel').textContent=passwordLogin?'Password':'PIN';
+  $('pin').inputMode=passwordLogin?'text':'numeric';
+  $('pin').maxLength=passwordLogin?128:8;
+  $('pin').placeholder=passwordLogin?'Enter your password':'4 to 8 digits';
+  $('employeeCode').autocomplete='username';
+  $('pin').autocomplete='current-password';
+}
+$('pinMode').onclick=()=>setMode('pin');
+$('passwordMode').onclick=()=>setMode('password');
+
+async function status(){
+  try{
+    const r=await fetch('/api/auth?action=status',{cache:'no-store'}),j=await r.json();
+    if(j.user){location.replace('/');return;}
+    bootstrap=!j.hasEmployees;
+    if(bootstrap){
+      $('title').textContent='Create First Admin';
+      $('sub').textContent='Set up the first administrator account for Kashif Traders.';
+      $('nameField').style.display='block';
+      $('mobileField').style.display='block';
+      $('codeField').style.display='none';
+      $('loginModes').style.display='none';
+      $('submitBtn').textContent='Create Administrator';
+      $('hint').textContent='The first admin code will be generated automatically as ADM-0001.';
+    }
+  }catch(e){$('msg').textContent='Unable to connect. Please refresh.';}
+}
+
+$('loginForm').addEventListener('submit',async e=>{
+  e.preventDefault();$('msg').textContent='';$('submitBtn').disabled=true;
+  const old=$('submitBtn').textContent;$('submitBtn').textContent=bootstrap?'Creating…':'Signing in…';
+  try{
+    const payload=bootstrap
+      ?{full_name:$('fullName').value,mobile_number:$('mobileNumber').value,pin:$('pin').value}
+      :passwordLogin
+        ?{username:$('employeeCode').value,password:$('pin').value}
+        :{employee_code:$('employeeCode').value,pin:$('pin').value};
+    const r=await fetch('/api/auth?action='+(bootstrap?'bootstrap':passwordLogin?'password-login':'login'),{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+    });
+    const j=await r.json();if(!r.ok)throw new Error(j.error||'Login failed');location.replace('/');
+  }catch(err){$('msg').textContent=err.message;$('submitBtn').disabled=false;$('submitBtn').textContent=old;}
+});
+
+$('setupToggle').onclick=()=>{$('setupBox').classList.toggle('show');if($('setupBox').classList.contains('show'))$('setupBox').scrollIntoView({behavior:'smooth',block:'nearest'});};
+$('setupClose').onclick=()=>$('setupBox').classList.remove('show');
+
+$('setupForm').addEventListener('submit',async e=>{
+  e.preventDefault();$('setupMsg').textContent='';
+  if($('setupPassword').value!==$('setupConfirm').value){$('setupMsg').textContent='Passwords do not match';return}
+  $('setupBtn').disabled=true;const old=$('setupBtn').textContent;$('setupBtn').textContent='Saving…';
+  try{
+    const r=await fetch('/api/auth?action=setup-login',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({employee_code:$('setupCode').value,pin:$('setupPin').value,username:$('setupUsername').value,password:$('setupPassword').value})
+    }),j=await r.json();
+    if(!r.ok)throw Error(j.error||'Unable to save login');
+    $('setupMsg').style.color='#17633f';$('setupMsg').textContent='Login updated. Ab username aur password se sign in karein.';
+    $('setupForm').reset();setMode('password');
+  }catch(err){$('setupMsg').style.color='';$('setupMsg').textContent=err.message}
+  finally{$('setupBtn').disabled=false;$('setupBtn').textContent=old}
+});
+status();
+</script>
+</body>
+</html>
