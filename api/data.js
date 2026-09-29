@@ -586,7 +586,7 @@ async function customerPortal(sql,req,res,staffUser=null){
   }
   const customer=sessionToken?(await sql`SELECT c.* FROM cash_customer_sessions s JOIN cash_sale_customers c ON c.id=s.customer_id WHERE s.token_hash=${digest(sessionToken)} AND s.expires_at>now() AND c.status='active' LIMIT 1`)[0]:null;
   if(!customer)return res.status(401).json({error:"Customer login required"});
-  if(req.method==="GET"&&action==="products"){const rows=await sql`SELECT id,name,category,unit FROM cash_sale_products WHERE status='active' ORDER BY name,id LIMIT 500`;return res.status(200).json({records:rows})}
+  if(req.method==="GET"&&action==="products"){const rows=await sql`SELECT id,sku,name,category,unit,barcode,product_image_url FROM cash_sale_products WHERE status='active' ORDER BY name,id LIMIT 500`;return res.status(200).json({records:rows})}
   if(req.method==="POST"&&action==="order"){
     const raw=Array.isArray(b.items)?b.items:[],ids=raw.map(x=>asId(x.product_id)).filter(Boolean);if(!ids.length)return res.status(400).json({error:"Kam az kam aik product add karein"});
     const valid=await sql`SELECT id,name,unit,sale_price FROM cash_sale_products WHERE id=ANY(${ids}) AND status='active'`,map=new Map(valid.map(x=>[Number(x.id),x]));
