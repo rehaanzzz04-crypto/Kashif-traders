@@ -11,7 +11,247 @@ html,body{max-width:100%;overflow-x:hidden}.wrap,.card,.grid,.stats,.nav,.orderr
  .invoice-head{min-width:0}.invoice-head>span{min-width:0}.invoice-head b,.invoice-head small{overflow-wrap:anywhere}
  .materials{width:100%}.material{min-width:0}.topin{width:100%}.top{width:100%;overflow:hidden}
 }
-</style><style>.wa-help{position:fixed;right:18px;bottom:22px;width:58px;height:58px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:29px;font-weight:900;box-shadow:0 8px 24px #0003;z-index:999;border:3px solid #fff}.wa-help:active{transform:scale(.96)}@media(max-width:650px){.wa-help{right:14px;bottom:18px;width:56px;height:56px}}</style><script defer src="/offline-register.js?v=20260922-pages1"></script></head><body><header class="top"><div class="topin"><div><b>KASHIF TRADERS</b><br><span>Customer Ordering Portal</span></div><button id="logout" class="btn outline hidden">Logout</button></div></header>
+</style><style>.wa-help{position:fixed;right:18px;bottom:22px;width:58px;height:58px;border-radius:50%;background:#25D366;color:#fff;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:29px;font-weight:900;box-shadow:0 8px 24px #0003;z-index:999;border:3px solid #fff}.wa-help:active{transform:scale(.96)}@media(max-width:650px){.wa-help{right:14px;bottom:18px;width:56px;height:56px}}</style>
+<style id="ktPortalModern2026">
+:root{
+  --g:#0b4b3f;--g2:#06372f;--g3:#0f5f4f;--gold:#c9a85d;--gold2:#e7c978;
+  --cream:#f7f2e7;--card:#fffdf8;--ink:#18352e;--muted:#748078;--line:#e1d8c8;
+  --shadow:0 18px 48px rgba(15,58,49,.10)
+}
+html{scroll-behavior:smooth}
+body{
+  background:
+    radial-gradient(circle at 8% 0%,rgba(201,168,93,.12),transparent 28rem),
+    radial-gradient(circle at 92% 8%,rgba(11,75,63,.10),transparent 30rem),
+    linear-gradient(180deg,#f9f6ef 0%,#f3eee4 100%);
+  color:var(--ink);
+  min-height:100vh
+}
+.top{
+  position:sticky;top:0;z-index:60;
+  background:linear-gradient(112deg,#06372f 0%,#0b4b3f 55%,#0e5a4c 100%)!important;
+  border-bottom:2px solid var(--gold)!important;
+  padding:12px 22px!important;
+  box-shadow:0 10px 30px rgba(6,55,47,.18)
+}
+.topin{max-width:1280px!important;min-height:62px}
+.portal-brand{display:flex;align-items:center;gap:12px;min-width:0}
+.portal-mark{
+  width:48px;height:48px;border-radius:14px;display:grid;place-items:center;
+  color:#f5d98c;font:700 22px Georgia,serif;
+  border:1px solid rgba(231,201,120,.55);
+  background:linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.025));
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)
+}
+.portal-brand-copy{min-width:0}
+.top .portal-brand-copy b{
+  color:#fff!important;font:700 25px Georgia,serif!important;letter-spacing:.2px;
+  display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.top .portal-brand-copy span{
+  display:block;margin-top:3px;color:#e6cf92!important;opacity:1!important;
+  font-size:9px!important;font-weight:800;letter-spacing:1.6px
+}
+#logout{
+  border:1px solid rgba(231,201,120,.6)!important;
+  background:rgba(255,255,255,.08)!important;color:#fff!important;
+  backdrop-filter:blur(10px);min-height:42px;padding:10px 16px
+}
+.wrap{max-width:1280px!important;padding:18px 20px 36px!important}
+.card{
+  background:rgba(255,253,248,.96)!important;border:1px solid rgba(216,205,186,.9)!important;
+  border-radius:22px!important;box-shadow:var(--shadow)!important
+}
+.dashboard-card{
+  position:relative;overflow:hidden;
+  background:
+    radial-gradient(circle at 92% 0%,rgba(231,201,120,.22),transparent 23rem),
+    linear-gradient(135deg,#073c33,#0b4b3f 58%,#0d584a)!important;
+  border:1px solid rgba(201,168,93,.38)!important;
+  padding:24px!important
+}
+.dashboard-card:after{
+  content:"";position:absolute;right:-90px;top:-120px;width:330px;height:330px;border-radius:50%;
+  border:1px solid rgba(255,255,255,.08);box-shadow:0 0 0 46px rgba(255,255,255,.025),0 0 0 92px rgba(255,255,255,.018);
+  pointer-events:none
+}
+.dashboard-card h1{
+  position:relative;z-index:1;color:#fff!important;font-size:38px!important;line-height:1.05;margin:0 0 5px!important
+}
+.dashboard-card>#meta{
+  position:relative;z-index:1;color:#d8c486!important;font-weight:800;letter-spacing:.7px;font-size:10px!important
+}
+.dashboard-card .stats{
+  position:relative;z-index:1;margin-top:18px;gap:10px!important
+}
+.dashboard-card .stat{
+  min-height:106px!important;padding:16px!important;border-radius:16px!important;
+  background:rgba(255,255,255,.96)!important;border:1px solid rgba(255,255,255,.55)!important;
+  box-shadow:0 8px 24px rgba(0,0,0,.08)!important
+}
+.dashboard-card .stat small{
+  color:#728078!important;font-size:9px!important;font-weight:900;text-transform:uppercase;letter-spacing:.65px
+}
+.dashboard-card .stat b{color:var(--g)!important;font-size:23px!important;letter-spacing:-.3px}
+.dashboard-card .stat:nth-child(3){background:linear-gradient(135deg,#fff8e7,#fffdf8)!important}
+.dashboard-card .nav{
+  position:relative;z-index:1;
+  display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:9px!important;
+  margin:16px 0 0!important
+}
+.dashboard-card .nav .btn{
+  min-height:54px!important;border-radius:13px!important;border:1px solid rgba(255,255,255,.18)!important;
+  background:rgba(255,255,255,.08)!important;color:#fff!important;
+  backdrop-filter:blur(8px);box-shadow:none!important
+}
+.dashboard-card .nav .btn.active{
+  background:linear-gradient(135deg,#d7ad50,#b88731)!important;color:#fff!important;
+  border-color:#e6c87a!important;box-shadow:0 8px 20px rgba(201,168,93,.22)!important
+}
+.tab>.grid{gap:14px!important;align-items:start}
+#orders>.grid>.card{
+  position:relative;padding:20px!important;overflow:hidden
+}
+#orders>.grid>.card:first-child{border-top:3px solid var(--gold)!important}
+#orders>.grid>.card:last-child{border-top:3px solid var(--g)!important}
+#orders h2,#invoices h2,#materials h2{
+  color:#173f35;font:700 25px Georgia,serif!important;margin:0 0 5px!important
+}
+.note{color:var(--muted)!important;line-height:1.5}
+.orderrow{
+  grid-template-columns:minmax(0,1fr) 120px 44px!important;gap:8px!important;margin:9px 0!important
+}
+.orderrow select,.orderrow input,.field input,.field select,.picker-tools input{
+  border:1px solid #d9d0bf!important;background:#fff!important;color:#18352e!important;
+  border-radius:12px!important;min-height:44px;outline:none;transition:.2s ease
+}
+.orderrow select:focus,.orderrow input:focus,.field input:focus,.field select:focus,.picker-tools input:focus{
+  border-color:#b89246!important;box-shadow:0 0 0 3px rgba(184,146,70,.12)!important
+}
+.btn{
+  border-radius:12px!important;min-height:44px;
+  background:linear-gradient(135deg,#0b4b3f,#0f5f4f)!important;
+  box-shadow:0 7px 18px rgba(11,75,63,.13);transition:.18s ease
+}
+.btn:hover{transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn.outline,.outline{
+  background:#fff!important;color:var(--g)!important;border:1px solid #b9c9c3!important;box-shadow:none
+}
+.order-actions{gap:8px!important;margin-top:12px!important}
+#openProductPicker{
+  border-color:#d0b168!important;
+  background:linear-gradient(135deg,#fff9eb,#fff)!important;color:#6c541f!important
+}
+#sendOrder{background:linear-gradient(135deg,#0a4a3e,#0f6a56)!important}
+.product-picker{
+  margin-top:14px!important;padding:13px!important;border:1px solid #d8ccb4!important;border-radius:16px!important;
+  background:linear-gradient(180deg,#fffdf8,#faf6ee)!important;box-shadow:inset 0 1px 0 #fff
+}
+.picker-tools{position:sticky;top:0;z-index:5;background:#fffdf8;padding-bottom:8px}
+.picker-count{
+  background:#0b4b3f!important;color:#fff!important;border-radius:11px!important;padding:0 12px!important
+}
+.picker-grid{
+  grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:9px!important;max-height:460px!important;padding-right:3px
+}
+.picker-item{
+  border:1px solid #ded5c6!important;border-radius:13px!important;padding:6px!important;
+  background:#fff!important;box-shadow:0 5px 16px rgba(15,58,49,.06)!important;
+  transition:.16s ease
+}
+.picker-item:hover{transform:translateY(-2px);box-shadow:0 9px 20px rgba(15,58,49,.10)!important}
+.picker-item.selected{
+  border:2px solid var(--gold)!important;background:#fff9ea!important;padding:5px!important;
+  box-shadow:0 0 0 3px rgba(201,168,93,.11)!important
+}
+.picker-item img,.picker-ph{border-radius:9px!important}
+.picker-ph{
+  background:linear-gradient(135deg,#efe8da,#fbf8f1)!important;color:var(--g)!important;border:1px solid #e6dece
+}
+.picker-check{box-shadow:0 3px 10px rgba(0,0,0,.09)}
+.picker-item.selected .picker-check{background:var(--gold)!important;border-color:var(--gold)!important}
+.picker-name{font-size:11px!important;color:#21372f}
+.picker-meta{font-size:9px!important}
+#orderList .row{
+  margin:0 0 8px;padding:12px!important;border:1px solid #e5ddcf!important;border-radius:12px!important;
+  background:#fff!important
+}
+#orderList .row:last-child{margin-bottom:0}
+.badge{
+  background:#eaf5f0!important;color:#0b4b3f!important;border:1px solid #cfe3da;
+  padding:5px 8px!important
+}
+.repeat{min-height:34px!important;padding:7px 10px!important;font-size:11px}
+#invoices>.card,#materials>.card{padding:20px!important;border-top:3px solid var(--gold)!important}
+.invoice{
+  border:1px solid #e5ddcf!important;border-radius:13px!important;margin:8px 0!important;padding:0 12px!important;background:#fff!important
+}
+.invoice-head{padding:13px 2px!important}
+.invoice-toggle{color:#a27b2b!important}
+.invoice-detail{border-top:1px solid #eee5d6;padding-top:7px!important}
+.materials{border-radius:14px!important;background:#fff}
+.material{padding:13px!important}
+.report-footer .btn{min-height:46px}
+.login{
+  margin:7vh auto!important;padding:22px!important;border-top:3px solid var(--gold)!important
+}
+.login h1{font-size:30px!important;color:var(--g)!important}
+.wa-help{
+  width:54px!important;height:54px!important;right:18px!important;bottom:18px!important;
+  border:2px solid #fff!important;box-shadow:0 10px 28px rgba(0,0,0,.22)!important
+}
+@media(max-width:900px){
+  .wrap{padding:14px!important}
+  .picker-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important}
+}
+@media(max-width:650px){
+  .top{padding:9px 11px!important}
+  .topin{min-height:54px!important;align-items:center!important}
+  .portal-mark{width:42px;height:42px;border-radius:12px;font-size:19px}
+  .top .portal-brand-copy b{font-size:19px!important}
+  .top .portal-brand-copy span{font-size:7px!important;letter-spacing:1.1px}
+  #logout{min-height:38px!important;padding:8px 11px!important;font-size:11px}
+  .wrap{padding:10px 9px 26px!important}
+  .dashboard-card{padding:16px!important;border-radius:18px!important}
+  .dashboard-card h1{font-size:29px!important;overflow-wrap:anywhere}
+  .dashboard-card .stats{grid-template-columns:1fr!important;gap:8px!important}
+  .dashboard-card .stat{min-height:auto!important;padding:13px!important}
+  .dashboard-card .stat b{font-size:20px!important}
+  .dashboard-card .nav{grid-template-columns:1fr!important;gap:7px!important}
+  .dashboard-card .nav .btn{min-height:46px!important;text-align:left!important;padding:10px 13px!important}
+  .tab>.grid{grid-template-columns:1fr!important}
+  #orders>.grid>.card,#invoices>.card,#materials>.card{padding:14px!important;border-radius:16px!important}
+  #orders h2,#invoices h2,#materials h2{font-size:22px!important}
+  .orderrow{grid-template-columns:minmax(0,1fr) 78px 42px!important;gap:6px!important}
+  .orderrow select,.orderrow input{min-width:0!important;width:100%!important;font-size:13px!important;padding:9px!important}
+  .order-actions{grid-template-columns:1fr 1fr!important}
+  .order-actions #sendOrder{grid-column:1/-1!important}
+  .order-actions .btn{font-size:12px!important;padding:9px 7px!important}
+  .product-picker{padding:9px!important}
+  .picker-tools{grid-template-columns:minmax(0,1fr) auto!important;gap:6px!important}
+  .picker-tools input{font-size:13px!important;padding:9px!important}
+  .picker-count{font-size:9px!important;padding:0 8px!important}
+  .picker-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px!important;max-height:55vh!important}
+  .picker-item{padding:4px!important;border-radius:10px!important}
+  .picker-item.selected{padding:3px!important}
+  .picker-name{font-size:9.5px!important}
+  .picker-meta{font-size:8px!important}
+  .picker-check{width:19px!important;height:19px!important;right:7px!important;top:7px!important;font-size:11px!important}
+  .picker-footer{grid-template-columns:1fr 1.35fr!important;gap:6px!important}
+  .picker-footer .btn{font-size:11px!important;padding:8px 6px!important}
+  #orderList .row{padding:10px!important}
+  .invoice-head{gap:7px!important}
+  .invoice-head>span:last-child{text-align:right!important;min-width:90px}
+  .report-footer{grid-template-columns:1fr!important}
+  .wa-help{width:50px!important;height:50px!important;right:12px!important;bottom:14px!important}
+}
+@media(max-width:380px){
+  .picker-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .portal-brand{gap:8px}
+  .top .portal-brand-copy b{font-size:17px!important}
+}
+</style><script defer src="/offline-register.js?v=20260922-pages1"></script></head><body><header class="top"><div class="topin"><div class="portal-brand"><div class="portal-mark">KT</div><div class="portal-brand-copy"><b>Kashif Traders</b><span>CUSTOMER ORDERING PORTAL</span></div></div><button id="logout" class="btn outline hidden">Logout</button></div></header>
 <main class="wrap"><section id="login" class="card login"><h1>Customer Login</h1><p class="note">Apna Cash Sale Customer Code aur portal PIN enter karein.</p><div class="field"><label>Customer Code</label><input id="code" autocomplete="username" placeholder="CSC-..."></div><div class="field"><label>PIN</label><input id="pin" type="password" inputmode="numeric" autocomplete="current-password"></div><button id="loginBtn" class="btn">Open My Account</button><div id="loginMsg" class="msg"></div></section>
 <section id="app" class="hidden"><div class="card dashboard-card"><h1 id="hello">Customer Dashboard</h1><div id="meta" class="note"></div><div class="stats"><div class="stat"><small>Total Approved Purchases</small><b id="sales">PKR 0</b></div><div class="stat"><small>Total Paid</small><b id="received">PKR 0</b></div><div class="stat"><small>Outstanding Balance</small><b id="outstanding">PKR 0</b></div></div><div class="nav"><button class="btn active" data-tab="orders">▤<br>Orders</button><button class="btn" data-tab="invoices">▧<br>Approved Invoices</button><button class="btn" data-tab="materials">◆<br>Raw Materials</button></div></div>
 <div id="orders" class="tab"><div class="grid"><div class="card"><h2>New Order</h2><p class="note">Products aur quantity select karein. Price customer portal par show nahi hoti.</p><div id="orderRows"></div><div class="order-actions"><button id="addRow" class="btn outline">+ Add Product</button><button id="openProductPicker" class="btn outline">▦ Select by Image</button><button id="sendOrder" class="btn">Send Order</button></div><div id="productPicker" class="product-picker picker-hidden"><div class="picker-tools"><input id="pickerSearch" autocomplete="off" placeholder="Search products..."><div class="picker-count" id="pickerCount">0 selected</div></div><div class="picker-grid" id="pickerGrid"><p class="note">Products loading...</p></div><div class="picker-footer"><button id="pickerCancel" class="btn outline" type="button">Cancel</button><button id="pickerAdd" class="btn" type="button" disabled>Add Selected Products</button></div></div><div id="orderMsg" class="msg"></div></div><div class="card"><h2>My Orders</h2><div id="orderList"></div></div></div></div>
