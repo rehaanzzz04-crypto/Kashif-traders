@@ -49,3 +49,10 @@
 }
 
 .cashier-delete{width:100%;margin:9px 0 0;min-height:46px;border:1px solid #c62828;border-radius:11px;background:#fff3f3;color:#b71c1c;font-weight:900;cursor:pointer}.cashier-delete:hover{background:#ffe7e7}.cashier-delete:disabled{opacity:.55;cursor:not-allowed}
+
+.cashier-inline-payment{margin:10px 0 12px;padding:11px;border:1px solid var(--cs-line);border-radius:12px;background:#fffaf0}
+.cashier-inline-payment>label{display:block;margin-bottom:8px;color:var(--cs-green);font-size:11px;font-weight:900}
+.cashier-inline-payment-options{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.cashier-inline-payment-options button{min-height:42px;border:1px solid var(--cs-line);border-radius:10px;background:#fff;color:var(--cs-green);font-size:11px;font-weight:850;cursor:pointer}
+.cashier-inline-payment-options button.active{border-color:var(--cs-gold);background:var(--cs-green);color:#fff;box-shadow:0 0 0 2px #b8924633}
+@media(max-width:620px){.cashier-inline-payment-options{grid-template-columns:1fr 1fr}.cashier-inline-payment-options button{min-height:48px;font-size:12px}}
