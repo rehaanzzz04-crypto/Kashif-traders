@@ -36,14 +36,18 @@
   function renderProducts(){
     const q = $("mpSearch").value.trim().toLowerCase();
     const rows = products.filter(p => !q || [p.name,p.sku,p.category,p.barcode,p.unit,p.status].some(v => String(v || "").toLowerCase().includes(q)));
-    $("mpList").innerHTML = rows.length ? rows.map(p => `
+    $("mpList").innerHTML = rows.length ? rows.map((p, index) => `
       <article class="mp-row">
-        ${p.product_image_url ? '<img src="' + esc(p.product_image_url) + '" alt="">' : '<div class="mp-pic">KT</div>'}
-        <div class="mp-info">
-          <b>${esc(p.name)}</b>
-          <small>${esc(p.sku || "—")} · ${esc(p.category || "General")} · ${esc(p.unit || "pcs")} · ${esc(p.status || "active")}<br>Barcode: ${esc(p.barcode || "—")}</small>
-          <div class="mp-price">${money(p.sale_price)}</div>
+        <div class="mp-index">${index + 1}</div>
+        <div class="mp-product-cell">
+          ${p.product_image_url ? '<img src="' + esc(p.product_image_url) + '" alt="">' : '<div class="mp-pic">KT</div>'}
+          <div class="mp-info">
+            <b>${esc(p.name)}</b>
+            <small>${esc(p.sku || "—")} · ${esc(p.unit || "pcs")} · ${esc(p.status || "active")}</small>
+          </div>
         </div>
+        <div class="mp-meta">${esc(p.category || "General")} · ${esc(p.barcode || "No barcode")}</div>
+        <div class="mp-price">${money(p.sale_price)}</div>
         <div class="mp-actions">
           <button class="mp-edit" data-edit="${p.id}" type="button">Edit</button>
           <button class="mp-delete" data-delete="${p.id}" type="button">Delete</button>
