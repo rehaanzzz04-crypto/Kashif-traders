@@ -1,6 +1,6 @@
 'use strict';
 importScripts('/offline-shell-manifest.js');
-const CACHE = 'kt-shell-20260922-localserver1';
+const CACHE = 'kt-shell-20260929-liveui2';
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
@@ -38,11 +38,22 @@ self.addEventListener('fetch', event => {
     return;
   }
   event.respondWith((async () => {
-    const cache = await caches.open(CACHE), hit = await cache.match(request);
+    const cache = await caches.open(CACHE);
+    const networkFirst = request.destination === 'script' || request.destination === 'style';
+    if (networkFirst) {
+      try {
+        const response = await fetch(request, { cache: 'no-store' });
+        if (response.ok && !response.redirected) await cache.put(request, response.clone());
+        return response;
+      } catch {
+        return await cache.match(request) || await cache.match(pathname) || new Response('Offline asset unavailable', { status: 503 });
+      }
+    }
+    const hit = await cache.match(request);
     if (hit) return hit;
     try {
       const response = await fetch(request);
-      if (response.ok && !response.redirected && ['script', 'style', 'image', 'font'].includes(request.destination)) await cache.put(request, response.clone());
+      if (response.ok && !response.redirected && ['image', 'font'].includes(request.destination)) await cache.put(request, response.clone());
       return response;
     } catch {
       return await cache.match(pathname) || new Response('Offline asset unavailable', { status: 503 });
