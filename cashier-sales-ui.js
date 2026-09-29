@@ -448,7 +448,7 @@
 
   function receiptDocument() {
     return '<!doctype html><html><head><meta charset="utf-8"><title>Receipt ' + esc(active?.invoice_number || "") + '</title><style>' +
-      '@page{size:80mm auto;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000}body{width:80mm;margin:0 auto;font-family:"Courier New",Courier,monospace;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:72mm;margin:0 auto;padding:5mm 1.5mm 7mm;font-size:10.5px;line-height:1.35}header{text-align:center}h1{margin:0;font-size:19px;line-height:1.1;font-weight:900;letter-spacing:.2px}header div{margin-top:3px;font-size:11px}.dash{border-top:1px dashed #000;margin:8px 0}.info{display:grid;gap:3px}.info div{display:grid;grid-template-columns:25mm 1fr;gap:2mm}.info span{white-space:nowrap}.info b{font-weight:600;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9.5px}th,td{padding:3px 1px;vertical-align:top;text-align:right}th{font-weight:900;border-bottom:1px dashed #000}th:first-child,td:first-child{text-align:left;width:46%}th:nth-child(2),td:nth-child(2){width:12%}th:nth-child(3),td:nth-child(3){width:19%}th:nth-child(4),td:nth-child(4){width:23%}.item-name{font-weight:700;overflow-wrap:anywhere}.item-name small{display:block;font-weight:400;font-size:8.5px;margin-top:1px}.totals{margin-left:auto;width:68%}.sum{display:flex;justify-content:space-between;gap:6px;padding:2px 0}.sum b{white-space:nowrap}.grand{font-size:12px;font-weight:900;border-top:1px solid #000;margin-top:2px;padding-top:4px}footer{text-align:center;font-size:11px;padding-top:4px}@media screen{body{padding:12px 0}.receipt{box-shadow:0 0 0 1px #eee}}' +
+      '@page{size:80mm auto;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000}body{width:80mm;margin:0 auto;font-family:"Courier New",Courier,monospace;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:72mm;margin:0 auto;padding:5mm 1.5mm 7mm;font-size:11px;line-height:1.35}header{text-align:center}h1{margin:0;font-size:19px;line-height:1.1;font-weight:900;letter-spacing:.2px}header div{margin-top:3px;font-size:12px;font-weight:800}.dash{border-top:1px dashed #000;margin:8px 0}.info{display:grid;gap:3px;font-size:11px}.info div{display:grid;grid-template-columns:25mm 1fr;gap:2mm}.info span{white-space:nowrap;font-weight:800}.info b{font-weight:800;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10.5px;line-height:1.25;font-variant-numeric:tabular-nums}th,td{padding:4px 1px;vertical-align:top;text-align:right}th{font-weight:900;font-size:10.5px;border-bottom:1px dashed #000}th:first-child,td:first-child{text-align:left;width:44%}th:nth-child(2),td:nth-child(2){width:12%}th:nth-child(3),td:nth-child(3){width:19%}th:nth-child(4),td:nth-child(4){width:25%}td:nth-child(2),td:nth-child(3),td:nth-child(4){font-weight:900;font-size:11px;white-space:nowrap}.item-name{font-weight:800;font-size:10.5px;overflow-wrap:anywhere}.item-name small{display:block;font-weight:700;font-size:9px;margin-top:2px}.totals{margin-left:auto;width:68%;font-size:10.5px}.sum{display:flex;justify-content:space-between;gap:6px;padding:2px 0}.sum span{font-weight:800}.sum b{font-weight:900;white-space:nowrap}.grand{font-size:12.5px;font-weight:900;border-top:1px solid #000;margin-top:2px;padding-top:4px}footer{text-align:center;font-size:11.5px;font-weight:800;padding-top:4px}@media screen{body{padding:12px 0}.receipt{box-shadow:0 0 0 1px #eee}}' +
       '</style></head><body>' + receiptMarkup() + '<script>window.addEventListener("load",function(){window.print();});<\/script></body></html>';
   }
 
@@ -488,20 +488,20 @@
     const rule = y => cmd.push("0.5 w [2 2] 0 d " + margin + " " + y.toFixed(2) + " m " + (W-margin) + " " + y.toFixed(2) + " l S [] 0 d");
     let y = H - 24;
     text("KASHIF TRADERS",0,y,15,true,"center"); y -= 16;
-    text("Cash Sale Receipt",0,y,9,false,"center"); y -= 12; rule(y); y -= 14;
-    [["Receipt No",d.invoice],["Date",d.date],["Customer",d.customer],["Created by",d.createdBy],["Paid by",d.paidBy],["Payment",d.payment]].forEach(pair => { text(pair[0],margin,y,7.5); text(": " + pair[1],70,y,7.5); y -= 12; });
+    text("Cash Sale Receipt",0,y,10,true,"center"); y -= 12; rule(y); y -= 14;
+    [["Receipt No",d.invoice],["Date",d.date],["Customer",d.customer],["Created by",d.createdBy],["Paid by",d.paidBy],["Payment",d.payment]].forEach(pair => { text(pair[0],margin,y,8.25,true); text(": " + pair[1],70,y,8.25,true); y -= 12; });
     rule(y); y -= 14;
-    text("Item",margin,y,7.5,true); text("Qty",130,y,7.5,true,"right"); text("Rate",165,y,7.5,true,"right"); text("Amount",W-margin,y,7.5,true,"right"); y -= 9; rule(y); y -= 13;
+    text("Item",margin,y,8.5,true); text("Qty",130,y,8.5,true,"right"); text("Rate",165,y,8.5,true,"right"); text("Amount",W-margin,y,8.5,true,"right"); y -= 9; rule(y); y -= 13;
     items.forEach(p => {
       const names = wrapThermal(p.name,24);
-      names.forEach((line,i) => { text(line,margin,y,7.5,i===0); if (i===0) { text(qtyText(p.qty),130,y,7.5,false,"right"); text(thermalMoney(p.rate),165,y,7.5,false,"right"); text(thermalMoney(p.amount),W-margin,y,7.5,false,"right"); } y -= 11; });
-      text(qtyText(p.qty) + " " + p.unit,margin,y,6.7); y -= 11;
+      names.forEach((line,i) => { text(line,margin,y,8.25,true); if (i===0) { text(qtyText(p.qty),130,y,8.5,true,"right"); text(thermalMoney(p.rate),165,y,8.5,true,"right"); text(thermalMoney(p.amount),W-margin,y,8.5,true,"right"); } y -= 12; });
+      text(qtyText(p.qty) + " " + p.unit,margin,y,7.5,true); y -= 11;
     });
     rule(y); y -= 15;
-    const sum = (label,value,bold=false) => { text(label,82,y,bold?8.5:7.5,bold); text(value,W-margin,y,bold?8.5:7.5,bold,"right"); y -= 12; };
+    const sum = (label,value,bold=false) => { text(label,82,y,bold?9:8.25,true); text(value,W-margin,y,bold?9:8.25,true,"right"); y -= 12; };
     sum("Subtotal","PKR " + thermalMoney(d.subtotal)); sum("Discount","PKR " + thermalMoney(d.discount)); sum("Total","PKR " + thermalMoney(d.total),true); sum("Received","PKR " + thermalMoney(d.received));
     if (d.due > 0) { sum("Remaining / Due","PKR " + thermalMoney(d.due),true); sum("Status",d.status,true); }
-    y -= 2; rule(y); y -= 18; text("Thank you.",0,y,8.5,false,"center");
+    y -= 2; rule(y); y -= 18; text("Thank you.",0,y,9,true,"center");
     const stream = cmd.join("\n");
     const objs = [
       "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
