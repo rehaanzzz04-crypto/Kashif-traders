@@ -4,13 +4,20 @@
   const q=s=>document.querySelector(s);
 
   function markNativeApp(){
-    const native=Boolean(window.KT_NATIVE_APP_VERSION)||/;\s*kt-native-app(?:=|;|$)/i.test(document.cookie||'');
-    if(!native)return;
+    const ua=String(navigator.userAgent||'');
+    const native=Boolean(window.KT_NATIVE_APP_VERSION)
+      ||/;\s*kt-native-app(?:=|;|$)/i.test(document.cookie||'')
+      ||/\bwv\b/i.test(ua)
+      ||/Kashif[\s_-]?Traders/i.test(ua);
+    if(!native)return false;
     document.documentElement.classList.add('kt-native-app');
     document.body?.classList.add('kt-native-app');
+    return true;
   }
   markNativeApp();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',markNativeApp,{once:true});
+  let nativeCheckCount=0;
+  const nativeCheck=setInterval(()=>{nativeCheckCount++;if(markNativeApp()||nativeCheckCount>20)clearInterval(nativeCheck)},250);
   const notify=(m,b=false)=>typeof window.toast==='function'?window.toast(m,b):console[b?'error':'log'](m);
 
   function download(url,name){
