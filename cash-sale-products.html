@@ -12,23 +12,30 @@
     *{box-sizing:border-box}
     body{background:#f3efe5}
     .mp-wrap{max-width:1120px;margin:0 auto;padding:18px}
-    .mp-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 14px}
-    .mp-title h1{margin:0;font:700 34px Georgia,serif;color:#1f2824}
-    .mp-title p{margin:6px 0 0;color:var(--mp-muted)}
-    .mp-add{border:0;border-radius:12px;background:var(--mp-green);color:#fff;padding:12px 18px;font-weight:800;min-height:46px}
-    .mp-card{border:1px solid var(--mp-line);border-radius:18px;background:#fff;padding:16px;box-shadow:0 8px 24px rgba(23,63,53,.06)}
-    .mp-search{display:flex;gap:10px;margin-bottom:14px}
-    .mp-search input{flex:1;border:1px solid var(--mp-line);border-radius:12px;padding:13px 14px;font-size:16px}
-    .mp-refresh{border:1px solid #cbd8d2;background:#eef4f0;color:var(--mp-green);border-radius:12px;padding:11px 15px;font-weight:800}
-    .mp-list{display:grid;gap:10px}
-    .mp-row{display:grid;grid-template-columns:74px minmax(0,1fr) auto;align-items:center;gap:13px;border:1px solid var(--mp-line);border-radius:15px;background:var(--mp-paper);padding:12px}
-    .mp-pic,.mp-row img{width:74px;height:74px;border-radius:13px;object-fit:cover;background:#eee7d8}
-    .mp-pic{display:grid;place-items:center;font:bold 24px Georgia;color:var(--mp-green)}
-    .mp-info b{display:block;font-size:18px;color:#202923}
-    .mp-info small{display:block;margin-top:5px;color:var(--mp-muted);line-height:1.55}
-    .mp-price{font-weight:900;color:var(--mp-green);margin-top:5px}
-    .mp-actions{display:flex;gap:7px}
-    .mp-actions button{border:0;border-radius:9px;padding:9px 12px;font-weight:800}
+    .mp-toolbar{margin:0 0 12px}
+    .mp-title h1{margin:0;font:700 32px Georgia,serif;color:#1f2824}
+    .mp-title p{margin:5px 0 0;color:var(--mp-muted)}
+    .mp-card{border:1px solid var(--mp-line);border-radius:16px;background:#fff;padding:14px;box-shadow:0 8px 24px rgba(23,63,53,.05)}
+    .mp-controls{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;margin-bottom:10px}
+    .mp-search{display:flex;min-width:0}
+    .mp-search input{width:100%;border:1px solid var(--mp-line);border-radius:10px;padding:11px 12px;font-size:15px}
+    .mp-refresh{border:1px solid #cbd8d2;background:#eef4f0;color:var(--mp-green);border-radius:10px;padding:10px 13px;font-weight:800}
+    .mp-add{border:0;border-radius:10px;background:var(--mp-green);color:#fff;padding:11px 15px;font-weight:800;white-space:nowrap}
+    .mp-list-head{display:grid;grid-template-columns:38px minmax(260px,1.4fr) minmax(120px,.7fr) 110px 132px;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--mp-line);color:var(--mp-muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em}
+    .mp-list{display:block}
+    .mp-row{display:grid;grid-template-columns:38px minmax(260px,1.4fr) minmax(120px,.7fr) 110px 132px;gap:10px;align-items:center;min-height:58px;padding:7px 10px;border-bottom:1px solid #ece6da;background:#fff}
+    .mp-row:last-child{border-bottom:0}
+    .mp-index{font-size:12px;color:#8b8f8b;text-align:center}
+    .mp-product-cell{display:grid;grid-template-columns:40px minmax(0,1fr);gap:9px;align-items:center;min-width:0}
+    .mp-pic,.mp-row img{width:40px;height:40px;border-radius:8px;object-fit:cover;background:#eee7d8}
+    .mp-pic{display:grid;place-items:center;font:bold 14px Georgia;color:var(--mp-green)}
+    .mp-info{min-width:0}
+    .mp-info b{display:block;font-size:14px;color:#202923;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mp-info small{display:block;margin-top:2px;color:var(--mp-muted);font-size:11px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mp-meta{font-size:12px;color:#536057;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .mp-price{font-weight:900;color:var(--mp-green);font-size:13px;white-space:nowrap}
+    .mp-actions{display:flex;gap:5px;justify-content:flex-end}
+    .mp-actions button{border:0;border-radius:7px;padding:7px 9px;font-size:12px;font-weight:800;min-width:58px}
     .mp-edit{background:var(--mp-green);color:#fff}
     .mp-delete{background:#9f3e35;color:#fff}
     .mp-empty{text-align:center;padding:34px 12px;color:var(--mp-muted)}
@@ -52,15 +59,25 @@
     .mp-cancel{background:#e8ede9;color:#314139}
     .mp-save{background:var(--mp-green);color:#fff}
     @media(max-width:700px){
-      .mp-wrap{padding:12px}
-      .mp-toolbar{align-items:stretch;flex-direction:column}
-      .mp-title h1{font-size:29px}
-      .mp-add{width:100%}
-      .mp-search{display:grid;grid-template-columns:1fr auto}
-      .mp-row{grid-template-columns:58px minmax(0,1fr)}
-      .mp-row img,.mp-pic{width:58px;height:58px}
-      .mp-actions{grid-column:1/-1}
-      .mp-actions button{flex:1}
+      .mp-wrap{padding:10px}
+      .mp-title h1{font-size:27px}
+      .mp-title p{font-size:13px}
+      .mp-card{padding:10px;border-radius:14px}
+      .mp-controls{grid-template-columns:minmax(0,1fr) auto;gap:6px}
+      .mp-search{grid-column:1/-1}
+      .mp-add,.mp-refresh{padding:9px 11px;font-size:13px}
+      .mp-add{grid-column:1/2}
+      .mp-refresh{grid-column:2/3}
+      .mp-list-head{display:none}
+      .mp-row{grid-template-columns:24px minmax(0,1fr) auto;gap:7px;min-height:54px;padding:6px 4px}
+      .mp-product-cell{grid-template-columns:34px minmax(0,1fr);gap:7px}
+      .mp-row img,.mp-pic{width:34px;height:34px;border-radius:7px}
+      .mp-info b{font-size:13px}
+      .mp-info small{font-size:10px}
+      .mp-meta{display:none}
+      .mp-price{font-size:12px;text-align:right}
+      .mp-actions{grid-column:2/4;justify-content:flex-end;margin-top:-2px}
+      .mp-actions button{padding:5px 8px;font-size:11px;min-width:52px}
       .mp-grid{grid-template-columns:1fr}
       .mp-wide{grid-column:auto}
     }
@@ -82,14 +99,15 @@
         <h1>Cash Sale Products</h1>
         <p>Cash Sale ke products yahan add, edit ya delete karein.</p>
       </div>
-      <button class="mp-add" id="mpAdd" type="button">+ Add Product</button>
     </div>
 
     <section class="mp-card">
-      <div class="mp-search">
-        <input id="mpSearch" autocomplete="off" placeholder="Product name, number ya barcode">
+      <div class="mp-controls">
+        <div class="mp-search"><input id="mpSearch" autocomplete="off" placeholder="Product name, number ya barcode"></div>
+        <button class="mp-add" id="mpAdd" type="button">+ Add Product</button>
         <button class="mp-refresh" id="mpRefresh" type="button">Refresh</button>
       </div>
+      <div class="mp-list-head"><span>#</span><span>Product</span><span>Category / Barcode</span><span>Sale Price</span><span style="text-align:right">Actions</span></div>
       <div class="mp-list" id="mpList"><div class="mp-empty">Products loading…</div></div>
       <div class="mp-status" id="mpStatus"></div>
     </section>
@@ -134,6 +152,6 @@
     </form>
   </div>
 
-  <script defer src="/cash-sale-products.js?v=20260929-manageproducts1"></script>
+  <script defer src="/cash-sale-products.js?v=20260929-compactlist2"></script>
 </body>
 </html>
