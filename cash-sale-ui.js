@@ -16,6 +16,7 @@
           })[c],
       );
   const state = { items: [], timer: null, request: 0, sending: false };
+  let galleryProducts = [], gallerySelected = new Set();
   $("csDate").value = new Date().toISOString().slice(0, 10);
   $("csBack").onclick = () => (location.href = "/");
 
@@ -100,25 +101,7 @@
         }),
     );
   }
-  function addProduct(x) {
-    const old = state.items.find((i) => i.id === x.id);
-    if (old) old.qty += 1;
-    else
-      state.items.push({
-        id: x.id,
-        name: x.name,
-        number: x.entry_number || x.sku || "—",
-        barcode: x.barcode || "",
-        unit: x.unit || "pcs",
-        qty: 1,
-        defaultRate: Number(x.sale_price || 0),
-        rate: Number(x.sale_price || 0),
-      });
-    $("csSearch").value = "";
-    $("csResults").classList.add("cs-hidden");
-    renderItems();
-    $("csStatus").textContent = x.name + " bill mein add ho gaya.";
-  }
+  function addProduct(x) { addProductToBill(x, false); }
   function renderItems() {
     const body = $("csItems");
     if (!state.items.length)
@@ -211,6 +194,94 @@
     renderItems();
     $("csStatus").textContent = "Test sale cleared.";
   };
+
+  function addProductToBill(x, silent = false) {
+    const old = state.items.find((i) => i.id === x.id);
+    if (old) old.qty += 1;
+    else
+      state.items.push({
+        id: x.id,
+        name: x.name,
+        number: x.entry_number || x.sku || "—",
+        barcode: x.barcode || "",
+        unit: x.unit || "pcs",
+        qty: 1,
+        defaultRate: Number(x.sale_price || 0),
+        rate: Number(x.sale_price || 0),
+      });
+    if (!silent) {
+      $("csSearch").value = "";
+      $("csResults").classList.add("cs-hidden");
+      renderItems();
+      $("csStatus").textContent = x.name + " bill mein add ho gaya.";
+    }
+  }
+
+  function updateGallerySelectionUi() {
+    const count = gallerySelected.size;
+    $("csGalleryCount").textContent = count + (count === 1 ? " selected" : " selected");
+    $("csGalleryAdd").disabled = count === 0;
+  }
+
+  function renderProductGallery() {
+    const q = $("csGallerySearch").value.trim().toLowerCase();
+    const rows = galleryProducts.filter(p => !q || [p.name,p.sku,p.category,p.barcode].some(v => String(v||"").toLowerCase().includes(q)));
+    $("csProductGallery").innerHTML = rows.length ? rows.map(p => {
+      const selected = gallerySelected.has(String(p.id));
+      return '<button type="button" class="cs-gallery-item'+(selected?' selected':'')+'" data-gallery-id="'+p.id+'">' +
+        (p.product_image_url ? '<img src="'+esc(p.product_image_url)+'" alt="">' : '<div class="cs-gallery-placeholder">KT</div>') +
+        '<span class="cs-gallery-check">✓</span>' +
+        '<span class="cs-gallery-name">'+esc(p.name)+'</span>' +
+        '<span class="cs-gallery-price">'+money(p.sale_price)+'</span>' +
+      '</button>';
+    }).join("") : '<div class="cs-empty">Koi product nahi mila.</div>';
+    $("csProductGallery").querySelectorAll("[data-gallery-id]").forEach(btn => {
+      btn.onclick = () => {
+        const id = String(btn.dataset.galleryId);
+        if (gallerySelected.has(id)) gallerySelected.delete(id); else gallerySelected.add(id);
+        btn.classList.toggle("selected", gallerySelected.has(id));
+        updateGallerySelectionUi();
+      };
+    });
+  }
+
+  async function openProductGallery() {
+    gallerySelected = new Set();
+    $("csGallerySearch").value = "";
+    $("csGalleryCount").textContent = "0 selected";
+    $("csGalleryAdd").disabled = true;
+    $("csProductGallery").innerHTML = '<div class="cs-empty">Products loading…</div>';
+    $("csGalleryModal").classList.remove("cs-hidden");
+    try {
+      const r = await fetch("/api/data?resource=sale_products&status=active",{cache:"no-store"});
+      const j = await r.json().catch(()=>({}));
+      if (!r.ok) throw Error(j.error || "Products load nahi ho sakay");
+      galleryProducts = j.records || [];
+      renderProductGallery();
+    } catch (e) {
+      $("csProductGallery").innerHTML = '<div class="cs-empty">'+esc(e.message)+'</div>';
+    }
+  }
+
+  function closeProductGallery() {
+    $("csGalleryModal").classList.add("cs-hidden");
+    gallerySelected = new Set();
+    updateGallerySelectionUi();
+  }
+
+  $("csOpenGallery").onclick = openProductGallery;
+  $("csGalleryClose").onclick = closeProductGallery;
+  $("csGalleryCancel").onclick = closeProductGallery;
+  $("csGallerySearch").oninput = renderProductGallery;
+  $("csGalleryModal").onclick = e => { if (e.target === $("csGalleryModal")) closeProductGallery(); };
+  $("csGalleryAdd").onclick = () => {
+    const selected = galleryProducts.filter(p => gallerySelected.has(String(p.id)));
+    selected.forEach(p => addProductToBill(p, true));
+    renderItems();
+    $("csStatus").textContent = selected.length + " products bill mein add ho gaye.";
+    closeProductGallery();
+  };
+
   let scannerStream = null, scannerFrame = 0, barcodeDetector = null;
   function stopScanner() {
     cancelAnimationFrame(scannerFrame);
