@@ -48,6 +48,7 @@
 
       add('Customer Accounts', 'CA', '/cash-sale-customers.html');
       add('Cashier Billing', 'Rs', '/cashier-sales.html');
+      add('Sales Report', 'SR', '/cashier-sales-report.html');
 
       addSection('E-Commerce');
       add('E-Commerce', 'EC', '/ecommerce-dashboard.html');
