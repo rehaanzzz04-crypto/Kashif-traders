@@ -21,9 +21,9 @@
     .mp-search input{width:100%;border:1px solid var(--mp-line);border-radius:10px;padding:11px 12px;font-size:15px}
     .mp-refresh{border:1px solid #cbd8d2;background:#eef4f0;color:var(--mp-green);border-radius:10px;padding:10px 13px;font-weight:800}
     .mp-add{border:0;border-radius:10px;background:var(--mp-green);color:#fff;padding:11px 15px;font-weight:800;white-space:nowrap}
-    .mp-list-head{display:grid;grid-template-columns:38px minmax(260px,1.4fr) minmax(120px,.7fr) 110px 132px;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--mp-line);color:var(--mp-muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em}
+    .mp-list-head{display:grid;grid-template-columns:38px minmax(260px,1.4fr) minmax(120px,.7fr) 110px 230px;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--mp-line);color:var(--mp-muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.04em}
     .mp-list{display:block}
-    .mp-row{display:grid;grid-template-columns:38px minmax(260px,1.4fr) minmax(120px,.7fr) 110px 132px;gap:10px;align-items:center;min-height:58px;padding:7px 10px;border-bottom:1px solid #ece6da;background:#fff}
+    .mp-row{display:grid;grid-template-columns:38px minmax(260px,1.4fr) minmax(120px,.7fr) 110px 230px;gap:10px;align-items:center;min-height:58px;padding:7px 10px;border-bottom:1px solid #ece6da;background:#fff}
     .mp-row:last-child{border-bottom:0}
     .mp-index{font-size:12px;color:#8b8f8b;text-align:center}
     .mp-product-cell{display:grid;grid-template-columns:40px minmax(0,1fr);gap:9px;align-items:center;min-width:0}
@@ -37,7 +37,35 @@
     .mp-actions{display:flex;gap:5px;justify-content:flex-end}
     .mp-actions button{border:0;border-radius:7px;padding:7px 9px;font-size:12px;font-weight:800;min-width:58px}
     .mp-edit{background:var(--mp-green);color:#fff}
+    .mp-barcode{background:#e8efe9;color:var(--mp-green);border:1px solid #c8d7ce!important}
     .mp-delete{background:#9f3e35;color:#fff}
+    .mp-barcode-field{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px;align-items:end}
+    .mp-scan-barcode{border:1px solid #c8d7ce;background:#eef4f0;color:var(--mp-green);border-radius:10px;padding:11px 12px;font-weight:800;white-space:nowrap}
+    .mp-scanner-box{width:min(520px,100%);border-radius:18px;background:var(--mp-paper);padding:16px;border-top:4px solid var(--mp-gold)}
+    .mp-scanner-view{height:220px;border-radius:13px;background:#071b15;overflow:hidden;margin:10px 0}
+    .mp-scanner-view video{width:100%;height:100%;object-fit:cover}
+    .mp-scanner-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+    .mp-scanner-actions button{border:0;border-radius:9px;padding:9px 12px;font-weight:800}
+    .mp-barcode-card{width:min(360px,100%);background:#fff;border:1px solid var(--mp-line);border-radius:18px;padding:18px;text-align:center;box-shadow:0 12px 30px rgba(0,0,0,.12)}
+    .mp-barcode-brand{font:700 20px Georgia,serif;color:var(--mp-green)}
+    .mp-barcode-product{font-weight:900;font-size:17px;margin:8px 0 4px}
+    .mp-barcode-svg{width:100%;max-width:310px;height:92px;margin:8px auto;display:block}
+    .mp-barcode-value{font:700 13px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;word-break:break-all}
+    .mp-barcode-price{font-weight:900;color:var(--mp-green);margin-top:5px}
+    .mp-barcode-buttons{display:flex;gap:8px;justify-content:center;margin-top:14px}
+    .mp-barcode-buttons button{border:0;border-radius:9px;padding:8px 12px;font-weight:800}
+    .mp-print{background:var(--mp-green);color:#fff}
+    @media print{
+      body *{visibility:hidden!important}
+      #mpBarcodeCard,#mpBarcodeCard *{visibility:visible!important}
+      #mpBarcodeCard{position:fixed;left:0;top:0;width:52mm!important;max-width:none!important;border:0!important;box-shadow:none!important;border-radius:0!important;padding:3mm!important}
+      #mpBarcodeCard .mp-barcode-buttons{display:none!important}
+      #mpBarcodeCard .mp-barcode-brand{font-size:13pt}
+      #mpBarcodeCard .mp-barcode-product{font-size:10pt;margin:2mm 0 1mm}
+      #mpBarcodeCard .mp-barcode-svg{height:22mm;max-width:46mm;margin:1mm auto}
+      #mpBarcodeCard .mp-barcode-value{font-size:8pt}
+      #mpBarcodeCard .mp-barcode-price{font-size:9pt}
+    }
     .mp-empty{text-align:center;padding:34px 12px;color:var(--mp-muted)}
     .mp-status{margin-top:12px;color:var(--mp-green);font-weight:700;min-height:22px}
     .mp-modal{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:14px;background:rgba(7,27,21,.78)}
@@ -77,11 +105,16 @@
       .mp-meta{display:none}
       .mp-price{font-size:12px;text-align:right}
       .mp-actions{grid-column:2/4;justify-content:flex-end;margin-top:-2px}
-      .mp-actions button{padding:5px 8px;font-size:11px;min-width:52px}
+      .mp-actions{flex-wrap:wrap}
+      .mp-actions button{padding:5px 7px;font-size:10.5px;min-width:50px}
+      .mp-barcode{min-width:86px!important}
+      .mp-barcode-field{grid-template-columns:minmax(0,1fr) auto}
+      .mp-scan-barcode{padding:10px 9px;font-size:12px}
       .mp-grid{grid-template-columns:1fr}
       .mp-wide{grid-column:auto}
     }
   </style>
+  <script defer src="/media-compress.js?v=20260929-productcompress1"></script>
   <script defer src="/offline-register.js?v=20260922-pages1"></script>
 </head>
 <body>
@@ -131,7 +164,7 @@
         <div class="mp-field"><label>Purchase Price</label><input name="purchase_price" type="number" min="0" step="0.01"></div>
         <div class="mp-field"><label>Sale Price</label><input name="sale_price" type="number" min="0" step="0.01" required></div>
         <div class="mp-field"><label>Reorder Level</label><input name="reorder_level" type="number" min="0" step="0.001"></div>
-        <div class="mp-field"><label>Barcode</label><input name="barcode"></div>
+        <div class="mp-field"><label>Barcode</label><div class="mp-barcode-field"><input id="mpBarcode" name="barcode" inputmode="text" autocomplete="off" placeholder="Scan ya enter barcode"><button class="mp-scan-barcode" id="mpScanBarcode" type="button">▣ Scan</button></div></div>
         <div class="mp-field"><label>Status</label><select name="status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
         <div class="mp-field mp-wide">
           <label>Product Image</label>
@@ -152,6 +185,27 @@
     </form>
   </div>
 
-  <script defer src="/cash-sale-products.js?v=20260929-compactlist2"></script>
+  <div class="mp-modal mp-hidden" id="mpBarcodeScanner">
+    <div class="mp-scanner-box">
+      <div class="mp-head"><div><h2>Scan Product Barcode</h2><p>Packet ka barcode camera ke samne rakhein.</p></div><button class="mp-close" id="mpScannerClose" type="button">×</button></div>
+      <div class="mp-scanner-view"><video id="mpScannerVideo" playsinline muted></video></div>
+      <div class="mp-field"><label>Barcode</label><input id="mpScannerValue" autocomplete="off" placeholder="Scan ya manually enter"></div>
+      <small class="mp-image-note" id="mpScannerStatus">Start Camera tap karein.</small>
+      <div class="mp-scanner-actions"><button class="mp-cancel" id="mpScannerCancel" type="button">Cancel</button><button class="mp-save" id="mpScannerStart" type="button">Start Camera</button><button class="mp-save" id="mpScannerUse" type="button">Use Barcode</button></div>
+    </div>
+  </div>
+
+  <div class="mp-modal mp-hidden" id="mpBarcodeModal">
+    <div class="mp-barcode-card" id="mpBarcodeCard">
+      <div class="mp-barcode-brand">KASHIF TRADERS</div>
+      <div class="mp-barcode-product" id="mpBarcodeProduct">Product</div>
+      <svg class="mp-barcode-svg" id="mpBarcodeSvg" xmlns="http://www.w3.org/2000/svg" aria-label="Product barcode"></svg>
+      <div class="mp-barcode-value" id="mpBarcodeValue"></div>
+      <div class="mp-barcode-price" id="mpBarcodePrice"></div>
+      <div class="mp-barcode-buttons"><button class="mp-cancel" id="mpBarcodeClose" type="button">Close</button><button class="mp-print" id="mpBarcodePrint" type="button">Print</button></div>
+    </div>
+  </div>
+
+  <script defer src="/cash-sale-products.js?v=20260929-barcode3"></script>
 </body>
 </html>
