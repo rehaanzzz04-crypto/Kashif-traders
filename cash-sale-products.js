@@ -50,6 +50,14 @@
     $("mpFormTitle").textContent = product ? "Edit Product" : "Add Product";
     $("mpSave").textContent = product ? "Update Product" : "Save Product";
     $("mpImageStatus").textContent = product?.product_image_url ? "Current image saved hai. Replace karne ke liye new image select karein." : "Image optional hai.";
+    if(product?.product_image_url){
+      $("mpImagePreview").src = product.product_image_url;
+      $("mpImagePreviewText").textContent = "Current saved product image";
+      $("mpImagePreviewWrap").classList.remove("mp-hidden");
+    } else {
+      $("mpImagePreview").removeAttribute("src");
+      $("mpImagePreviewWrap").classList.add("mp-hidden");
+    }
     $("mpStatus").textContent = "";
     $("mpModal").classList.remove("mp-hidden");
   }
@@ -57,6 +65,8 @@
     $("mpModal").classList.add("mp-hidden");
     editing = null;
     imageFile = null;
+    $("mpImagePreview").removeAttribute("src");
+    $("mpImagePreviewWrap").classList.add("mp-hidden");
   }
 
   function renderProducts(){
@@ -136,6 +146,11 @@
     try {
       imageFile = window.KT_MEDIA?.image ? await window.KT_MEDIA.image(file) : file;
       $("mpImageStatus").textContent = file.name + " · " + fileLabel(file.size) + " → " + fileLabel(imageFile.size);
+      const previewUrl = URL.createObjectURL(imageFile);
+      $("mpImagePreview").src = previewUrl;
+      $("mpImagePreviewText").textContent = "Preview after compression";
+      $("mpImagePreviewWrap").classList.remove("mp-hidden");
+      $("mpImagePreview").onload = () => setTimeout(()=>URL.revokeObjectURL(previewUrl), 1000);
     } catch (e) {
       imageFile = null;
       $("mpImageStatus").textContent = e.message || "Image compression failed";
