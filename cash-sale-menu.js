@@ -11,6 +11,14 @@
   style.textContent = '.cashSaleMenuLink{position:relative;width:100%;display:grid;grid-template-columns:34px 1fr 14px;align-items:center;gap:9px;padding:8px 9px;margin:2px 0;border:1px solid transparent;border-radius:12px;background:transparent;color:#dce9e2;text-align:left;font-weight:720;cursor:pointer}.cashSaleMenuLink:hover{background:#ffffff0d}';
   document.head.appendChild(style);
 
+  const addSection = label => {
+    const section = document.createElement('div');
+    section.className = 'section';
+    section.textContent = label;
+    nav.insertBefore(section, inventory);
+    return section;
+  };
+
   const add = (label, icon, url) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -26,27 +34,23 @@
     .then(j => {
       const role = String(j?.user?.designation || '').toLowerCase();
 
-      const section = document.createElement('div');
-      section.className = 'section';
-      section.textContent = 'Sales';
-      nav.insertBefore(section, inventory);
-
       if (role === 'salesman') {
+        addSection('Sales');
         add('Cash Sale', '$', '/cash-sale.html');
         return;
       }
 
-      if (role === 'cashier') {
-        add('E-Commerce', 'EC', '/ecommerce-dashboard.html');
-        add('Customer Accounts', 'CA', '/cash-sale-customers.html');
-        add('Cashier Billing', 'Rs', '/cashier-sales.html');
-        return;
+      addSection('Sales');
+
+      if (role !== 'cashier') {
+        add('Cash Sale', '$', '/cash-sale.html');
       }
 
-      add('Cash Sale', '$', '/cash-sale.html');
-      add('E-Commerce', 'EC', '/ecommerce-dashboard.html');
       add('Customer Accounts', 'CA', '/cash-sale-customers.html');
       add('Cashier Billing', 'Rs', '/cashier-sales.html');
+
+      addSection('E-Commerce');
+      add('E-Commerce', 'EC', '/ecommerce-dashboard.html');
     })
     .catch(err => console.error('Sales menu load failed', err));
 })();
