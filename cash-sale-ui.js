@@ -269,7 +269,7 @@
     productForm.classList.remove("cs-hidden");
     productModal.classList.remove("cs-hidden");
   }
-  $("csAddProduct").onclick = () => openSaleProductForm();
+  $("csAddProduct").onclick = () => { location.href = "/cash-sale-products.html"; };
   $("csProductCancel").onclick = () => productModal.classList.add("cs-hidden");
   $("csProductCameraBtn").onclick = () => productCamera.click();
   $("csProductGalleryBtn").onclick = () => productGallery.click();
