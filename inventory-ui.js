@@ -30,37 +30,47 @@ async function showGoodsReceiving(){const [statusResult,w]=await Promise.all([in
 async function showGrnStatus(){
   const result=await invApi('invoice_grn_status');
   const invoices=result.records||[];
-  const statusLabel=s=>s==='complete'?'GRN Complete':s==='partial'?'Partially Matched':'GRN Pending';
-  const statusStyle=s=>s==='complete'?'background:#e5f4ec;color:#17613f':s==='partial'?'background:#fff1c9;color:#805b00':'background:#fde9e5;color:#8d3d32';
+  const statusLabel=s=>s==='complete'?'Complete':s==='partial'?'Partial':'Pending';
+  const statusClass=s=>s==='complete'?'complete':s==='partial'?'partial':'pending';
   const count=s=>invoices.filter(x=>x.grn_status===s).length;
   invShow(
-    '<div class="modulehead"><div><h2>GRN Status</h2><p>Supplier invoice receiving progress, pending quantities aur completed matching aik jagah.</p></div></div>'+
-    '<div class="stats" style="margin-bottom:14px">'+
-      '<div class="stat"><small>Total Invoices</small><strong>'+iEsc(invoices.length)+'</strong><small>Tracked for GRN</small></div>'+
-      '<div class="stat"><small>Pending</small><strong>'+iEsc(count('pending'))+'</strong><small>Nothing received yet</small></div>'+
-      '<div class="stat"><small>Partial</small><strong>'+iEsc(count('partial'))+'</strong><small>Partially received</small></div>'+
-      '<div class="stat"><small>Complete</small><strong>'+iEsc(count('complete'))+'</strong><small>Fully matched</small></div>'+
-    '</div>'+
-    '<div class="panel"><div class="grid">'+
-      '<div class="field"><label>Search Invoice / Supplier</label><input id="grnStatusSearch" placeholder="Invoice number ya supplier name"></div>'+
-      '<div class="field"><label>Status</label><select id="grnStatusFilter"><option value="">All Status</option><option value="pending">Pending</option><option value="partial">Partial</option><option value="complete">Complete</option></select></div>'+
-    '</div></div>'+
-    '<div class="panel"><div id="grnStatusList"></div></div>'
+    '<section class="grn-status-page">'+
+      '<div class="grn-status-head"><div><span class="grn-kicker">INVENTORY CONTROL</span><h2>GRN Status</h2><p>Supplier invoice receiving progress aur remaining quantities ka clear overview.</p></div></div>'+
+      '<div class="grn-summary-grid">'+
+        '<article class="grn-summary total"><span>Total Invoices</span><strong>'+iEsc(invoices.length)+'</strong><small>Tracked invoices</small></article>'+
+        '<article class="grn-summary pending"><span>Pending</span><strong>'+iEsc(count('pending'))+'</strong><small>Not received</small></article>'+
+        '<article class="grn-summary partial"><span>Partial</span><strong>'+iEsc(count('partial'))+'</strong><small>Partially received</small></article>'+
+        '<article class="grn-summary complete"><span>Complete</span><strong>'+iEsc(count('complete'))+'</strong><small>Fully matched</small></article>'+
+      '</div>'+
+      '<div class="grn-filter-card">'+
+        '<div class="grn-filter-field grn-search-field"><label>Search</label><div class="grn-input-wrap"><span>⌕</span><input id="grnStatusSearch" placeholder="Invoice number or supplier"></div></div>'+
+        '<div class="grn-filter-field"><label>Status</label><select id="grnStatusFilter"><option value="">All Status</option><option value="pending">Pending</option><option value="partial">Partial</option><option value="complete">Complete</option></select></div>'+
+      '</div>'+
+      '<div class="grn-results-card"><div class="grn-results-head"><div><span>Invoice Matching</span><small id="grnResultCount"></small></div></div><div id="grnStatusList"></div></div>'+
+    '</section>'
   );
-  const search=document.getElementById('grnStatusSearch'),filter=document.getElementById('grnStatusFilter'),list=document.getElementById('grnStatusList');
+  const search=document.getElementById('grnStatusSearch'),filter=document.getElementById('grnStatusFilter'),list=document.getElementById('grnStatusList'),resultCount=document.getElementById('grnResultCount');
   const render=()=>{
     const q=String(search?.value||'').trim().toLowerCase(),s=String(filter?.value||'');
     const rows=invoices.filter(x=>(!s||x.grn_status===s)&&(!q||String(x.invoice_number||'').toLowerCase().includes(q)||String(x.business_name||'').toLowerCase().includes(q)));
-    list.innerHTML=invTable(
+    if(resultCount)resultCount.textContent=rows.length+' record'+(rows.length===1?'':'s');
+    const desktop=invTable(
       ['Invoice','Supplier','Status','Ordered','Received','Remaining','Last GRN'],
-      rows.length?rows.map(x=>'<tr><td><b>'+iEsc(x.invoice_number)+'</b></td><td>'+iEsc(x.business_name)+'</td><td><span class="badge" style="'+statusStyle(x.grn_status)+'">'+statusLabel(x.grn_status)+'</span></td><td>'+iEsc(x.ordered_qty)+'</td><td>'+iEsc(x.received_qty)+'</td><td><b>'+iEsc(x.remaining_qty)+'</b></td><td>'+iEsc(x.last_grn_at?new Date(x.last_grn_at).toLocaleString('en-PK'):'—')+'</td></tr>').join(''):'<tr><td colspan="7" class="empty">No matching GRN records</td></tr>'
+      rows.length?rows.map(x=>'<tr><td><b>'+iEsc(x.invoice_number||'—')+'</b></td><td>'+iEsc(x.business_name||'—')+'</td><td><span class="grn-pill '+statusClass(x.grn_status)+'">'+statusLabel(x.grn_status)+'</span></td><td>'+iEsc(x.ordered_qty)+'</td><td>'+iEsc(x.received_qty)+'</td><td><b>'+iEsc(x.remaining_qty)+'</b></td><td>'+iEsc(x.last_grn_at?new Date(x.last_grn_at).toLocaleDateString('en-GB'):'—')+'</td></tr>').join(''):'<tr><td colspan="7" class="empty">No matching GRN records</td></tr>'
     );
+    const mobile=rows.length?'<div class="grn-mobile-list">'+rows.map(x=>
+      '<article class="grn-mobile-card">'+
+        '<div class="grn-mobile-top"><div><strong>'+iEsc(x.invoice_number||'—')+'</strong><span>'+iEsc(x.business_name||'—')+'</span></div><span class="grn-pill '+statusClass(x.grn_status)+'">'+statusLabel(x.grn_status)+'</span></div>'+
+        '<div class="grn-qty-grid"><div><small>Ordered</small><b>'+iEsc(x.ordered_qty)+'</b></div><div><small>Received</small><b>'+iEsc(x.received_qty)+'</b></div><div><small>Remaining</small><b>'+iEsc(x.remaining_qty)+'</b></div></div>'+
+        '<div class="grn-mobile-foot"><span>Last GRN</span><b>'+iEsc(x.last_grn_at?new Date(x.last_grn_at).toLocaleDateString('en-GB'):'—')+'</b></div>'+
+      '</article>'
+    ).join('')+'</div>':'<div class="grn-mobile-list"><div class="grn-mobile-empty">No matching GRN records</div></div>';
+    list.innerHTML='<div class="grn-desktop-table">'+desktop+'</div>'+mobile;
   };
   search.oninput=render;
   filter.onchange=render;
   render();
 }
-
 
 function simpleForm(title,fields,onSave){return customSelectForm(title,fields,onSave)}
 function customSelectForm(title,fields,onSave){document.getElementById('invModal')?.remove();const m=document.createElement('div');m.id='invModal';m.className='modal';m.innerHTML='<div class="box"><h3>'+iEsc(title)+'</h3><form id="invForm"><div class="grid">'+fields.map(f=>{const [name,label,type,options]=f;let input='';if(type==='textarea')input='<textarea name="'+name+'"></textarea>';else if(type==='select')input='<select name="'+name+'"><option value="">Select</option>'+options.map(o=>'<option value="'+iEsc(o[0])+'">'+iEsc(o[1])+'</option>').join('')+'</select>';else if(type==='readonly')input='<input name="'+name+'" type="text" readonly value="'+iEsc(options||'Generated automatically after Save')+'" style="background:#f4f6f5;font-weight:700">';else input='<input name="'+name+'" type="'+type+'" '+(type==='number'?'step="0.01"':'')+'>';return '<div class="field '+(type==='textarea'?'full':'')+'"><label>'+iEsc(label)+'</label>'+input+'</div>';}).join('')+'</div><div class="actions"><button type="button" class="btn alt" id="invCancel">Cancel</button><button class="btn" type="submit">Save</button></div></form></div>';document.body.appendChild(m);document.getElementById('invCancel').onclick=()=>m.remove();document.getElementById('invForm').onsubmit=async e=>{e.preventDefault();try{const b=Object.fromEntries(new FormData(e.target).entries());await onSave(b);m.remove();}catch(err){invToast(err.message,true);}};}
