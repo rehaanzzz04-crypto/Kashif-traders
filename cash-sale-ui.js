@@ -289,7 +289,11 @@
   }
 
   function closeProductGallery() {
-    $("csGalleryModal").classList.add("cs-hidden");
+    const modal = $("csGalleryModal");
+    modal.classList.add("cs-hidden");
+    modal.classList.remove("cs-gallery-expanded");
+    $("csGalleryExpand").setAttribute("aria-pressed","false");
+    $("csGalleryExpand").textContent = "⛶ Full Screen";
     gallerySelected = new Set();
     updateGallerySelectionUi();
   }
@@ -297,8 +301,22 @@
   $("csOpenGallery").onclick = openProductGallery;
   $("csGalleryClose").onclick = closeProductGallery;
   $("csGalleryCancel").onclick = closeProductGallery;
+  $("csGalleryExpand").onclick = () => {
+    const modal = $("csGalleryModal");
+    const expanded = modal.classList.toggle("cs-gallery-expanded");
+    $("csGalleryExpand").setAttribute("aria-pressed", expanded ? "true" : "false");
+    $("csGalleryExpand").textContent = expanded ? "⤢ Exit Full Screen" : "⛶ Full Screen";
+  };
   $("csGallerySearch").oninput = renderProductGallery;
   $("csGalleryModal").onclick = e => { if (e.target === $("csGalleryModal")) closeProductGallery(); };
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape" || $("csGalleryModal").classList.contains("cs-hidden")) return;
+    if ($("csGalleryModal").classList.contains("cs-gallery-expanded")) {
+      $("csGalleryModal").classList.remove("cs-gallery-expanded");
+      $("csGalleryExpand").setAttribute("aria-pressed","false");
+      $("csGalleryExpand").textContent = "⛶ Full Screen";
+    } else closeProductGallery();
+  });
   $("csGalleryAdd").onclick = () => {
     const selected = galleryProducts.filter(p => gallerySelected.has(String(p.id)));
     selected.forEach(p => addProductToBill(p, true));
