@@ -67,3 +67,83 @@ body.kt-native-app #ktSyncMessage{
     margin-bottom:calc(28px + env(safe-area-inset-bottom))!important;
   }
 }
+
+/* Professional Settings / Audit Center */
+.settings-page{display:grid;gap:12px}
+.settings-head{margin-bottom:0!important}
+.settings-eyebrow{display:inline-block;margin-bottom:4px;color:#b58a2a;font-size:9px;font-weight:900;letter-spacing:1.3px}
+.settings-head h2,.settings-audit-head h2,.settings-report-head h2{color:var(--g)}
+.settings-info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.settings-info-card{display:flex;align-items:center;gap:12px;min-width:0;padding:14px;border:1px solid #e1d8c8;border-radius:16px;background:linear-gradient(145deg,#fffef9,#faf6ed);box-shadow:0 5px 14px rgba(23,63,53,.045)}
+.settings-card-icon{width:48px;height:48px;display:grid;place-items:center;flex:0 0 48px;border-radius:14px;background:#edf5f1;color:var(--g);font-weight:900}
+.settings-info-card>div:last-child{min-width:0}
+.settings-info-card span{display:block;color:#7b857f;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.55px}
+.settings-info-card strong{display:block;margin-top:4px;color:#173f35;font-size:17px}
+.settings-info-card small{display:block;margin-top:3px;color:#6d7872;font-size:10px;line-height:1.35}
+.settings-audit-card{border:1px solid #e1d8c8;border-radius:18px;background:linear-gradient(145deg,#fffef9,#faf6ed);padding:14px;box-shadow:0 6px 18px rgba(23,63,53,.05)}
+.settings-audit-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.settings-audit-head h2{margin:0;font:700 24px Georgia,serif}
+.settings-audit-head p{margin:5px 0 0;color:var(--muted);font-size:11px;line-height:1.45}
+.settings-readonly-badge{padding:6px 9px;border-radius:999px;background:#edf5f1;color:#1d5a47;font-size:8px;font-weight:900;letter-spacing:.6px;white-space:nowrap}
+.settings-audit-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.settings-audit-actions .btn{min-height:44px}
+.settings-audit-status{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.settings-status-card{border:1px solid #e5dece;border-radius:12px;background:#fff;padding:10px 11px}
+.settings-status-card span{display:block;color:#7c8781;font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.5px}
+.settings-status-card strong{display:block;margin-top:4px;color:#173f35;font-size:12px}
+.settings-history-head{display:flex;justify-content:space-between;align-items:end;margin:13px 0 8px}
+.settings-history-head h3{margin:0;color:#173f35;font:700 19px Georgia,serif}
+.settings-history-head p{margin:2px 0 0;color:#7b857f;font-size:9px}
+.settings-audit-history{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.settings-audit-item{border:1px solid #e4ddcf;border-radius:13px;background:#fff;padding:11px}
+.settings-audit-item-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.settings-audit-type{font-weight:900;color:#173f35;font-size:11px}
+.settings-audit-item-top .btn{padding:6px 8px!important;font-size:9px!important;min-height:30px!important}
+.settings-audit-period{margin-top:8px;color:#3c4c45;font-size:11px;line-height:1.35}
+.settings-audit-meta{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px}
+.settings-audit-meta span{padding:7px 8px;border-radius:9px;background:#faf7f0;color:#67736d;font-size:8px;line-height:1.3}
+.settings-audit-meta b{display:block;color:#173f35;margin-bottom:2px}
+.settings-empty{margin-top:10px;padding:18px;border:1px dashed #d8cfbf;border-radius:12px;text-align:center;color:#7b857f;font-size:10px}
+.settings-audit-report{margin-top:12px;border-top:1px solid #e8e0d3;padding-top:12px}
+.settings-report-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.settings-report-head h2{margin:0;font:700 21px Georgia,serif}
+.settings-report-head p{margin:4px 0 0;color:var(--muted);font-size:9px;line-height:1.4}
+.settings-report-summary{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:10px}
+.settings-report-summary span{padding:8px;border:1px solid #e5dece;border-radius:10px;background:#fff;color:#173f35;font-weight:900;font-size:12px}
+.settings-report-summary b{display:block;margin-bottom:3px;color:#7a857f;font-size:7px;text-transform:uppercase;letter-spacing:.35px}
+.settings-report-table{margin-top:10px}
+.kt-app-updates{border-radius:18px!important;border:1px solid #e1d8c8!important;background:linear-gradient(145deg,#fffef9,#faf6ed)!important;box-shadow:0 6px 18px rgba(23,63,53,.05)!important}
+.kt-app-updates h2{font-size:24px!important;color:var(--g)!important}
+.kt-app-list{grid-template-columns:1fr 1fr!important}
+.kt-app-option{border-radius:12px!important;background:#fff!important;min-height:78px!important;box-shadow:0 2px 7px rgba(23,63,53,.035)}
+.kt-app-option strong{font-size:13px}
+.kt-app-option small{font-size:9px;line-height:1.35}
+.kt-update-note{font-size:9px!important}
+@media(max-width:760px){
+ .settings-info-grid{grid-template-columns:1fr 1fr}
+ .settings-info-card{padding:11px;gap:9px}
+ .settings-card-icon{width:40px;height:40px;flex-basis:40px;border-radius:11px}
+ .settings-info-card strong{font-size:14px}
+ .settings-info-card small{font-size:8px}
+ .settings-audit-history{grid-template-columns:1fr}
+ .settings-report-summary{grid-template-columns:1fr 1fr}
+ .settings-report-head{flex-direction:column}
+ .settings-report-head .rowactions{width:100%;display:grid;grid-template-columns:1fr 1fr}
+ .settings-report-head .rowactions .btn:last-child{grid-column:1/-1}
+ .kt-app-list{grid-template-columns:1fr 1fr!important}
+}
+@media(max-width:520px){
+ .settings-page{gap:10px}
+ .settings-head h2{font-size:27px!important}
+ .settings-info-grid{grid-template-columns:1fr}
+ .settings-info-card{min-height:74px}
+ .settings-audit-card{padding:12px}
+ .settings-audit-head h2{font-size:21px}
+ .settings-audit-actions{grid-template-columns:1fr 1fr}
+ .settings-audit-status{grid-template-columns:1fr}
+ .settings-status-card strong{font-size:11px}
+ .kt-app-list{grid-template-columns:1fr!important}
+ .kt-app-option{min-height:68px!important}
+ .kt-app-updates{padding:12px!important}
+ .kt-app-updates h2{font-size:22px!important}
+}
