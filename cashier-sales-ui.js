@@ -15,7 +15,7 @@
   const balanceOf = x => Math.max(0, Number(x?.total || 0) - receivedOf(x));
   const hasCustomerAccount = x => Number(x?.customer_id || 0) > 0;
 
-  let bills = [], active = null, editing = false, status = "pending", busy = false, settlement = "full", isAdmin = false;
+  let bills = [], active = null, editing = false, status = "pending", busy = false, settlement = "full", isAdmin = false, inlinePaymentMethod = "Cash";
   $("cashierBack").onclick = () => location.href = "/";
 
   const head = document.querySelector(".cashier-head");
@@ -73,6 +73,7 @@
     $("cashierReceivedTotal").textContent = money(0);
     $("cashierBalance").textContent = money(0);
     $("cashierPaymentHistory").innerHTML = '<div class="cashier-history-empty">No payment history</div>';
+    chooseInlinePayment("Cash");
     setActions();
   }
 
@@ -106,6 +107,7 @@
     bindRates();
     renderFinancials();
     renderPaymentHistory();
+    chooseInlinePayment(x.payment_method && x.payment_method !== "Credit" ? x.payment_method : "Cash");
     setActions();
   }
 
@@ -212,6 +214,12 @@
     document.querySelectorAll("#cashierPaymentOptions [data-method]").forEach(button => button.classList.toggle("active", button.dataset.method === method));
   }
 
+  function chooseInlinePayment(method) {
+    inlinePaymentMethod = method;
+    document.querySelectorAll("#cashierInlinePaymentOptions [data-inline-method]").forEach(button => button.classList.toggle("active", button.dataset.inlineMethod === method));
+  }
+
+
   function chooseSettlement(mode) {
     settlement = mode;
     document.querySelectorAll("#cashierSettlementOptions [data-settlement]").forEach(button => button.classList.toggle("active", button.dataset.settlement === mode));
@@ -247,7 +255,7 @@
       $("cashierPaymentMethodsWrap").classList.remove("cs-hidden");
       $("cashierReceived").readOnly = false;
       $("cashierReceived").value = String(balanceOf(active));
-      choosePayment(active.payment_method && active.payment_method !== "Credit" ? active.payment_method : "Cash");
+      choosePayment(inlinePaymentMethod || (active.payment_method && active.payment_method !== "Credit" ? active.payment_method : "Cash"));
     } else {
       $("cashierPaymentTitle").textContent = "Receive Payment / Credit";
       $("cashierPaymentNote").textContent = "Full Paid, Partial Paid ya Credit select karein.";
@@ -286,6 +294,7 @@
     $("cashierChange").textContent = money(value);
   }
 
+  document.querySelectorAll("#cashierInlinePaymentOptions [data-inline-method]").forEach(button => button.onclick = () => chooseInlinePayment(button.dataset.inlineMethod));
   document.querySelectorAll("#cashierSettlementOptions [data-settlement]").forEach(button => button.onclick = () => chooseSettlement(button.dataset.settlement));
   document.querySelectorAll("#cashierPaymentOptions [data-method]").forEach(button => button.onclick = () => choosePayment(button.dataset.method));
   $("cashierReceived").oninput = paymentPreview;
@@ -320,7 +329,7 @@
   async function confirmPayment() {
     if (!active || busy) return;
     const raw = Math.max(0, Number($("cashierReceived").value) || 0);
-    const method = $("cashierPaymentMethod").value;
+    const method = ["credit","partial"].includes(active.status) ? (inlinePaymentMethod || $("cashierPaymentMethod").value) : $("cashierPaymentMethod").value;
     if (["credit","partial"].includes(active.status)) {
       const due = balanceOf(active);
       if (raw <= 0) {
