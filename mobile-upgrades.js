@@ -2,6 +2,15 @@
 (function(){
   const VERSION='1.0.5'; // Native in-app updater + Android PDF sharing
   const q=s=>document.querySelector(s);
+
+  function markNativeApp(){
+    const native=Boolean(window.KT_NATIVE_APP_VERSION)||/;\s*kt-native-app(?:=|;|$)/i.test(document.cookie||'');
+    if(!native)return;
+    document.documentElement.classList.add('kt-native-app');
+    document.body?.classList.add('kt-native-app');
+  }
+  markNativeApp();
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',markNativeApp,{once:true});
   const notify=(m,b=false)=>typeof window.toast==='function'?window.toast(m,b):console[b?'error':'log'](m);
 
   function download(url,name){
