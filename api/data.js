@@ -645,12 +645,33 @@ async function customerPortal(sql,req,res,staffUser=null){
     return res.status(200).json({record:rows[0]});
   }
   if(staffUser&&req.method==="POST"&&action==="approve_order"){
-    const orderId=asId(b.order_id),priced=Array.isArray(b.items)?b.items:[];if(!orderId)return res.status(400).json({error:"Valid order required"});
+    const orderId=asId(b.order_id),requested=Array.isArray(b.items)?b.items:[];if(!orderId)return res.status(400).json({error:"Valid order required"});
     const o=(await sql`SELECT o.*,c.name customer_name FROM cash_customer_orders o JOIN cash_sale_customers c ON c.id=o.customer_id WHERE o.id=${orderId}`)[0];
     if(!o)return res.status(404).json({error:"Order not found"});if(o.status!=="pending"||o.cash_sale_id)return res.status(409).json({error:"Order already converted"});
-    const base=Array.isArray(o.items)?o.items:[],pmap=new Map(priced.map(x=>[Number(x.product_id),Math.max(0,Number(x.price)||0)]));
-    const items=base.map(x=>({...x,rate:pmap.get(Number(x.product_id))||0,total:(Number(x.qty)||0)*(pmap.get(Number(x.product_id))||0)}));
-    if(items.some(x=>!(Number(x.rate)>0)))return res.status(400).json({error:"Har product ka rate enter karein"});
+    const base=Array.isArray(o.items)?o.items:[],baseMap=new Map(base.map(x=>[Number(x.product_id),x]));
+    const normalized=requested.map(x=>({product_id:asId(x.product_id),qty:Math.max(0,Number(x.qty)||0),price:Math.max(0,Number(x.price)||0)})).filter(x=>x.product_id&&x.qty>0);
+    if(!normalized.length)return res.status(400).json({error:"Invoice mein kam az kam aik product required hai"});
+    if(normalized.some(x=>!(x.price>0)))return res.status(400).json({error:"Har product ka rate enter karein"});
+    const addedIds=[...new Set(normalized.filter(x=>!baseMap.has(Number(x.product_id))).map(x=>Number(x.product_id)))];
+    const addedProducts=addedIds.length?await sql`SELECT id,name,unit FROM cash_sale_products WHERE id=ANY(${addedIds}) AND status='active'`:[];
+    const addedMap=new Map(addedProducts.map(x=>[Number(x.id),x]));
+    if(addedIds.some(id=>!addedMap.has(id)))return res.status(400).json({error:"Added product active Sale Products catalog mein nahi mila"});
+    const items=normalized.map(x=>{
+      const original=baseMap.get(Number(x.product_id)),product=original||addedMap.get(Number(x.product_id));
+      const originalQty=original?Math.max(0,Number(original.qty)||0):0;
+      return {
+        product_id:Number(x.product_id),
+        name:product?.name||"Product",
+        unit:product?.unit||"pcs",
+        qty:x.qty,
+        rate:x.price,
+        total:x.qty*x.price,
+        source:original?"customer_order":"cashier_added",
+        added_by_cashier:!original,
+        customer_requested_qty:originalQty,
+        quantity_changed_by_cashier:Boolean(original&&Math.abs(originalQty-x.qty)>0.000001)
+      };
+    });
     const subtotal=items.reduce((n,x)=>n+Number(x.total||0),0),discount=Math.min(subtotal,Math.max(0,Number(b.discount)||0)),total=subtotal-discount,inv="CS-"+Date.now();
     const q=await sql`INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_name,customer_id,items,subtotal,discount,total,status,amount_received,sale_date,created_at,updated_at) VALUES(${inv},${staffUser.id},${staffUser.full_name||staffUser.employee_code},${o.customer_name},${o.customer_id},${JSON.stringify(items)},${subtotal},${discount},${total},'pending',0,CURRENT_DATE,now(),now()) RETURNING *`;
     await sql`UPDATE cash_customer_orders SET status='converted',cash_sale_id=${q[0].id},updated_at=now() WHERE id=${orderId} AND status='pending'`;
