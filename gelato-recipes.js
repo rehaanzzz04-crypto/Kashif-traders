@@ -467,6 +467,55 @@ function costOptimizerHtml(master,total,base){
   const saving=best&&candidates.length?Math.max(0,candidates.filter(x=>x.q.pass)[0]?.cost.total-best.cost.total||0):0;
   return '<div class="subpanel"><h3>Quality Lock + Cost Optimizer</h3><div class="costSummary">'+(best?'<b>Best approved: '+esc(best.base.toUpperCase())+' • Variant '+best.variant+'</b><span>'+esc(best.cost.currency)+' '+best.cost.total.toFixed(2)+' total • '+best.cost.perKg.toFixed(2)+'/kg</span>':'<b>No cost option approved yet</b><span>COA/rates/quality lock complete karein.</span>')+'</div>'+rows+'<div class="source">Cost optimization quality ke baad hoti hai. Research composition ya COA coverage fail ho to cheapest option automatically reject hota hai.</div></div>';
 }
+
+function stabilizerCompatibility(master,items){
+  const p=activeCremodanProfile();
+  if(!p)return {status:'generic',pass:true,comments:['No verified stabilizer profile selected; generic research stabilizer assumption active.']};
+  const a=compositionAnalysis(items,items.reduce((s,x)=>s+Number(x.g||0),0));
+  const dose=Number(p.dosage_g_per_kg||0),min=p.dosage_min_g_per_kg==null?null:Number(p.dosage_min_g_per_kg),max=p.dosage_max_g_per_kg==null?null:Number(p.dosage_max_g_per_kg);
+  const comments=[]; let pass=true;
+  if(p.verified!==true){pass=false;comments.push('Stabilizer profile verified nahi hai; manufacturer TDS/source required.');}
+  if(min!==null&&dose<min){pass=false;comments.push('Dosage manufacturer minimum '+min+' g/kg se kam hai.');}
+  if(max!==null&&dose>max){pass=false;comments.push('Dosage manufacturer maximum '+max+' g/kg se zyada hai.');}
+  if(p.fat_min_pct!=null&&a.fat<Number(p.fat_min_pct)){pass=false;comments.push('Formula fat stabilizer application range se low hai.');}
+  if(p.fat_max_pct!=null&&a.fat>Number(p.fat_max_pct)){pass=false;comments.push('Formula fat stabilizer application range se high hai.');}
+  if(p.solids_min_pct!=null&&a.totalSolids<Number(p.solids_min_pct)){pass=false;comments.push('Formula solids stabilizer application range se low hain.');}
+  if(p.solids_max_pct!=null&&a.totalSolids>Number(p.solids_max_pct)){pass=false;comments.push('Formula solids stabilizer application range se high hain.');}
+  if(!comments.length)comments.push('Selected stabilizer profile dosage/application range ke andar hai.');
+  return {status:pass?'pass':'review',pass,profile:p,comments};
+}
+function autoBalanceCandidates(master,base,total,flavor,dose,machine){
+  const sugarProfiles=(ingredientSettings.sugar_profiles||[]).filter(x=>x.verified===true);
+  const originalDefault=ingredientSettings.default_sugar_id;
+  const out=[];
+  for(const sp of sugarProfiles){
+    try{
+      ingredientSettings.default_sugar_id=sp.id;
+      const items=flavor&&dose>0?buildFlavoredFormula(master,base,total,flavor,dose):scale(componentRecipe(master,base),total);
+      const reference=scale(componentRecipe(master,base),total);
+      const q=qualityLockCheck(items,total,master,reference);
+      const st=stabilizerCompatibility(master,items);
+      const mc=machineCheck(machine,total/1000,Number($('wizardOverrun').value||0));
+      const cost=recipeCost(items);
+      const analysis=premiumWizardAnalysis(items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,'balanced','balanced',machine);
+      const approved=q.pass&&st.pass&&mc.ok&&analysis.researchPass;
+      const penalty=(q.pass?0:1000)+(st.pass?0:700)+(mc.ok?0:500)+(analysis.researchPass?0:700)+(100-q.coverage)*5+cost.total/10000;
+      out.push({sp,items,q,st,mc,cost,analysis,approved,penalty});
+    }catch(e){out.push({sp,error:e.message,approved:false,penalty:9999});}
+  }
+  ingredientSettings.default_sugar_id=originalDefault;
+  return out.sort((a,b)=>(a.approved===b.approved?0:(a.approved?-1:1))||a.penalty-b.penalty);
+}
+function autoBalancerHtml(master,base,total,flavor,dose,machine){
+  const rows=autoBalanceCandidates(master,base,total,flavor,dose,machine);
+  if(!rows.length)return '<div class="warning">Verified sugar profiles available nahi hain; Auto-Balancer run nahi ho sakta.</div>';
+  const best=rows.find(x=>x.approved)||rows[0];
+  const cards=rows.slice(0,6).map((x,i)=>{
+    if(x.error)return '<div class="costCandidate"><div><b>'+esc(x.sp.name)+'</b><small>'+esc(x.error)+'</small></div><em>REJECTED</em></div>';
+    return '<div class="costCandidate '+(x===best?'bestCost':'')+'"><div><b>'+esc(x.sp.name)+(x===best?' • BEST':'')+'</b><small>Sweet '+x.analysis.a.pod.toFixed(1)+' • Freeze '+x.analysis.a.pac.toFixed(1)+' • Solids '+x.analysis.a.totalSolids.toFixed(1)+'%</small></div><span>'+esc(x.cost.currency)+' '+x.cost.total.toFixed(2)+'<small>'+x.cost.perKg.toFixed(2)+'/kg</small></span><em class="'+(x.approved?'ok':'')+'">'+(x.approved?'APPROVED R&D CANDIDATE':'REVIEW')+'</em></div>';
+  }).join('');
+  return '<div class="subpanel"><h3>Multi-Constraint Auto-Balancer</h3><div class="costSummary"><b>Priority: Quality → Research → Machine → Stabilizer → Cost</b><span>'+esc(best.sp?.name||'No candidate')+'</span></div>'+cards+'<div class="source">Auto-Balancer verified sugar profiles aur current ingredient/stabilizer/machine data use karta hai. Approved candidate bhi production QC aur sensory validation ke baghair Golden Recipe nahi banti.</div></div>';
+}
 function machineCheck(machine,batchKg,overrun){
   if(!machine)return {ok:true,warnings:['No machine profile selected; process compatibility not checked.'],notes:[]};
   const warnings=[],notes=[];
@@ -564,7 +613,7 @@ function previewPremiumWizard(){
     const machine=activeMachineProfile($('wizardMachine').value);
     const a=premiumWizardAnalysis(items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value,machine);
     const variants=controlledTrialVariants(master,base,total);
-    $('wizardPreview').innerHTML=premiumWizardHtml(a)+flavorBalanceHtml(items,total,master,reference,flavor,dose)+processProfileHtml(wizardProcessProfile())+'<div class="subpanel"><h3>A/B/C Controlled R&D Trials</h3><div class="trialGrid">'+variants.map(v=>trialVariantHtml(v,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,machine)).join('')+'</div></div>'+costOptimizerHtml(master,total,base);
+    $('wizardPreview').innerHTML=premiumWizardHtml(a)+flavorBalanceHtml(items,total,master,reference,flavor,dose)+processProfileHtml(wizardProcessProfile())+'<div class="subpanel"><h3>A/B/C Controlled R&D Trials</h3><div class="trialGrid">'+variants.map(v=>trialVariantHtml(v,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,machine)).join('')+'</div></div>'+costOptimizerHtml(master,total,base)+autoBalancerHtml(master,base,total,flavor,dose,machine);
     $('wizardStatus').textContent=a.researchPass&&a.machineResult.ok?'Research + machine range matched':'Review warnings before production';
     $('wizardPreview').querySelectorAll('[data-variant]').forEach(b=>b.onclick=()=>{window.__premiumVariant=b.dataset.variant;$('wizardStatus').textContent='Variant '+b.dataset.variant+' selected for production trial';});
   }catch(e){
@@ -768,7 +817,7 @@ function renderIngredientProfiles(){
   $('defaultDryMilk').value=ingredientSettings.default_dry_milk_id||powders[0]?.id||'';
 
   const creams=ingredientSettings.cremodan_profiles||[];
-  $('cremodanProfiles').innerHTML=creams.map((p,i)=>'<div class="profileCard" data-cremodan="'+i+'"><div class="profileCardHead"><b>'+esc(p.grade||('CREMODAN '+(i+1)))+'</b><button type="button" class="danger miniDelete" data-del-cremodan="'+i+'">Delete</button></div><div class="profileGrid"><label>Grade / Number<input data-k="grade" value="'+esc(p.grade||'')+'" placeholder="e.g. SE 46"></label><label>Dosage g/kg<input data-k="dosage_g_per_kg" type="number" step="0.1" value="'+Number(p.dosage_g_per_kg||0)+'"></label><label>Product Type<input data-k="product_type" value="'+esc(p.product_type||'General')+'"></label><label>Includes Emulsifier<select data-k="includes_emulsifier"><option value="true" '+(p.includes_emulsifier!==false?'selected':'')+'>Yes</option><option value="false" '+(p.includes_emulsifier===false?'selected':'')+'>No</option></select></label><label>Price / kg<input data-k="price_per_kg" type="number" step="0.01" value="'+Number(p.price_per_kg||0)+'"></label><label class="wide">Notes<input data-k="note" value="'+esc(p.note||'')+'"></label></div></div>').join('');
+  $('cremodanProfiles').innerHTML=creams.map((p,i)=>'<div class="profileCard" data-cremodan="'+i+'"><div class="profileCardHead"><b>'+esc(p.grade||('CREMODAN '+(i+1)))+'</b><button type="button" class="danger miniDelete" data-del-cremodan="'+i+'">Delete</button></div><div class="profileGrid"><label>Grade / Number<input data-k="grade" value="'+esc(p.grade||'')+'" placeholder="e.g. SE 46"></label><label>Dosage g/kg<input data-k="dosage_g_per_kg" type="number" step="0.1" value="'+Number(p.dosage_g_per_kg||0)+'"></label><label>Dosage Min g/kg<input data-k="dosage_min_g_per_kg" type="number" step="0.1" value="'+(p.dosage_min_g_per_kg??'')+'"></label><label>Dosage Max g/kg<input data-k="dosage_max_g_per_kg" type="number" step="0.1" value="'+(p.dosage_max_g_per_kg??'')+'"></label><label>Product Type<input data-k="product_type" value="'+esc(p.product_type||'General')+'"></label><label>Fat Min %<input data-k="fat_min_pct" type="number" step="0.1" value="'+(p.fat_min_pct??'')+'"></label><label>Fat Max %<input data-k="fat_max_pct" type="number" step="0.1" value="'+(p.fat_max_pct??'')+'"></label><label>Solids Min %<input data-k="solids_min_pct" type="number" step="0.1" value="'+(p.solids_min_pct??'')+'"></label><label>Solids Max %<input data-k="solids_max_pct" type="number" step="0.1" value="'+(p.solids_max_pct??'')+'"></label><label>Includes Emulsifier<select data-k="includes_emulsifier"><option value="true" '+(p.includes_emulsifier!==false?'selected':'')+'>Yes</option><option value="false" '+(p.includes_emulsifier===false?'selected':'')+'>No</option></select></label><label>Cold Process Compatible<select data-k="cold_process_compatible"><option value="true" '+(p.cold_process_compatible===true?'selected':'')+'>Yes</option><option value="false" '+(p.cold_process_compatible!==true?'selected':'')+'>No</option></select></label><label>Verified<select data-k="verified"><option value="true" '+(p.verified===true?'selected':'')+'>Yes</option><option value="false" '+(p.verified!==true?'selected':'')+'>No</option></select></label><label>Price / kg<input data-k="price_per_kg" type="number" step="0.01" value="'+Number(p.price_per_kg||0)+'"></label><label class="wide">Source Name<input data-k="source_name" value="'+esc(p.source_name||'')+'"></label><label class="wide">Source URL<input data-k="source_url" value="'+esc(p.source_url||'')+'"></label><label class="wide">Notes<input data-k="note" value="'+esc(p.note||'')+'"></label></div></div>').join('');
   $('defaultCremodan').innerHTML='<option value="">None</option>'+creams.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.grade)+'</option>').join('');
   $('defaultCremodan').value=ingredientSettings.default_cremodan_id||'';
 
@@ -812,7 +861,7 @@ function collectProfiles(){
   });
   document.querySelectorAll('#cremodanProfiles [data-cremodan]').forEach(card=>{
     const p=ingredientSettings.cremodan_profiles[Number(card.dataset.cremodan)];
-    card.querySelectorAll('[data-k]').forEach(x=>{const k=x.dataset.k;p[k]=k==='includes_emulsifier'?x.value==='true':x.type==='number'?Number(x.value||0):x.value});
+    card.querySelectorAll('[data-k]').forEach(x=>{const k=x.dataset.k;p[k]=['includes_emulsifier','cold_process_compatible','verified'].includes(k)?x.value==='true':x.type==='number'?(x.value===''?null:Number(x.value)):x.value});
   });
   ingredientSettings.default_dry_milk_id=$('defaultDryMilk').value||ingredientSettings.dry_milk_profiles[0]?.id||null;
   document.querySelectorAll('#machineProfiles [data-machine]').forEach(card=>{
@@ -1229,7 +1278,7 @@ $('ingredientSettingsBtn').onclick=()=>{renderIngredientProfiles();$('profileMod
 $('profileClose').onclick=()=>$('profileModal').classList.add('hidden');
 $('profileModal').onclick=e=>{if(e.target===$('profileModal'))$('profileModal').classList.add('hidden')};
 $('addDryMilkProfile').onclick=()=>{ingredientSettings.dry_milk_profiles=ingredientSettings.dry_milk_profiles||[];ingredientSettings.dry_milk_profiles.push({id:profileId('powder'),name:'New Dry Milk',fat_pct:0,protein_pct:0,carbs_pct:0,lactose_pct:null,true_msnf_pct:null,moisture_pct:0,ash_pct:null,total_solids_pct:null,other_pct:0,added_sugar_pct:null,price_per_kg:0,note:''});renderIngredientProfiles()};
-$('addCremodanProfile').onclick=()=>{ingredientSettings.cremodan_profiles=ingredientSettings.cremodan_profiles||[];ingredientSettings.cremodan_profiles.push({id:profileId('cremodan'),grade:'CREMODAN',dosage_g_per_kg:0,includes_emulsifier:true,product_type:'General',price_per_kg:0,note:''});renderIngredientProfiles()};
+$('addCremodanProfile').onclick=()=>{ingredientSettings.cremodan_profiles=ingredientSettings.cremodan_profiles||[];ingredientSettings.cremodan_profiles.push({id:profileId('cremodan'),grade:'CREMODAN',dosage_g_per_kg:0,dosage_min_g_per_kg:null,dosage_max_g_per_kg:null,includes_emulsifier:true,product_type:'General',fat_min_pct:null,fat_max_pct:null,solids_min_pct:null,solids_max_pct:null,cold_process_compatible:false,verified:false,source_name:'',source_url:'',price_per_kg:0,note:''});renderIngredientProfiles()};
 $('addMachineProfile').onclick=()=>{ingredientSettings.machine_profiles=ingredientSettings.machine_profiles||[];ingredientSettings.machine_profiles.push({id:profileId('machine'),name:'New Batch Freezer',type:'Batch Freezer',min_batch_kg:0,max_batch_kg:0,overrun_min_pct:0,overrun_max_pct:0,draw_temp_c:null,ageing_min_hours:4,hardening_temp_c:-30,notes:''});renderIngredientProfiles()};
 $('addFlavorProfile').onclick=()=>{ingredientSettings.flavor_profiles=ingredientSettings.flavor_profiles||[];ingredientSettings.flavor_profiles.push({id:profileId('flavor'),name:'New Flavor',category:'Flavor / Inclusion',recommended_min_pct:0,recommended_max_pct:0,fat_pct:0,protein_pct:0,dairy_msnf_pct:null,sucrose_pct:0,dextrose_pct:0,glucose_pct:0,fructose_pct:0,moisture_pct:0,ash_pct:0,brix_pct:null,acidity_pct:null,composition_verified:false,price_per_kg:0,source_note:'',note:''});renderIngredientProfiles()};
 $('addSugarProfile').onclick=()=>{ingredientSettings.sugar_profiles=ingredientSettings.sugar_profiles||[];ingredientSettings.sugar_profiles.push({id:profileId('sugar'),name:'New Glucose Syrup',type:'glucose_syrup',de:null,dry_solids_pct:100,relative_sweetness:0,fpdf:0,verified:false,price_per_kg:0,source_name:'',source_url:'',note:''});renderIngredientProfiles()};
