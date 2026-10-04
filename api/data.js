@@ -2067,9 +2067,14 @@ async function gelatoRelease(sql,req,user){
   const qc=await sql`SELECT * FROM gelato_recipe_qc WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
   const sensory=await sql`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=${recipeId} ORDER BY panel_date DESC,id DESC`;
   const bio=await sql`SELECT * FROM gelato_recipe_bio WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
+  await ensureGelatoSettings(sql);
+  const bioSettingsRow=(await sql`SELECT settings FROM gelato_ingredient_settings WHERE id=1`)[0];
+  const bioSettings=normalizeGelatoSettings(bioSettingsRow?.settings||{});
+  const bioProfileId=bio[0]?.standard_profile_id||bioSettings.default_bio_standard_id;
+  const bioProfile=(bioSettings.bio_standard_profiles||[]).find(x=>x.id===bioProfileId)||null;
   const stability=await sql`SELECT * FROM gelato_recipe_stability WHERE recipe_id=${recipeId} ORDER BY checkpoint_day DESC,test_date DESC,id DESC`;
   const lotUsage=await sql`SELECT q.id qc_id,q.test_date,l.id lot_id,l.ingredient_name,l.material_number,l.lot_number,l.best_before,l.verification_status,l.coa_reference,l.tds_reference FROM gelato_recipe_qc q JOIN gelato_qc_material_lots u ON u.qc_id=q.id JOIN gelato_material_lots l ON l.id=u.lot_id WHERE q.recipe_id=${recipeId} AND q.result='pass' ORDER BY q.test_date DESC,q.id DESC,l.ingredient_name`;
-  const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio),stabilitySum=stabilitySummary(stability,recipe),textureSum=textureCalibrationSummary(qc,recipe),machine=machineCalibrationSummary(qc,recipe),lotTrace=lotTraceabilitySummary(qc,lotUsage);
+  const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio,bioProfile),stabilitySum=stabilitySummary(stability,recipe),textureSum=textureCalibrationSummary(qc,recipe),machine=machineCalibrationSummary(qc,recipe),lotTrace=lotTraceabilitySummary(qc,lotUsage);
   const passed=qc.filter(x=>x.result==="pass").length;
   const processRows=qc.filter(x=>x.result==="pass"&&x.process_compliance_pct!==null&&x.process_compliance_pct!==undefined).slice(0,3);
   const processAvg=processRows.length?processRows.reduce((s,x)=>s+Number(x.process_compliance_pct||0),0)/processRows.length:null;
