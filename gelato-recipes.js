@@ -533,13 +533,50 @@ function previewPremiumWizard(){
     const machine=activeMachineProfile($('wizardMachine').value);
     const a=premiumWizardAnalysis(items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value,machine);
     const variants=controlledTrialVariants(master,base,total);
-    $('wizardPreview').innerHTML=premiumWizardHtml(a)+flavorBalanceHtml(items,total,master,reference,flavor,dose)+'<div class="subpanel"><h3>A/B/C Controlled R&D Trials</h3><div class="trialGrid">'+variants.map(v=>trialVariantHtml(v,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,machine)).join('')+'</div></div>'+costOptimizerHtml(master,total,base);
+    $('wizardPreview').innerHTML=premiumWizardHtml(a)+flavorBalanceHtml(items,total,master,reference,flavor,dose)+processProfileHtml(wizardProcessProfile())+'<div class="subpanel"><h3>A/B/C Controlled R&D Trials</h3><div class="trialGrid">'+variants.map(v=>trialVariantHtml(v,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,machine)).join('')+'</div></div>'+costOptimizerHtml(master,total,base);
     $('wizardStatus').textContent=a.researchPass&&a.machineResult.ok?'Research + machine range matched':'Review warnings before production';
     $('wizardPreview').querySelectorAll('[data-variant]').forEach(b=>b.onclick=()=>{window.__premiumVariant=b.dataset.variant;$('wizardStatus').textContent='Variant '+b.dataset.variant+' selected for production trial';});
   }catch(e){
     $('wizardPreview').innerHTML='<div class="warning"><b>Cannot build research-grade recipe:</b> '+esc(e.message||'Ingredient profile incomplete')+'</div>';
     $('wizardStatus').textContent='Ingredient profile / COA check required';
   }
+}
+
+function wizardProcessProfile(){
+  const machine=activeMachineProfile($('wizardMachine').value);
+  const n=id=>{const v=$(id)?.value;return v===''||v==null?null:Number(v)};
+  return {
+    pasteurization_min_c:n('wizardPasteurMin'),
+    pasteurization_max_c:n('wizardPasteurMax'),
+    pasteurization_hold_min_sec:n('wizardPasteurHold'),
+    cooling_target_max_c:n('wizardCoolMax'),
+    cooling_max_minutes:n('wizardCoolTime'),
+    homogenization_min_bar:null,
+    homogenization_max_bar:null,
+    ageing_temp_max_c:n('wizardAgeTemp'),
+    ageing_min_hours:n('wizardAgeMin'),
+    ageing_max_hours:n('wizardAgeMax'),
+    draw_temp_target_c:machine?.draw_temp_c!=null?Number(machine.draw_temp_c):n('wizardDrawTarget'),
+    draw_temp_tolerance_c:n('wizardDrawTol'),
+    hardening_target_max_c:machine?.hardening_temp_c!=null?Number(machine.hardening_temp_c):n('wizardHardeningTemp'),
+    hardening_max_minutes:n('wizardHardeningTime'),
+    storage_target_max_c:n('wizardStorageTemp'),
+    source_note:'Professional R&D SOP target; local regulatory/equipment validation still required.',
+    notes:machine?'Machine targets inherit: '+machine.name:''
+  };
+}
+function processProfileHtml(p){
+  if(!p)return '';
+  const rows=[
+    ['Pasteurization',(p.pasteurization_min_c??'—')+'–'+(p.pasteurization_max_c??'—')+'°C'],
+    ['Hold','≥ '+(p.pasteurization_hold_min_sec??'—')+' sec'],
+    ['Cooling','≤ '+(p.cooling_target_max_c??'—')+'°C / '+(p.cooling_max_minutes??'—')+' min'],
+    ['Ageing','≤ '+(p.ageing_temp_max_c??'—')+'°C • '+(p.ageing_min_hours??'—')+'–'+(p.ageing_max_hours??'—')+' h'],
+    ['Draw',(p.draw_temp_target_c??'—')+'°C ± '+(p.draw_temp_tolerance_c??'—')],
+    ['Hardening','≤ '+(p.hardening_target_max_c??'—')+'°C / '+(p.hardening_max_minutes??'—')+' min'],
+    ['Storage','≤ '+(p.storage_target_max_c??'—')+'°C']
+  ];
+  return '<div class="subpanel"><h3>Production SOP Targets</h3><div class="businessMetrics">'+rows.map(x=>'<span>'+esc(x[0])+' <b>'+esc(String(x[1]))+'</b></span>').join('')+'</div><div class="source">Targets production SOP ke liye hain; applicable local regulation aur equipment validation separately verify karein.</div></div>';
 }
 function buildPremiumRecipe(){
   const master=premiumWizardMaster();
@@ -562,7 +599,7 @@ function buildPremiumRecipe(){
     if(flavor&&dose>0)selected={code:'F',name:'Flavor Balanced '+flavor.name,items:buildFlavoredFormula(master,$('wizardBase').value,total,flavor,dose)};
     current.items=selected.items;
     const analysis=premiumWizardAnalysis(selected.items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value,machine);
-    current.premiumRAndD={variant:selected.code,variant_name:selected.name,flavor_id:flavor?.id||null,flavor_name:flavor?.name||null,flavor_dose_pct:dose||0,machine_id:machine?.id||null,machine_name:machine?.name||null,serving_temp_c:Number($('wizardServingTemp').value),target_overrun_pct:Number($('wizardOverrun').value),sweetness_target:$('wizardSweetness').value,texture_target:$('wizardTexture').value,analysis};
+    current.premiumRAndD={variant:selected.code,variant_name:selected.name,flavor_id:flavor?.id||null,flavor_name:flavor?.name||null,flavor_dose_pct:dose||0,machine_id:machine?.id||null,machine_name:machine?.name||null,serving_temp_c:Number($('wizardServingTemp').value),target_overrun_pct:Number($('wizardOverrun').value),sweetness_target:$('wizardSweetness').value,texture_target:$('wizardTexture').value,process_profile:wizardProcessProfile(),analysis};
     $('formulaTable').innerHTML=ingredientTable(selected.items,total);
     $('result').insertAdjacentHTML('afterbegin',premiumWizardHtml(analysis));
     $('trialNotes').value='Premium R&D Wizard • Variant '+current.premiumRAndD.variant+' '+current.premiumRAndD.variant_name+' • '+analysis.tier+' • serving '+analysis.servingTemp+'°C • target overrun '+Number($('wizardOverrun').value)+'% • '+analysis.zone+(machine?' • machine '+machine.name:'');
@@ -837,6 +874,7 @@ function currentBusinessPayload(){
     formula:current.items.map(x=>({name:x.name,g:Number(x.g)})),
     source_formula:current.items.map(x=>({name:x.name,g:Number(x.g)})),
     ingredient_settings:ingredientSettings,
+    process_profile:current?.premiumRAndD?.process_profile||{},
     research_target:target,
     trial_notes:$('trialNotes').value.trim()||null,
     production_tested_at:$('productionTestDate').value||null
@@ -992,7 +1030,7 @@ async function loadQcForRecipe(recipeId){
 }
 function renderQcPanel(recipeId,rows,recipe){
   const feedback=rdFeedbackAdvice(rows);
-  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.batch_code||('QC #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • '+esc(x.machine||'No machine')+'</small></div><span class="badge '+(x.result==='pass'?'finalBadge':'')+'">'+esc(x.result)+'</span></div><div class="businessMetrics"><span>Overrun <b>'+esc(x.calculated_overrun_pct??x.overrun_pct??'—')+'%</b></span><span>Draw Temp <b>'+esc(x.draw_temp_c??'—')+'°C</b></span><span>Yield <b>'+esc(x.finished_yield_l??'—')+' L</b></span><span>Output <b>'+esc(x.batch_output_kg??'—')+' kg</b></span></div></div>').join('');
+  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.batch_code||('QC #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • '+esc(x.machine||'No machine')+'</small></div><span class="badge '+(x.result==='pass'?'finalBadge':'')+'">'+esc(x.result)+'</span></div><div class="businessMetrics"><span>Overrun <b>'+esc(x.calculated_overrun_pct??x.overrun_pct??'—')+'%</b></span><span>Draw Temp <b>'+esc(x.draw_temp_c??'—')+'°C</b></span><span>Yield <b>'+esc(x.finished_yield_l??'—')+' L</b></span><span>Process <b>'+esc(x.process_compliance_pct??'—')+'%</b></span></div></div>').join('');
   $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><h3>Production QC</h3><div class="stats"><div class="stat"><small>Production Confidence</small><strong>'+Number(recipe.production_confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>QC Batches</small><strong>'+rows.length+'</strong></div></div><div id="qcList">'+(cards||'<div class="note">No QC tests yet.</div>')+'</div><div class="subpanel"><h3>R&D Feedback Rebalancing</h3><div class="steps">'+feedback.map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div><div class="source">Suggestions cause-oriented hain; formula automatically change nahi hoti. Next controlled trial ke baad Research Fit aur Production Confidence dobara compare karein.</div></div><button class="primary" id="addQcBtn" type="button">+ Add QC Test</button><button class="secondary profileBtn" id="goldenBtn" type="button">Mark Golden Production Recipe</button></div>');
   $('addQcBtn').onclick=()=>showQcForm(recipeId);
   $('goldenBtn').onclick=()=>markGolden(recipeId);
@@ -1000,7 +1038,7 @@ function renderQcPanel(recipeId,rows,recipe){
 function showQcForm(recipeId){
   $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="profileModal" id="qcModal"><div class="profileBox"><div class="profileHead"><div><h2>Production QC Test</h2><p>Actual production measurements enter karein.</p></div><button id="qcClose" class="ghost">Close</button></div><div class="profileGrid">'+
     '<label>Batch Code<input id="qcBatch"></label><label>Test Date<input id="qcDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label>Machine<input id="qcMachine"></label><label>Operator<input id="qcOperator"></label>'+
-    '<label>Mix Temp °C<input id="qcMixTemp" type="number" step="0.1"></label><label>Pasteurization Peak °C<input id="qcPasteur" type="number" step="0.1"></label><label>Ageing Hours<input id="qcAge" type="number" step="0.1"></label><label>pH<input id="qcPh" type="number" step="0.01"></label>'+
+    '<label>Mix Temp °C<input id="qcMixTemp" type="number" step="0.1"></label><label>Pasteurization Peak °C<input id="qcPasteur" type="number" step="0.1"></label><label>Pasteurization Hold sec<input id="qcPasteurHold" type="number" step="1"></label><label>Cooling End °C<input id="qcCoolingEnd" type="number" step="0.1"></label><label>Cooling Time min<input id="qcCoolingTime" type="number" step="0.1"></label><label>Homogenization bar<input id="qcHomoBar" type="number" step="1"></label><label>Ageing Temp °C<input id="qcAgeTemp" type="number" step="0.1"></label><label>Ageing Hours<input id="qcAge" type="number" step="0.1"></label><label>Hardening Temp °C<input id="qcHardTemp" type="number" step="0.1"></label><label>Hardening Time min<input id="qcHardTime" type="number" step="1"></label><label>Storage Temp °C<input id="qcStorageTemp" type="number" step="0.1"></label><label>pH<input id="qcPh" type="number" step="0.01"></label>'+
     '<label>Brix<input id="qcBrix" type="number" step="0.1"></label><label>Manual Overrun %<input id="qcOverrun" type="number" step="0.1"></label><label>Draw Temp °C<input id="qcDraw" type="number" step="0.1"></label><label>Melt 30min %<input id="qcMelt" type="number" step="0.1"></label>'+
     '<label>Same-volume Mix Weight g<input id="qcMixSample" type="number" step="0.1"></label><label>Same-volume Frozen Weight g<input id="qcFrozenSample" type="number" step="0.1"></label><label>Sample Volume mL<input id="qcSampleVolume" type="number" step="1"></label><label>Finished Yield L<input id="qcYieldL" type="number" step="0.01"></label><label>Batch Output kg<input id="qcOutputKg" type="number" step="0.01"></label>'+
     '<label>Hardness 1-10<input id="qcHard" type="number" min="1" max="10"></label><label>Sweetness 1-10<input id="qcSweet" type="number" min="1" max="10"></label><label>Iciness 1-10<input id="qcIce" type="number" min="1" max="10"></label><label>Body 1-10<input id="qcBody" type="number" min="1" max="10"></label>'+
@@ -1008,7 +1046,7 @@ function showQcForm(recipeId){
     '</div><button class="primary" id="saveQc">Save QC Test</button></div></div>');
   $('qcClose').onclick=()=>$('qcModal').remove();
   $('saveQc').onclick=async()=>{
-    const body={batch_code:$('qcBatch').value,test_date:$('qcDate').value,machine:$('qcMachine').value,operator_name:$('qcOperator').value,mix_temp_c:$('qcMixTemp').value,pasteurization_peak_c:$('qcPasteur').value,ageing_hours:$('qcAge').value,ph:$('qcPh').value,brix:$('qcBrix').value,overrun_pct:$('qcOverrun').value,draw_temp_c:$('qcDraw').value,melt_30min_pct:$('qcMelt').value,mix_sample_g:$('qcMixSample').value,frozen_sample_g:$('qcFrozenSample').value,sample_volume_ml:$('qcSampleVolume').value,finished_yield_l:$('qcYieldL').value,batch_output_kg:$('qcOutputKg').value,hardness_score:$('qcHard').value,sweetness_score:$('qcSweet').value,iciness_score:$('qcIce').value,body_score:$('qcBody').value,aftertaste_score:$('qcAfter').value,day1_notes:$('qcDay1').value,day7_notes:$('qcDay7').value,result:$('qcResult').value};
+    const body={batch_code:$('qcBatch').value,test_date:$('qcDate').value,machine:$('qcMachine').value,operator_name:$('qcOperator').value,mix_temp_c:$('qcMixTemp').value,pasteurization_peak_c:$('qcPasteur').value,pasteurization_hold_sec:$('qcPasteurHold').value,cooling_end_temp_c:$('qcCoolingEnd').value,cooling_time_min:$('qcCoolingTime').value,homogenization_pressure_bar:$('qcHomoBar').value,ageing_temp_c:$('qcAgeTemp').value,ageing_hours:$('qcAge').value,hardening_temp_c:$('qcHardTemp').value,hardening_time_min:$('qcHardTime').value,storage_temp_c:$('qcStorageTemp').value,ph:$('qcPh').value,brix:$('qcBrix').value,overrun_pct:$('qcOverrun').value,draw_temp_c:$('qcDraw').value,melt_30min_pct:$('qcMelt').value,mix_sample_g:$('qcMixSample').value,frozen_sample_g:$('qcFrozenSample').value,sample_volume_ml:$('qcSampleVolume').value,finished_yield_l:$('qcYieldL').value,batch_output_kg:$('qcOutputKg').value,hardness_score:$('qcHard').value,sweetness_score:$('qcSweet').value,iciness_score:$('qcIce').value,body_score:$('qcBody').value,aftertaste_score:$('qcAfter').value,day1_notes:$('qcDay1').value,day7_notes:$('qcDay7').value,result:$('qcResult').value};
     const r=await fetch('/api/data?resource=gelato_qc&recipe_id='+recipeId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const j=await r.json().catch(()=>({}));
     if(!r.ok){alert(j.error||'QC save failed');return}
@@ -1101,7 +1139,7 @@ $('backBtn').onclick=()=>location.href='/';
 $('premiumWizardBtn').onclick=()=>{$('premiumWizardModal').classList.remove('hidden');previewPremiumWizard()};
 $('premiumWizardClose').onclick=()=>$('premiumWizardModal').classList.add('hidden');
 $('premiumWizardModal').onclick=e=>{if(e.target===$('premiumWizardModal'))$('premiumWizardModal').classList.add('hidden')};
-['wizardMaster','wizardBase','wizardBatch','wizardServingTemp','wizardSweetness','wizardTexture','wizardOverrun','wizardMachine','wizardFlavor','wizardFlavorDose'].forEach(id=>$(id).oninput=previewPremiumWizard);
+['wizardMaster','wizardBase','wizardBatch','wizardServingTemp','wizardSweetness','wizardTexture','wizardOverrun','wizardMachine','wizardFlavor','wizardFlavorDose','wizardPasteurMin','wizardPasteurMax','wizardPasteurHold','wizardCoolMax','wizardCoolTime','wizardAgeTemp','wizardAgeMin','wizardAgeMax','wizardDrawTarget','wizardDrawTol','wizardHardeningTemp','wizardHardeningTime','wizardStorageTemp'].forEach(id=>$(id).oninput=previewPremiumWizard);
 $('buildPremiumRecipe').onclick=buildPremiumRecipe;
 $('ingredientSettingsBtn').onclick=()=>{renderIngredientProfiles();$('profileModal').classList.remove('hidden')};
 $('profileClose').onclick=()=>$('profileModal').classList.add('hidden');
