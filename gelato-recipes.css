@@ -138,3 +138,8 @@ button,input,select{font:inherit}.top{position:sticky;top:0;z-index:20;backgroun
 .releaseCheck.pass>span{background:#ecfdf3;color:#047857}.releaseCheck b{display:block;font-size:10px}.releaseCheck small{display:block;margin-top:2px;font-size:8px;color:var(--muted)}
 .releaseCard .warning ul{margin:6px 0 0 18px;padding:0}
 @media(max-width:560px){.releaseGrid{grid-template-columns:1fr}.releaseCard .businessMetrics{grid-template-columns:1fr 1fr}}
+
+.lotPickGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:7px}
+.lotPick{display:grid;grid-template-columns:auto minmax(0,1fr) 76px;gap:7px;align-items:center;padding:8px;border:1px solid #e2e8f0;border-radius:10px;background:#fff}
+.lotPick input[type="checkbox"]{width:16px;height:16px}.lotPick span b{display:block;font-size:10px}.lotPick span small{display:block;margin-top:2px;font-size:8px;color:var(--muted)}.lotPick>input[type="number"]{min-width:0}
+@media(max-width:560px){.lotPickGrid{grid-template-columns:1fr}.lotPick{grid-template-columns:auto minmax(0,1fr) 66px}}
