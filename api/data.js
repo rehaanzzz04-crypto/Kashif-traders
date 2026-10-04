@@ -716,12 +716,19 @@ async function ensureGelatoSettings(sql){
       cremodan_profiles:[],
       machine_profiles:[],
       flavor_profiles:[],
+      sugar_profiles:[
+        {id:"sucrose-ref",name:"Sucrose",type:"sucrose",de:null,dry_solids_pct:100,relative_sweetness:1.0,fpdf:1.0,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"},
+        {id:"dextrose-ref",name:"Dextrose / Glucose",type:"dextrose",de:100,dry_solids_pct:100,relative_sweetness:0.8,fpdf:1.9,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"},
+        {id:"glucose42-ref",name:"Glucose Syrup Solids 42DE",type:"glucose_syrup",de:42,dry_solids_pct:100,relative_sweetness:0.3,fpdf:0.8,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference 42DE; verify supplier DE and dry solids"},
+        {id:"fructose-ref",name:"Fructose",type:"fructose",de:null,dry_solids_pct:100,relative_sweetness:1.7,fpdf:1.9,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"}
+      ],
       cost_settings:{currency:"PKR",whole_milk_per_kg:0,cream_per_kg:0,sucrose_per_kg:0,glucose_per_kg:0,water_per_kg:0,stabilizer_per_kg:0,emulsifier_per_kg:0},
       quality_lock:{fat_tolerance_pct:0.35,msnf_tolerance_pct:0.50,total_solids_tolerance_pct:1.0,sweetness_index_tolerance:1.5,freezing_index_tolerance:2.0},
       default_dry_milk_id:"melco-26",
       default_cremodan_id:null,
       default_machine_id:null,
-      default_flavor_id:null
+      default_flavor_id:null,
+      default_sugar_id:"glucose42-ref"
     };
     await sql`INSERT INTO gelato_ingredient_settings(id,settings) VALUES(1,${JSON.stringify(defaults)}::jsonb)`;
   }
@@ -788,6 +795,27 @@ function normalizeGelatoSettings(b={}){
     source_note:cleanText(p?.source_note),
     note:cleanText(p?.note)
   }));
+  const sugars=(Array.isArray(b.sugar_profiles)?b.sugar_profiles:[]).slice(0,30).map((p,i)=>({
+    id:cleanText(p?.id)||("sugar-"+i+"-"+Date.now()),
+    name:cleanText(p?.name)||("Sugar Profile "+(i+1)),
+    type:cleanText(p?.type)||"glucose_syrup",
+    de:p?.de===null||p?.de===""?null:Math.max(0,Math.min(100,Number(p?.de))),
+    dry_solids_pct:Math.max(0,Math.min(100,Number(p?.dry_solids_pct)||100)),
+    relative_sweetness:Math.max(0,Math.min(5,Number(p?.relative_sweetness)||0)),
+    fpdf:Math.max(0,Math.min(10,Number(p?.fpdf)||0)),
+    verified:p?.verified===true,
+    price_per_kg:Math.max(0,Number(p?.price_per_kg)||0),
+    source_name:cleanText(p?.source_name),
+    source_url:cleanText(p?.source_url),
+    note:cleanText(p?.note)
+  }));
+  const defaultSugarRefs=[
+    {id:"sucrose-ref",name:"Sucrose",type:"sucrose",de:null,dry_solids_pct:100,relative_sweetness:1,fpdf:1,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"},
+    {id:"dextrose-ref",name:"Dextrose / Glucose",type:"dextrose",de:100,dry_solids_pct:100,relative_sweetness:.8,fpdf:1.9,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"},
+    {id:"glucose42-ref",name:"Glucose Syrup Solids 42DE",type:"glucose_syrup",de:42,dry_solids_pct:100,relative_sweetness:.3,fpdf:.8,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference 42DE; verify supplier DE and dry solids"},
+    {id:"fructose-ref",name:"Fructose",type:"fructose",de:null,dry_solids_pct:100,relative_sweetness:1.7,fpdf:1.9,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"}
+  ];
+  const sugarProfiles=sugars.length?sugars:defaultSugarRefs;
   const costSettings={
     currency:cleanText(b?.cost_settings?.currency)||"PKR",
     whole_milk_per_kg:Math.max(0,Number(b?.cost_settings?.whole_milk_per_kg)||0),
@@ -812,12 +840,14 @@ function normalizeGelatoSettings(b={}){
     cremodan_profiles:cremodan,
     machine_profiles:machines,
     flavor_profiles:flavors,
+    sugar_profiles:sugarProfiles,
     cost_settings:costSettings,
     quality_lock:qualityLock,
     default_dry_milk_id:cleanText(b.default_dry_milk_id)||(dry[0]?.id||"melco-26"),
     default_cremodan_id:cleanText(b.default_cremodan_id),
     default_machine_id:cleanText(b.default_machine_id),
-    default_flavor_id:cleanText(b.default_flavor_id)
+    default_flavor_id:cleanText(b.default_flavor_id),
+    default_sugar_id:cleanText(b.default_sugar_id)||(sugarProfiles.find(x=>x.id==="glucose42-ref")?.id||sugarProfiles[0]?.id||null)
   };
 }
 async function gelatoSettings(sql,req,user){
