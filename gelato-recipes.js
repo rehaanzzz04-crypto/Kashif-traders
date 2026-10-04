@@ -23,13 +23,17 @@ const GELATO=[
 
 const TARGETS={
   hard:[
-    {id:'hard-balanced',name:'Professional Hard Ice Cream Base',fat:10,msnf:11,sucrose:13,glucose:4,stabilizer:.30,emulsifier:.15},
-    {id:'hard-premium',name:'Premium Hard Ice Cream Base',fat:12,msnf:10.5,sucrose:13,glucose:4,stabilizer:.25,emulsifier:.12},
-    {id:'hard-rich',name:'Rich Hard Ice Cream Base',fat:14,msnf:10,sucrose:14,glucose:3,stabilizer:.20,emulsifier:.10}
+    {id:'guelph-hard-10',name:'Research Hard Mix 1 - 10% Fat',tier:'Standard',overrun:'100-120%',sourceClass:'institute',fat:10,msnf:11,sucrose:10,glucose:5,stabilizer:.35,emulsifier:.15},
+    {id:'guelph-hard-11',name:'Research Hard Mix 2 - 11% Fat',tier:'Standard',overrun:'100-120%',sourceClass:'institute',fat:11,msnf:11,sucrose:10,glucose:5,stabilizer:.35,emulsifier:.15},
+    {id:'guelph-hard-12',name:'Research Hard Mix 3 - 12% Fat',tier:'Premium',overrun:'60-90%',sourceClass:'institute',fat:12,msnf:10.5,sucrose:12,glucose:4,stabilizer:.30,emulsifier:.15},
+    {id:'guelph-hard-13',name:'Research Hard Mix 4 - 13% Fat',tier:'Premium',overrun:'60-90%',sourceClass:'institute',fat:13,msnf:10.5,sucrose:14,glucose:3,stabilizer:.30,emulsifier:.14},
+    {id:'guelph-hard-14',name:'Research Hard Mix 5 - 14% Fat',tier:'Premium',overrun:'60-90%',sourceClass:'institute',fat:14,msnf:10,sucrose:14,glucose:3,stabilizer:.25,emulsifier:.13},
+    {id:'guelph-hard-15',name:'Research Hard Mix 6 - 15% Fat',tier:'Super Premium',overrun:'25-50%',sourceClass:'institute',fat:15,msnf:10,sucrose:15,glucose:0,stabilizer:.20,emulsifier:.12},
+    {id:'guelph-hard-16',name:'Research Hard Mix 7 - 16% Fat',tier:'Super Premium',overrun:'25-50%',sourceClass:'institute',fat:16,msnf:9.5,sucrose:15,glucose:0,stabilizer:.15,emulsifier:.10}
   ],
   soft:[
-    {id:'soft-standard',name:'Professional Soft Serve Base',fat:8,msnf:12,sucrose:12,glucose:4,stabilizer:.30,emulsifier:.15},
-    {id:'soft-rich',name:'Rich Soft Serve Base',fat:10,msnf:12.5,sucrose:13,glucose:0,stabilizer:.35,emulsifier:.15}
+    {id:'guelph-soft-1',name:'Research Soft Serve Mix 1',tier:'Soft Frozen',overrun:'Machine dependent',sourceClass:'institute',fat:10,msnf:12.5,sucrose:13,glucose:0,stabilizer:.35,emulsifier:.15},
+    {id:'guelph-soft-2',name:'Research Soft Serve Mix 2 - CSS',tier:'Soft Frozen',overrun:'Machine dependent',sourceClass:'institute',fat:10,msnf:12,sucrose:10,glucose:4,stabilizer:.15,emulsifier:.15}
   ]
 };
 
@@ -139,14 +143,18 @@ function ingredientTable(rows,total){
     rows.map(x=>'<tr><td>'+esc(x.name)+'</td><td class="qty">'+fmt(x.g)+'</td><td class="pct">'+((x.g/total)*100).toFixed(2)+'%</td></tr>').join('')+
     '<tr class="totalRow"><td>Total Batch</td><td>'+fmt(total)+'</td><td>100.00%</td></tr></tbody></table></div>';
 }
-function sourceClassFor(kind){return kind==='gelato'?'training':'institute'}
+function sourceClassFor(r,kind){return r?.sourceClass||(kind==='gelato'?'training':'institute')}
 function populate(){
   const kind=$('system').value;
   $('baseModeWrap').classList.toggle('hidden',kind==='gelato');
   let list=kind==='gelato'?GELATO:TARGETS[kind];
   const sourceFilter=$('sourceType')?.value||'all';
-  if(sourceFilter!=='all') list=list.filter(()=>sourceClassFor(kind)===sourceFilter);
+  if(sourceFilter!=='all') list=list.filter(r=>sourceClassFor(r,kind)===sourceFilter);
   $('recipe').innerHTML=list.map(r=>'<option value="'+r.id+'">'+esc(r.name)+'</option>').join('');
+  if(!list.length){
+    $('result').innerHTML='<div class="recipeHead"><div><h2>No verified recipe in this section yet</h2><p>Source quality filter active hai. Creator/Business recipes sirf mass-balance validation ke baad enable hongi.</p></div><span class="badge">Quality Gate</span></div><div class="warning">Research/Institute ya Professional Training source select karein, ya All Verified Sources par wapas jayen.</div>';
+    return;
+  }
   render();
 }
 function getRecipe(){
@@ -163,7 +171,7 @@ function render(){
     src=sourceBlock('gelato',r.page);
   }else{
     const base=$('baseMode').value;items=scale(componentRecipe(r,base),total);stats=targetStats(r);
-    subtitle=(kind==='hard'?'Hard ice cream':'Soft serve')+' • '+(base==='fresh'?'Fresh Milk Base':'Dry Milk Base');
+    subtitle=(kind==='hard'?'Hard ice cream':'Soft serve')+' • '+(r.tier||'Research Formula')+' • '+(base==='fresh'?'Fresh Milk Base':'Dry Milk Base')+(r.overrun?' • target overrun '+r.overrun:'');
     src=sourceBlock(kind);
   }
   current={kind,r,total,items};
