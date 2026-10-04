@@ -240,6 +240,7 @@ function ingredientComposition(name){
   if(n.includes('sugar sucrose')||n==='sugar'||n.includes('granulated sugar')||n.includes('caster sugar'))return {fat:0,protein:0,lactose:0,ash:0,moisture:0,sucrose:100,dextrose:0,glucose:0,known:true};
   if(n.includes('dextrose'))return {fat:0,protein:0,lactose:0,ash:0,moisture:0,sucrose:0,dextrose:100,glucose:0,known:true};
   if(n.includes('glucose'))return {fat:0,protein:0,lactose:0,ash:0,moisture:0,sucrose:0,dextrose:0,glucose:100,known:true};
+  if(n.includes('stabilizer')||n.includes('emulsifier')||n.includes('cremodan')||n.includes('base 50'))return {fat:0,protein:0,lactose:0,ash:0,moisture:0,sucrose:0,dextrose:0,glucose:0,known:true};
   if(n.includes('water'))return {fat:0,protein:0,lactose:0,ash:0,moisture:100,sucrose:0,dextrose:0,glucose:0,known:true};
   if(n.includes('butter'))return {fat:82,protein:1,moisture:16,sucrose:0,dextrose:0,glucose:0,lactose:.7,ash:.3,known:true};
   if(n.includes('egg yolk'))return {fat:26.5,protein:15.9,moisture:52,sucrose:0,dextrose:0,glucose:0,lactose:0,ash:1.7,known:true};
@@ -275,6 +276,88 @@ function compositionHtml(a){
     [['Sweetness Index',a.pod],['Freezing Index',a.pac],['Sucrose',a.sucrose],['Dextrose',a.dextrose],['Glucose solids',a.glucose],['Known solids',a.totalSolids]].map(x=>'<div><small>'+x[0]+'</small><strong>'+Number(x[1]).toFixed(1)+'</strong></div>').join('')+
     '</div>'+(a.warnings.length?'<div class="warning">'+a.warnings.map(x=>'• '+esc(x)).join('<br>')+'</div>':'')+
     '<div class="source">Sweetness/Freezing indexes are comparative formulation indexes, not a laboratory freezing-point measurement. Ingredient COA coverage improves accuracy.</div></div>';
+}
+
+const PREMIUM_RESEARCH_RANGES={
+  Premium:{fat:[12,15],solids:[38,40],overrun:[60,90]},
+  'Super Premium':{fat:[15,18],solids:[40,46],overrun:[25,50]}
+};
+function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
+function premiumWizardAnalysis(items,total,master,servingTemp,overrun,sweetness,texture){
+  const a=compositionAnalysis(items,total);
+  const tier=String(master.tier||'Premium').includes('Super')?'Super Premium':'Premium';
+  const range=PREMIUM_RESEARCH_RANGES[tier];
+  const within=(v,r)=>Number.isFinite(v)&&v>=r[0]&&v<=r[1];
+  const checks=[
+    {name:'Fat',value:a.fat,range:range.fat,unit:'%'},
+    {name:'Total Solids',value:a.totalSolids,range:range.solids,unit:'%'},
+    {name:'Overrun',value:Number(overrun),range:range.overrun,unit:'%'}
+  ];
+  const researchPass=checks.every(x=>within(x.value,x.range));
+  const targetT=Number(servingTemp);
+  const pac=Math.max(.1,a.pac);
+  const curve=[-8,-10,-12,-14,-18].map(t=>{
+    const cold=Math.abs(t);
+    const base=(cold*6.5)-(pac*1.8)+(a.totalSolids-38)*1.4;
+    return {temp:t,firmness:clamp(base,0,100)};
+  });
+  const nearest=curve.reduce((best,x)=>Math.abs(x.temp-targetT)<Math.abs(best.temp-targetT)?x:best,curve[0]);
+  const zone=nearest.firmness<32?'Very Soft':nearest.firmness<48?'Soft/Scoopable':nearest.firmness<68?'Balanced/Firm':'Very Firm';
+  const advice=[];
+  if(sweetness==='lower')advice.push('Less-sweet target: sucrose ko blind reduce na karein; controlled high-PAC/low-sweetness sugar substitution ko A/B trial mein validate karein.');
+  if(sweetness==='richer')advice.push('Richer sweetness target: total sugar barhane se freezing behavior bhi change hoga; sweetness aur freezing power dono ko saath rebalance karein.');
+  if(texture==='softer')advice.push('Softer target: serving temperature, sugar freezing power, overrun aur total solids ko ek saath optimize karein; sirf stabilizer increase na karein.');
+  if(texture==='firmer')advice.push('Firmer target: lower freezing-power sugar blend ya colder service possible hai, magar iciness/melt test ke saath validate karein.');
+  if(a.coverage<90)advice.push('Ingredient COA coverage 90% se kam hai; freezing/texture model ko research-grade decision ke liye incomplete samjhein.');
+  if(!researchPass)advice.push('Current calculated composition selected '+tier+' research range se bahar hai. Golden recipe se pehle rebalance required hai.');
+  return {a,tier,range,checks,researchPass,curve,zone,advice,servingTemp:targetT};
+}
+function premiumWizardHtml(x){
+  const checkHtml=x.checks.map(c=>'<div class="stat"><small>'+esc(c.name)+'</small><strong>'+Number(c.value).toFixed(1)+c.unit+'</strong><span>'+c.range[0]+'–'+c.range[1]+c.unit+'</span></div>').join('');
+  const curve=x.curve.map(p=>'<div class="curvePoint"><span>'+p.temp+'°C</span><div><i style="width:'+p.firmness.toFixed(0)+'%"></i></div><b>'+p.firmness.toFixed(0)+'</b></div>').join('');
+  return '<div class="wizardResult"><div class="recipeHead"><div><h3>'+esc(x.tier)+' Research Check</h3><p>Serving target '+esc(x.servingTemp)+'°C • '+esc(x.zone)+'</p></div><span class="badge '+(x.researchPass?'finalBadge':'')+'">'+(x.researchPass?'IN RANGE':'REBALANCE')+'</span></div>'+
+    '<div class="stats">'+checkHtml+'<div class="stat"><small>Sweetness Index</small><strong>'+x.a.pod.toFixed(1)+'</strong><span>comparative</span></div><div class="stat"><small>Freezing Index</small><strong>'+x.a.pac.toFixed(1)+'</strong><span>comparative</span></div><div class="stat"><small>COA Coverage</small><strong>'+x.a.coverage.toFixed(1)+'%</strong><span>model confidence input</span></div></div>'+
+    '<div class="subpanel"><h3>Relative Freezing / Firmness Curve</h3>'+curve+'<div class="source">Curve is a comparative formulation model using sugar freezing power, solids and temperature. It is not a laboratory measurement of frozen-water fraction. Production hardness/draw-temperature data will be used later to calibrate it.</div></div>'+
+    (x.advice.length?'<div class="warning">'+x.advice.map(t=>'• '+esc(t)).join('<br>')+'</div>':'')+'</div>';
+}
+function premiumWizardMaster(){
+  return (TARGETS.hard||[]).find(x=>x.id===$('wizardMaster').value)||TARGETS.hard.find(x=>x.id==='guelph-hard-14');
+}
+function previewPremiumWizard(){
+  try{
+    const master=premiumWizardMaster();
+    const total=Math.max(.5,Number($('wizardBatch').value)||10)*1000;
+    const base=$('wizardBase').value;
+    const items=scale(componentRecipe(master,base),total);
+    const a=premiumWizardAnalysis(items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value);
+    $('wizardPreview').innerHTML=premiumWizardHtml(a);
+    $('wizardStatus').textContent=a.researchPass?'Research range matched':'Rebalance needed before production';
+  }catch(e){
+    $('wizardPreview').innerHTML='<div class="warning"><b>Cannot build research-grade recipe:</b> '+esc(e.message||'Ingredient profile incomplete')+'</div>';
+    $('wizardStatus').textContent='Ingredient profile / COA check required';
+  }
+}
+function buildPremiumRecipe(){
+  const master=premiumWizardMaster();
+  const batch=Math.max(.5,Number($('wizardBatch').value)||10);
+  $('department').value='icecream';
+  $('sourceType').value='institute';
+  $('system').value='hard';
+  populate();
+  $('baseMode').value=$('wizardBase').value;
+  $('batch').value=batch;$('unit').value='kg';
+  if([...$('recipe').options].some(o=>o.value===master.id))$('recipe').value=master.id;
+  $('businessName').value=$('wizardName').value.trim()||('Premium R&D '+master.name);
+  render();
+  const total=batch*1000;
+  try{
+    const items=scale(componentRecipe(master,$('wizardBase').value),total);
+    const analysis=premiumWizardAnalysis(items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value);
+    current.premiumRAndD={serving_temp_c:Number($('wizardServingTemp').value),target_overrun_pct:Number($('wizardOverrun').value),sweetness_target:$('wizardSweetness').value,texture_target:$('wizardTexture').value,analysis};
+    $('result').insertAdjacentHTML('afterbegin',premiumWizardHtml(analysis));
+    $('trialNotes').value='Premium R&D Wizard • '+analysis.tier+' • serving '+analysis.servingTemp+'°C • target overrun '+Number($('wizardOverrun').value)+'% • '+analysis.zone;
+    $('premiumWizardModal').classList.add('hidden');
+  }catch(e){alert(e.message||'Premium formula build failed')}
 }
 function ingredientTable(rows,total){
   return '<div class="tablewrap"><table><thead><tr><th>Ingredient</th><th>Required Weight</th><th>% Batch</th></tr></thead><tbody>'+
@@ -458,6 +541,13 @@ function currentBusinessPayload(){
     sugars:current.r.solids[0],fat:current.r.solids[1],msnf:current.r.solids[2],other_solids:current.r.solids[3],water:current.r.solids[4],total_solids:current.r.solids[5]
   }:{
     fat:current.r.fat??null,msnf:current.r.msnf??null,sucrose:current.r.sucrose??null,glucose:current.r.glucose??null,stabilizer:current.r.stabilizer??null,emulsifier:current.r.emulsifier??null
+  };
+  if(current?.premiumRAndD)target.premium_r_and_d={
+    serving_temp_c:current.premiumRAndD.serving_temp_c,
+    target_overrun_pct:current.premiumRAndD.target_overrun_pct,
+    sweetness_target:current.premiumRAndD.sweetness_target,
+    texture_target:current.premiumRAndD.texture_target,
+    tier:current.premiumRAndD.analysis?.tier||null
   };
   target.actual={
     fat:comp.fat,
@@ -667,6 +757,11 @@ async function auth(){
 }
 
 $('backBtn').onclick=()=>location.href='/';
+$('premiumWizardBtn').onclick=()=>{$('premiumWizardModal').classList.remove('hidden');previewPremiumWizard()};
+$('premiumWizardClose').onclick=()=>$('premiumWizardModal').classList.add('hidden');
+$('premiumWizardModal').onclick=e=>{if(e.target===$('premiumWizardModal'))$('premiumWizardModal').classList.add('hidden')};
+['wizardMaster','wizardBase','wizardBatch','wizardServingTemp','wizardSweetness','wizardTexture','wizardOverrun'].forEach(id=>$(id).oninput=previewPremiumWizard);
+$('buildPremiumRecipe').onclick=buildPremiumRecipe;
 $('ingredientSettingsBtn').onclick=()=>{renderIngredientProfiles();$('profileModal').classList.remove('hidden')};
 $('profileClose').onclick=()=>$('profileModal').classList.add('hidden');
 $('profileModal').onclick=e=>{if(e.target===$('profileModal'))$('profileModal').classList.add('hidden')};
