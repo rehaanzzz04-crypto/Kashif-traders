@@ -720,6 +720,7 @@ async function ensureGelatoSettings(sql){
       machine_profiles:[],
       flavor_profiles:[],
       ingredient_profiles:[],
+      bio_standard_profiles:defaultBioStandardProfiles(),
       sugar_profiles:[
         {id:"sucrose-ref",name:"Sucrose",type:"sucrose",de:null,dry_solids_pct:100,relative_sweetness:1.0,fpdf:1.0,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"},
         {id:"dextrose-ref",name:"Dextrose / Glucose",type:"dextrose",de:100,dry_solids_pct:100,relative_sweetness:0.8,fpdf:1.9,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"},
@@ -732,12 +733,67 @@ async function ensureGelatoSettings(sql){
       default_cremodan_id:null,
       default_machine_id:null,
       default_flavor_id:null,
-      default_sugar_id:"glucose42-ref"
+      default_sugar_id:"glucose42-ref",
+      default_bio_standard_id:"pfa-ppfr-2018-icecream"
     };
     await sql`INSERT INTO gelato_ingredient_settings(id,settings) VALUES(1,${JSON.stringify(defaults)}::jsonb)`;
   }
 }
 function gelatoPct(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(100,n)):0}
+function defaultBioStandardProfiles(){
+  return [
+    {
+      id:"pfa-ppfr-2018-icecream",
+      name:"Punjab Pure Food Regulations 2018 — Ice Cream",
+      jurisdiction:"Punjab, Pakistan",
+      authority:"Punjab Food Authority",
+      version:"PPFR 2018",
+      effective_date:"2018-01-01",
+      product_category:"Ice cream",
+      source_name:"Punjab Pure Food Regulations, 2018",
+      source_url:"https://www.pfa.gop.pk/wp-content/uploads/2023/02/PPFR-2018-PFA.pdf",
+      reference_only:false,
+      criteria:{
+        total_plate_count:{required:true,max:50000,unit:"CFU/g"},
+        coliform_count:{required:true,max:10,unit:"CFU/g or mL"},
+        e_coli_status:{required:true,expected:"not_detected"},
+        salmonella_status:{required:true,expected:"not_detected"},
+        staph_status:{required:true,expected:"not_detected"},
+        listeria_status:{required:false,expected:"not_detected"},
+        yeast_mold_count:{required:false,max:null,unit:"CFU/g"}
+      },
+      notes:"PFA PPFR 2018 table lists ice cream TPC max 5×10^4/g, coliform max 10/g or mL, E. coli absent; note states Salmonella and Staphylococcus absent."
+    },
+    {
+      id:"psqca-969-2010-reference",
+      name:"PSQCA PS 969-2010 — Ice Cream",
+      jurisdiction:"Pakistan",
+      authority:"Pakistan Standards & Quality Control Authority",
+      version:"PS 969-2010 (1st Rev)",
+      effective_date:"2010-01-01",
+      product_category:"Ice cream",
+      source_name:"PSQCA Agriculture & Food Standards Index",
+      source_url:"https://www.psqca.com.pk/division-wise-standards/agriculture-food-division/",
+      reference_only:true,
+      criteria:{},
+      notes:"Official PSQCA index confirms PS 969-2010 Ice Cream. Exact microbiological criteria are not auto-applied until source text is verified."
+    },
+    {
+      id:"codex-01-7-reference",
+      name:"Codex GSFA 01.7 — Dairy-based desserts / ice cream",
+      jurisdiction:"International reference",
+      authority:"Codex Alimentarius",
+      version:"GSFA current reference",
+      effective_date:null,
+      product_category:"Dairy-based frozen desserts",
+      source_name:"Codex GSFA Food Category 01.7",
+      source_url:"https://codex.fao.org/codex-texts/codex-online-databases/gsfa/food-categories/food-category-details?categoryId=d672ded6-249a-f111-b8dc-70a8a5613865",
+      reference_only:true,
+      criteria:{},
+      notes:"International category/additive reference only; not treated as Punjab/Pakistan microbiological law."
+    }
+  ];
+}
 function normalizeGelatoSettings(b={}){
   const dry=(Array.isArray(b.dry_milk_profiles)?b.dry_milk_profiles:[]).slice(0,20).map((p,i)=>({
     id:cleanText(p?.id)||("powder-"+i+"-"+Date.now()),
@@ -855,6 +911,38 @@ function normalizeGelatoSettings(b={}){
     {id:"fructose-ref",name:"Fructose",type:"fructose",de:null,dry_solids_pct:100,relative_sweetness:1.7,fpdf:1.9,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"}
   ];
   const sugarProfiles=sugars.length?sugars:defaultSugarRefs;
+  const bioProfilesRaw=(Array.isArray(b.bio_standard_profiles)&&b.bio_standard_profiles.length?b.bio_standard_profiles:defaultBioStandardProfiles()).slice(0,20);
+  const bioProfiles=bioProfilesRaw.map((p,i)=>{
+    const crit=p?.criteria&&typeof p.criteria==="object"?p.criteria:{};
+    const numRule=(x)=>({
+      required:x?.required===true,
+      max:x?.max===null||x?.max===undefined||x?.max===""?null:Math.max(0,Number(x.max)),
+      unit:cleanText(x?.unit)
+    });
+    const statusRule=(x)=>({required:x?.required===true,expected:cleanText(x?.expected)||"not_detected"});
+    return {
+      id:cleanText(p?.id)||("bio-standard-"+i+"-"+Date.now()),
+      name:cleanText(p?.name)||("Biological Standard "+(i+1)),
+      jurisdiction:cleanText(p?.jurisdiction),
+      authority:cleanText(p?.authority),
+      version:cleanText(p?.version),
+      effective_date:cleanText(p?.effective_date),
+      product_category:cleanText(p?.product_category)||"Ice cream",
+      source_name:cleanText(p?.source_name),
+      source_url:cleanText(p?.source_url),
+      reference_only:p?.reference_only===true,
+      criteria:{
+        total_plate_count:numRule(crit.total_plate_count),
+        coliform_count:numRule(crit.coliform_count),
+        yeast_mold_count:numRule(crit.yeast_mold_count),
+        e_coli_status:statusRule(crit.e_coli_status),
+        salmonella_status:statusRule(crit.salmonella_status),
+        staph_status:statusRule(crit.staph_status),
+        listeria_status:statusRule(crit.listeria_status)
+      },
+      notes:cleanText(p?.notes)
+    };
+  });
   const costSettings={
     currency:cleanText(b?.cost_settings?.currency)||"PKR",
     whole_milk_per_kg:Math.max(0,Number(b?.cost_settings?.whole_milk_per_kg)||0),
@@ -880,6 +968,7 @@ function normalizeGelatoSettings(b={}){
     machine_profiles:machines,
     flavor_profiles:flavors,
     ingredient_profiles:ingredients,
+    bio_standard_profiles:bioProfiles,
     sugar_profiles:sugarProfiles,
     cost_settings:costSettings,
     quality_lock:qualityLock,
@@ -887,7 +976,8 @@ function normalizeGelatoSettings(b={}){
     default_cremodan_id:cleanText(b.default_cremodan_id),
     default_machine_id:cleanText(b.default_machine_id),
     default_flavor_id:cleanText(b.default_flavor_id),
-    default_sugar_id:cleanText(b.default_sugar_id)||(sugarProfiles.find(x=>x.id==="glucose42-ref")?.id||sugarProfiles[0]?.id||null)
+    default_sugar_id:cleanText(b.default_sugar_id)||(sugarProfiles.find(x=>x.id==="glucose42-ref")?.id||sugarProfiles[0]?.id||null),
+    default_bio_standard_id:cleanText(b.default_bio_standard_id)||(bioProfiles.find(x=>x.id==="pfa-ppfr-2018-icecream")?.id||bioProfiles[0]?.id||null)
   };
 }
 async function gelatoSettings(sql,req,user){
