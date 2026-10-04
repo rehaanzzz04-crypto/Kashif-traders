@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2563eb">
 <title>Gelato Recipe | Kashif Traders</title>
-<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-6">
-<script defer src="/offline-register.js?v=20261004-6"></script>
-<script defer src="/gelato-recipes.js?v=20261004-6"></script>
+<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-7">
+<script defer src="/offline-register.js?v=20261004-7"></script>
+<script defer src="/gelato-recipes.js?v=20261004-7"></script>
 </head>
 <body>
 <div id="authLoading" class="loading">Gelato Recipe Lab loading…</div>
@@ -84,6 +84,7 @@
 
     <button class="primary" id="generate">Generate Complete Recipe</button>
     <button class="ghost profileBtn" id="ingredientSettingsBtn" type="button">Ingredient Profiles</button>
+    <button class="premiumWizardBtn" id="premiumWizardBtn" type="button">✦ Premium R&D Wizard</button>
     <div class="businessBox">
       <label class="label" for="businessName">Business Recipe Name</label>
       <input class="field" id="businessName" placeholder="e.g. Kashif Traders Premium Vanilla">
@@ -116,6 +117,37 @@
   <section class="panel" id="result"></section>
 </section>
 </main>
+<div class="profileModal hidden" id="premiumWizardModal">
+  <div class="profileBox premiumWizardBox">
+    <div class="profileHead"><div><h2>Premium R&D Wizard</h2><p>Research target se premium formula design aur freezing analysis.</p></div><button id="premiumWizardClose" class="ghost" type="button">Close</button></div>
+    <div class="wizardIntro">University of Guelph premium/super-premium composition ranges + Tetra Pak sweetness/freezing factors. Ingredient COA incomplete ho to wizard research-grade generation block karega.</div>
+    <div class="profileGrid">
+      <label>Research Master
+        <select id="wizardMaster">
+          <option value="guelph-hard-13">Premium 13% Fat</option>
+          <option value="guelph-hard-14">Premium 14% Fat</option>
+          <option value="guelph-hard-15">Super Premium 15% Fat</option>
+          <option value="guelph-hard-16">Super Premium 16% Fat</option>
+        </select>
+      </label>
+      <label>Base System
+        <select id="wizardBase"><option value="fresh">Fresh Milk Base</option><option value="dry">Dry Milk Base</option></select>
+      </label>
+      <label>Batch kg<input id="wizardBatch" type="number" min="0.5" max="5000" step="0.5" value="10"></label>
+      <label>Serving Temp °C<input id="wizardServingTemp" type="number" min="-25" max="-4" step="0.5" value="-13"></label>
+      <label>Sweetness
+        <select id="wizardSweetness"><option value="lower">Less Sweet</option><option value="balanced" selected>Balanced</option><option value="richer">Richer</option></select>
+      </label>
+      <label>Serving Texture
+        <select id="wizardTexture"><option value="softer">Softer / Easy Scoop</option><option value="balanced" selected>Balanced</option><option value="firmer">Firmer</option></select>
+      </label>
+      <label>Target Overrun %<input id="wizardOverrun" type="number" min="10" max="150" step="1" value="75"></label>
+      <label>Formula Name<input id="wizardName" value="Premium R&D Vanilla Base"></label>
+    </div>
+    <div id="wizardPreview" class="wizardPreview"></div>
+    <div class="profileSaveRow"><span id="wizardStatus"></span><button id="buildPremiumRecipe" class="primary" type="button">Build Research Recipe</button></div>
+  </div>
+</div>
 <div class="profileModal hidden" id="businessRecipesModal">
       <div class="profileBox">
         <div class="profileHead"><div><h2>Business Recipes</h2><p>Trial, passed aur final production recipes.</p></div><button id="businessRecipesClose" class="ghost" type="button">Close</button></div>
