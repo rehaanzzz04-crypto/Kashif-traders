@@ -762,7 +762,7 @@ async function gelatoSettings(sql,req,user){
 
 
 async function ensureGelatoBusinessRecipes(sql){
-  await sql\`CREATE TABLE IF NOT EXISTS gelato_business_recipes(
+  await sql`CREATE TABLE IF NOT EXISTS gelato_business_recipes(
     id BIGSERIAL PRIMARY KEY,
     business_name TEXT NOT NULL,
     recipe_name TEXT NOT NULL,
@@ -792,16 +792,16 @@ async function ensureGelatoBusinessRecipes(sql){
     created_by_name TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  )\`;
-  await sql\`CREATE INDEX IF NOT EXISTS gelato_business_recipes_business_idx ON gelato_business_recipes(business_name,status,updated_at DESC)\`;
-  await sql\`CREATE TABLE IF NOT EXISTS gelato_business_recipe_versions(
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS gelato_business_recipes_business_idx ON gelato_business_recipes(business_name,status,updated_at DESC)`;
+  await sql`CREATE TABLE IF NOT EXISTS gelato_business_recipe_versions(
     id BIGSERIAL PRIMARY KEY,
     recipe_id BIGINT NOT NULL REFERENCES gelato_business_recipes(id) ON DELETE CASCADE,
     version INTEGER NOT NULL,
     snapshot JSONB NOT NULL,
     changed_by TEXT,
     changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  )\`;
+  )`;
 }
 function cleanFormula(v){
   const arr=Array.isArray(v)?v:[];
@@ -862,16 +862,16 @@ async function gelatoBusinessRecipes(sql,req,user){
   const id=asId(req.query?.id),b=bodyOf(req);
   if(req.method==="GET"){
     if(id){
-      const row=(await sql\`SELECT * FROM gelato_business_recipes WHERE id=\${id}\`)[0];
+      const row=(await sql`SELECT * FROM gelato_business_recipes WHERE id=${id}`)[0];
       if(!row)return {status:404,data:{error:"Business recipe not found"}};
-      const versions=await sql\`SELECT id,version,changed_by,changed_at FROM gelato_business_recipe_versions WHERE recipe_id=\${id} ORDER BY version DESC,id DESC LIMIT 30\`;
+      const versions=await sql`SELECT id,version,changed_by,changed_at FROM gelato_business_recipe_versions WHERE recipe_id=${id} ORDER BY version DESC,id DESC LIMIT 30`;
       return {status:200,data:{record:row,versions}};
     }
     const business=cleanText(req.query?.business),status=cleanText(req.query?.status),like="%"+(business||"")+"%";
-    const rows=await sql\`SELECT * FROM gelato_business_recipes
-      WHERE (\${business}::text IS NULL OR business_name ILIKE \${like})
-        AND (\${status}::text IS NULL OR status=\${status})
-      ORDER BY CASE WHEN status='final' THEN 0 ELSE 1 END,updated_at DESC,id DESC LIMIT 300\`;
+    const rows=await sql`SELECT * FROM gelato_business_recipes
+      WHERE (${business}::text IS NULL OR business_name ILIKE ${like})
+        AND (${status}::text IS NULL OR status=${status})
+      ORDER BY CASE WHEN status='final' THEN 0 ELSE 1 END,updated_at DESC,id DESC LIMIT 300`;
     return {status:200,data:{records:rows}};
   }
   if(req.method==="POST"){
@@ -882,27 +882,27 @@ async function gelatoBusinessRecipes(sql,req,user){
     const context={department:cleanText(b.department)||"icecream",ingredient_settings:b.ingredient_settings||{}};
     const evaluation=evaluateResearchFit(formula,sourceFormula,context);
     const by=user.full_name||user.employee_code||"User";
-    const rows=await sql\`INSERT INTO gelato_business_recipes(
+    const rows=await sql`INSERT INTO gelato_business_recipes(
       business_name,recipe_name,department,system,base_mode,source_recipe_id,source_name,source_url,source_type,
       formula,source_formula,ingredient_settings,research_target,research_metrics,research_comments,perfection_score,
       validated_shelf_life,storage_conditions,shelf_life_guidance,trial_notes,production_tested_at,created_by_id,created_by_name
     ) VALUES(
-      \${cleanText(b.business_name)},\${cleanText(b.recipe_name)},\${context.department},\${cleanText(b.system)},\${cleanText(b.base_mode)},
-      \${cleanText(b.source_recipe_id)},\${cleanText(b.source_name)},\${cleanText(b.source_url)},\${cleanText(b.source_type)},
-      \${JSON.stringify(formula)}::jsonb,\${JSON.stringify(sourceFormula)}::jsonb,\${JSON.stringify(b.ingredient_settings||{})}::jsonb,
-      \${JSON.stringify(b.research_target||{})}::jsonb,\${JSON.stringify(evaluation.metrics)}::jsonb,\${JSON.stringify(evaluation.comments)}::jsonb,\${evaluation.score},
-      \${cleanText(b.validated_shelf_life)},\${cleanText(b.storage_conditions)},\${gelatoShelfGuidance(context.department)},
-      \${cleanText(b.trial_notes)},\${cleanText(b.production_tested_at)},\${user.id},\${by}
-    ) RETURNING *\`;
+      ${cleanText(b.business_name)},${cleanText(b.recipe_name)},${context.department},${cleanText(b.system)},${cleanText(b.base_mode)},
+      ${cleanText(b.source_recipe_id)},${cleanText(b.source_name)},${cleanText(b.source_url)},${cleanText(b.source_type)},
+      ${JSON.stringify(formula)}::jsonb,${JSON.stringify(sourceFormula)}::jsonb,${JSON.stringify(b.ingredient_settings||{})}::jsonb,
+      ${JSON.stringify(b.research_target||{})}::jsonb,${JSON.stringify(evaluation.metrics)}::jsonb,${JSON.stringify(evaluation.comments)}::jsonb,${evaluation.score},
+      ${cleanText(b.validated_shelf_life)},${cleanText(b.storage_conditions)},${gelatoShelfGuidance(context.department)},
+      ${cleanText(b.trial_notes)},${cleanText(b.production_tested_at)},${user.id},${by}
+    ) RETURNING *`;
     return {status:201,data:{record:rows[0]}};
   }
   if(req.method==="PATCH"){
     if(!id)return {status:400,data:{error:"Valid business recipe id required"}};
     if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin business recipe edit/final kar sakta hai"}};
-    const old=(await sql\`SELECT * FROM gelato_business_recipes WHERE id=\${id}\`)[0];
+    const old=(await sql`SELECT * FROM gelato_business_recipes WHERE id=${id}`)[0];
     if(!old)return {status:404,data:{error:"Business recipe not found"}};
-    await sql\`INSERT INTO gelato_business_recipe_versions(recipe_id,version,snapshot,changed_by)
-      VALUES(\${id},\${old.version},\${JSON.stringify(old)}::jsonb,\${user.full_name||user.employee_code||"Admin"})\`;
+    await sql`INSERT INTO gelato_business_recipe_versions(recipe_id,version,snapshot,changed_by)
+      VALUES(${id},${old.version},${JSON.stringify(old)}::jsonb,${user.full_name||user.employee_code||"Admin"})`;
     const formula=b.formula!==undefined?cleanFormula(b.formula):cleanFormula(old.formula);
     const sourceFormula=cleanFormula(old.source_formula);
     const ingredientSettings=b.ingredient_settings!==undefined?b.ingredient_settings:old.ingredient_settings;
@@ -913,28 +913,28 @@ async function gelatoBusinessRecipes(sql,req,user){
     if(!["trial","final"].includes(nextStatus))return {status:400,data:{error:"Invalid recipe status"}};
     const tested=cleanText(b.production_tested_at)||old.production_tested_at;
     if(nextStatus==="final"&&!tested)return {status:400,data:{error:"Final recipe ke liye production test date required hai"}};
-    const rows=await sql\`UPDATE gelato_business_recipes SET
-      business_name=COALESCE(\${cleanText(b.business_name)},business_name),
-      recipe_name=COALESCE(\${cleanText(b.recipe_name)},recipe_name),
-      department=\${department},
-      system=COALESCE(\${cleanText(b.system)},system),
-      base_mode=COALESCE(\${cleanText(b.base_mode)},base_mode),
-      formula=\${JSON.stringify(formula)}::jsonb,
-      ingredient_settings=\${JSON.stringify(ingredientSettings||{})}::jsonb,
-      research_target=CASE WHEN \${b.research_target!==undefined} THEN \${JSON.stringify(b.research_target||{})}::jsonb ELSE research_target END,
-      research_metrics=\${JSON.stringify(evaluation.metrics)}::jsonb,
-      research_comments=\${JSON.stringify(evaluation.comments)}::jsonb,
-      perfection_score=\${evaluation.score},
-      validated_shelf_life=CASE WHEN \${b.validated_shelf_life!==undefined} THEN \${cleanText(b.validated_shelf_life)} ELSE validated_shelf_life END,
-      storage_conditions=CASE WHEN \${b.storage_conditions!==undefined} THEN \${cleanText(b.storage_conditions)} ELSE storage_conditions END,
-      shelf_life_guidance=\${gelatoShelfGuidance(department)},
-      trial_notes=CASE WHEN \${b.trial_notes!==undefined} THEN \${cleanText(b.trial_notes)} ELSE trial_notes END,
-      production_tested_at=COALESCE(\${tested}::date,production_tested_at),
-      status=\${nextStatus},
-      passed_at=CASE WHEN \${nextStatus}='final' AND passed_at IS NULL THEN now() ELSE passed_at END,
+    const rows=await sql`UPDATE gelato_business_recipes SET
+      business_name=COALESCE(${cleanText(b.business_name)},business_name),
+      recipe_name=COALESCE(${cleanText(b.recipe_name)},recipe_name),
+      department=${department},
+      system=COALESCE(${cleanText(b.system)},system),
+      base_mode=COALESCE(${cleanText(b.base_mode)},base_mode),
+      formula=${JSON.stringify(formula)}::jsonb,
+      ingredient_settings=${JSON.stringify(ingredientSettings||{})}::jsonb,
+      research_target=CASE WHEN ${b.research_target!==undefined} THEN ${JSON.stringify(b.research_target||{})}::jsonb ELSE research_target END,
+      research_metrics=${JSON.stringify(evaluation.metrics)}::jsonb,
+      research_comments=${JSON.stringify(evaluation.comments)}::jsonb,
+      perfection_score=${evaluation.score},
+      validated_shelf_life=CASE WHEN ${b.validated_shelf_life!==undefined} THEN ${cleanText(b.validated_shelf_life)} ELSE validated_shelf_life END,
+      storage_conditions=CASE WHEN ${b.storage_conditions!==undefined} THEN ${cleanText(b.storage_conditions)} ELSE storage_conditions END,
+      shelf_life_guidance=${gelatoShelfGuidance(department)},
+      trial_notes=CASE WHEN ${b.trial_notes!==undefined} THEN ${cleanText(b.trial_notes)} ELSE trial_notes END,
+      production_tested_at=COALESCE(${tested}::date,production_tested_at),
+      status=${nextStatus},
+      passed_at=CASE WHEN ${nextStatus}='final' AND passed_at IS NULL THEN now() ELSE passed_at END,
       version=version+1,
       updated_at=now()
-      WHERE id=\${id} RETURNING *\`;
+      WHERE id=${id} RETURNING *`;
     return {status:200,data:{record:rows[0]}};
   }
   return {status:405,data:{error:"Method not allowed"}};
