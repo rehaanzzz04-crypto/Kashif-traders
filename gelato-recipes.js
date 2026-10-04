@@ -599,7 +599,7 @@ function buildPremiumRecipe(){
     if(flavor&&dose>0)selected={code:'F',name:'Flavor Balanced '+flavor.name,items:buildFlavoredFormula(master,$('wizardBase').value,total,flavor,dose)};
     current.items=selected.items;
     const analysis=premiumWizardAnalysis(selected.items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value,machine);
-    current.premiumRAndD={variant:selected.code,variant_name:selected.name,flavor_id:flavor?.id||null,flavor_name:flavor?.name||null,flavor_dose_pct:dose||0,machine_id:machine?.id||null,machine_name:machine?.name||null,serving_temp_c:Number($('wizardServingTemp').value),target_overrun_pct:Number($('wizardOverrun').value),sweetness_target:$('wizardSweetness').value,texture_target:$('wizardTexture').value,process_profile:wizardProcessProfile(),analysis};
+    current.premiumRAndD={variant:selected.code,variant_name:selected.name,flavor_id:flavor?.id||null,flavor_name:flavor?.name||null,flavor_dose_pct:dose||0,machine_id:machine?.id||null,machine_name:machine?.name||null,serving_temp_c:Number($('wizardServingTemp').value),target_overrun_pct:Number($('wizardOverrun').value),target_shelf_life_days:Number($('wizardShelfLifeDays').value)||null,sweetness_target:$('wizardSweetness').value,texture_target:$('wizardTexture').value,process_profile:wizardProcessProfile(),analysis};
     $('formulaTable').innerHTML=ingredientTable(selected.items,total);
     $('result').insertAdjacentHTML('afterbegin',premiumWizardHtml(analysis));
     $('trialNotes').value='Premium R&D Wizard • Variant '+current.premiumRAndD.variant+' '+current.premiumRAndD.variant_name+' • '+analysis.tier+' • serving '+analysis.servingTemp+'°C • target overrun '+Number($('wizardOverrun').value)+'% • '+analysis.zone+(machine?' • machine '+machine.name:'');
@@ -835,6 +835,7 @@ function currentBusinessPayload(){
   if(current?.premiumRAndD)target.premium_r_and_d={
     serving_temp_c:current.premiumRAndD.serving_temp_c,
     target_overrun_pct:current.premiumRAndD.target_overrun_pct,
+    target_shelf_life_days:current.premiumRAndD.target_shelf_life_days||null,
     sweetness_target:current.premiumRAndD.sweetness_target,
     texture_target:current.premiumRAndD.texture_target,
     tier:current.premiumRAndD.analysis?.tier||null,
@@ -945,6 +946,7 @@ async function viewBusinessRecipe(id){
     loadReleaseReadiness(id);
     loadQcForRecipe(id);
     loadSensoryForRecipe(id);
+    loadStabilityForRecipe(id);
     loadBioForRecipe(id);
   }catch(e){alert(e.message)}
 }
@@ -1010,7 +1012,7 @@ function renderReleaseReadiness(j){
   const blockers=(j.blockers||[]).map(x=>'<li>'+esc(x)+'</li>').join('');
   $('businessRecipeList').insertAdjacentHTML('beforeend',
     '<div class="businessRecipeCard releaseCard"><div class="businessRecipeHead"><div><h3>Commercial Release Readiness</h3><small>R&D + Production + Biological release checklist</small></div><span class="badge '+(j.release_status==='ready'?'finalBadge':'')+'">'+esc(label)+'</span></div>'+
-    '<div class="stats"><div class="stat"><small>Readiness</small><strong>'+Number(j.readiness_pct||0).toFixed(1)+'%</strong></div><div class="stat"><small>Passed QC</small><strong>'+Number(j.passed_qc_batches||0)+'</strong></div><div class="stat"><small>Machine Calibration</small><strong>'+esc((m.status||'insufficient').toUpperCase())+'</strong></div><div class="stat"><small>Bio Status</small><strong>'+esc(String(j.biological?.status||'incomplete').toUpperCase())+'</strong></div></div>'+
+    '<div class="stats"><div class="stat"><small>Readiness</small><strong>'+Number(j.readiness_pct||0).toFixed(1)+'%</strong></div><div class="stat"><small>Passed QC</small><strong>'+Number(j.passed_qc_batches||0)+'</strong></div><div class="stat"><small>Machine Calibration</small><strong>'+esc((m.status||'insufficient').toUpperCase())+'</strong></div><div class="stat"><small>Bio Status</small><strong>'+esc(String(j.biological?.status||'incomplete').toUpperCase())+'</strong></div><div class="stat"><small>Physical Stability</small><strong>'+esc(String(j.stability?.status||'not_started').toUpperCase())+'</strong></div></div>'+
     '<div class="releaseGrid">'+checks+'</div>'+
     (blockers?'<div class="warning"><b>Release blockers:</b><ul>'+blockers+'</ul></div>':'<div class="source"><b>No checklist blocker detected.</b> Final commercial/regulatory review still required.</div>')+
     '<div class="subpanel"><h3>Machine Calibration</h3><div class="businessMetrics">'+
@@ -1092,6 +1094,43 @@ function showSensoryForm(recipeId){
     $('sensoryModal').remove();alert('Sensory score saved • Panel average '+(j.summary?.overall_avg==null?'—':Number(j.summary.overall_avg).toFixed(1)+'/10'));viewBusinessRecipe(recipeId);
   };
 }
+
+async function loadStabilityForRecipe(recipeId){
+  try{
+    const r=await fetch('/api/data?resource=gelato_stability&recipe_id='+encodeURIComponent(recipeId),{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Stability study load failed');
+    renderStabilityPanel(recipeId,j.records||[],j.summary||{});
+  }catch(e){$('businessRecipeList').insertAdjacentHTML('beforeend','<div class="warning">'+esc(e.message)+'</div>')}
+}
+function renderStabilityPanel(recipeId,rows,summary){
+  const label=String(summary.status||'not_started').replaceAll('_',' ').toUpperCase();
+  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>Day '+esc(x.checkpoint_day??0)+'</b><small>'+esc(String(x.test_date||''))+' • '+esc(x.batch_code||'No batch')+'</small></div><span class="badge">'+esc(x.heat_shock_cycles||0)+' shock</span></div><div class="businessMetrics"><span>Storage <b>'+esc(x.storage_temp_c??'—')+'°C</b></span><span>Hardness <b>'+esc(x.hardness_score??'—')+'</b></span><span>Iciness <b>'+esc(x.iciness_score??'—')+'</b></span><span>Melt 30m <b>'+esc(x.melt_30min_pct??'—')+'%</b></span><span>Overall <b>'+esc(x.overall_score??'—')+'/10</b></span><span>Flavor <b>'+esc(x.flavor_score??'—')+'/10</b></span></div></div>').join('');
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><div class="businessRecipeHead"><div><h3>Storage Stability & Heat-Shock Study</h3><small>Physical shelf-life validation</small></div><span class="badge '+(summary.status==='stable'?'finalBadge':'')+'">'+esc(label)+'</span></div>'+
+    '<div class="stats"><div class="stat"><small>Stability Confidence</small><strong>'+Number(summary.confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>Target Shelf Life</small><strong>'+esc(summary.target_days??'—')+' d</strong></div><div class="stat"><small>Latest Checkpoint</small><strong>Day '+esc(summary.max_day??0)+'</strong></div><div class="stat"><small>Checkpoints</small><strong>'+esc(summary.checkpoints??0)+'</strong></div></div>'+
+    '<div class="businessMetrics"><span>Hardness Drift <b>'+esc(summary.hardness_drift??'—')+'</b></span><span>Iciness Drift <b>'+esc(summary.iciness_drift??'—')+'</b></span><span>Sensory Drift <b>'+esc(summary.overall_drift??'—')+'</b></span><span>Melt Drift <b>'+esc(summary.melt_drift_pct_points??'—')+'</b></span></div>'+
+    '<div class="steps">'+(summary.comments||[]).map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div>'+
+    '<div id="stabilityList">'+(cards||'<div class="note">No stability checkpoints yet.</div>')+'</div>'+
+    '<button class="primary" id="addStabilityBtn" type="button">+ Add Stability Checkpoint</button>'+
+    '<div class="source">Physical stability score formulation/sensory drift ko track karta hai. Microbiological shelf-life validation separate hai aur required reh sakti hai.</div></div>');
+  $('addStabilityBtn').onclick=()=>showStabilityForm(recipeId);
+}
+function showStabilityForm(recipeId){
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="profileModal" id="stabilityModal"><div class="profileBox"><div class="profileHead"><div><h2>Storage Stability Checkpoint</h2><p>Normal storage ya heat-shock challenge ka actual result enter karein.</p></div><button id="stabilityClose" class="ghost">Close</button></div><div class="profileGrid">'+
+    '<label>Batch Code<input id="stBatch"></label><label>Checkpoint Day<input id="stDay" type="number" min="0" step="1" value="0"></label><label>Test Date<input id="stDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label>Storage Temp °C<input id="stTemp" type="number" step="0.1" value="-18"></label>'+
+    '<label>Heat-Shock Cycles<input id="stShockCycles" type="number" min="0" step="1" value="0"></label><label>Heat-Shock High Temp °C<input id="stShockTemp" type="number" step="0.1"></label><label>Heat-Shock Duration min<input id="stShockMin" type="number" step="1"></label>'+
+    '<label>Hardness 1-10<input id="stHard" type="number" min="1" max="10"></label><label>Iciness 1-10<input id="stIce" type="number" min="1" max="10"></label><label>Smoothness 1-10<input id="stSmooth" type="number" min="1" max="10"></label><label>Flavor 1-10<input id="stFlavor" type="number" min="1" max="10"></label><label>Body 1-10<input id="stBody" type="number" min="1" max="10"></label><label>Overall 1-10<input id="stOverall" type="number" min="1" max="10"></label><label>Melt 30min %<input id="stMelt" type="number" step="0.1"></label>'+
+    '<label>Package Condition<input id="stPack"></label><label>Visible Ice Crystals<input id="stCrystals"></label><label class="wide">Notes<input id="stNotes"></label>'+
+    '</div><button class="primary" id="saveStability">Save Checkpoint</button></div></div>');
+  $('stabilityClose').onclick=()=>$('stabilityModal').remove();
+  $('saveStability').onclick=async()=>{
+    const body={batch_code:$('stBatch').value,checkpoint_day:$('stDay').value,test_date:$('stDate').value,storage_temp_c:$('stTemp').value,heat_shock_cycles:$('stShockCycles').value,heat_shock_high_temp_c:$('stShockTemp').value,heat_shock_duration_min:$('stShockMin').value,hardness_score:$('stHard').value,iciness_score:$('stIce').value,smoothness_score:$('stSmooth').value,flavor_score:$('stFlavor').value,body_score:$('stBody').value,overall_score:$('stOverall').value,melt_30min_pct:$('stMelt').value,package_condition:$('stPack').value,visible_ice_crystals:$('stCrystals').value,notes:$('stNotes').value};
+    const r=await fetch('/api/data?resource=gelato_stability&recipe_id='+recipeId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){alert(j.error||'Stability checkpoint save failed');return}
+    $('stabilityModal').remove();alert('Stability checkpoint saved • '+String(j.summary?.status||'in_progress').toUpperCase()+' • '+Number(j.summary?.confidence||0).toFixed(1)+'%');viewBusinessRecipe(recipeId);
+  };
+}
 async function loadBioForRecipe(recipeId){
   try{
     const r=await fetch('/api/data?resource=gelato_bio&recipe_id='+encodeURIComponent(recipeId),{cache:'no-store'});
@@ -1139,7 +1178,7 @@ $('backBtn').onclick=()=>location.href='/';
 $('premiumWizardBtn').onclick=()=>{$('premiumWizardModal').classList.remove('hidden');previewPremiumWizard()};
 $('premiumWizardClose').onclick=()=>$('premiumWizardModal').classList.add('hidden');
 $('premiumWizardModal').onclick=e=>{if(e.target===$('premiumWizardModal'))$('premiumWizardModal').classList.add('hidden')};
-['wizardMaster','wizardBase','wizardBatch','wizardServingTemp','wizardSweetness','wizardTexture','wizardOverrun','wizardMachine','wizardFlavor','wizardFlavorDose','wizardPasteurMin','wizardPasteurMax','wizardPasteurHold','wizardCoolMax','wizardCoolTime','wizardAgeTemp','wizardAgeMin','wizardAgeMax','wizardDrawTarget','wizardDrawTol','wizardHardeningTemp','wizardHardeningTime','wizardStorageTemp'].forEach(id=>$(id).oninput=previewPremiumWizard);
+['wizardMaster','wizardBase','wizardBatch','wizardServingTemp','wizardSweetness','wizardTexture','wizardOverrun','wizardMachine','wizardFlavor','wizardFlavorDose','wizardPasteurMin','wizardPasteurMax','wizardPasteurHold','wizardCoolMax','wizardCoolTime','wizardAgeTemp','wizardAgeMin','wizardAgeMax','wizardDrawTarget','wizardDrawTol','wizardHardeningTemp','wizardHardeningTime','wizardStorageTemp','wizardShelfLifeDays'].forEach(id=>$(id).oninput=previewPremiumWizard);
 $('buildPremiumRecipe').onclick=buildPremiumRecipe;
 $('ingredientSettingsBtn').onclick=()=>{renderIngredientProfiles();$('profileModal').classList.remove('hidden')};
 $('profileClose').onclick=()=>$('profileModal').classList.add('hidden');
