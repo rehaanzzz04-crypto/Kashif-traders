@@ -28,6 +28,7 @@ const allowed = new Set([
   "gelato_qc",
   "gelato_bio",
   "gelato_sensory",
+  "gelato_release",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -1214,6 +1215,88 @@ async function gelatoSensory(sql,req,user){
   }
   return {status:405,data:{error:"Method not allowed"}};
 }
+
+function machineCalibrationSummary(rows,recipe){
+  const target=Number(recipe?.research_target?.premium_r_and_d?.target_overrun_pct);
+  const usable=rows.filter(r=>r.result==="pass").map(r=>({
+    overrun:Number(r.calculated_overrun_pct??r.overrun_pct),
+    draw:Number(r.draw_temp_c),
+    yieldL:Number(r.finished_yield_l),
+    outputKg:Number(r.batch_output_kg),
+    machine:r.machine||null,
+    test_date:r.test_date
+  })).filter(r=>Number.isFinite(r.overrun));
+  const recent=usable.slice(0,5);
+  const avg=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
+  const overAvg=avg(recent.map(x=>x.overrun));
+  const variance=recent.length&&overAvg!==null?avg(recent.map(x=>(x.overrun-overAvg)**2)):null;
+  const sd=variance===null?null:Math.sqrt(variance);
+  const drawVals=recent.map(x=>x.draw).filter(Number.isFinite);
+  const yieldVals=recent.map(x=>x.yieldL).filter(Number.isFinite);
+  const outputVals=recent.map(x=>x.outputKg).filter(Number.isFinite);
+  const bias=Number.isFinite(target)&&overAvg!==null?overAvg-target:null;
+  let status=recent.length>=3?"calibrated":recent.length>=2?"emerging":"insufficient";
+  const comments=[];
+  if(!recent.length)comments.push("Measured overrun calibration ke liye passed QC data required hai.");
+  else{
+    if(bias!==null&&Math.abs(bias)>=8)comments.push("Machine overrun target se "+Math.abs(bias).toFixed(1)+" points "+(bias>0?"high":"low")+" chal rahi hai; air incorporation/load setting review karein.");
+    else if(bias!==null)comments.push("Measured overrun target ke qareeb hai; current machine setup repeatability monitor karein.");
+    if(sd!==null&&sd>8)comments.push("Overrun batch-to-batch variation high hai ("+sd.toFixed(1)+" points SD); machine load, mix temperature aur extraction endpoint standardize karein.");
+    else if(sd!==null&&recent.length>=3)comments.push("Overrun repeatability stable range mein nazar aa rahi hai.");
+  }
+  return {
+    status,sample_count:recent.length,target_overrun_pct:Number.isFinite(target)?target:null,
+    measured_overrun_avg:overAvg===null?null:Number(overAvg.toFixed(2)),
+    overrun_bias_pct_points:bias===null?null:Number(bias.toFixed(2)),
+    overrun_sd_pct_points:sd===null?null:Number(sd.toFixed(2)),
+    avg_draw_temp_c:drawVals.length?Number(avg(drawVals).toFixed(2)):null,
+    avg_finished_yield_l:yieldVals.length?Number(avg(yieldVals).toFixed(2)):null,
+    avg_output_kg:outputVals.length?Number(avg(outputVals).toFixed(2)):null,
+    machine:recent.find(x=>x.machine)?.machine||recipe?.research_target?.premium_r_and_d?.machine_name||null,
+    comments
+  };
+}
+async function gelatoRelease(sql,req,user){
+  await ensureGelatoBusinessRecipes(sql);
+  const recipeId=asId(req.query?.recipe_id);
+  if(req.method!=="GET")return {status:405,data:{error:"Method not allowed"}};
+  if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
+  const recipe=(await sql\`SELECT * FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+  if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
+  const qc=await sql\`SELECT * FROM gelato_recipe_qc WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC\`;
+  const sensory=await sql\`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=\${recipeId} ORDER BY panel_date DESC,id DESC\`;
+  const bio=await sql\`SELECT * FROM gelato_recipe_bio WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC\`;
+  const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio),machine=machineCalibrationSummary(qc,recipe);
+  const passed=qc.filter(x=>x.result==="pass").length;
+  const coverage=Number(recipe?.research_metrics?.data_coverage_pct);
+  const checks=[
+    {key:"research",label:"Research Fit ≥ 90%",pass:Number(recipe.perfection_score)>=90,value:recipe.perfection_score==null?null:Number(recipe.perfection_score)},
+    {key:"coa",label:"Ingredient COA Coverage ≥ 90%",pass:Number.isFinite(coverage)&&coverage>=90,value:Number.isFinite(coverage)?coverage:null},
+    {key:"production",label:"Production Confidence ≥ 70%",pass:Number(recipe.production_confidence)>=70,value:Number(recipe.production_confidence||0)},
+    {key:"qc",label:"Passed QC Batches ≥ 2",pass:passed>=2,value:passed},
+    {key:"calibration",label:"Measured Overrun Calibration",pass:machine.sample_count>=2&&(machine.overrun_sd_pct_points===null||machine.overrun_sd_pct_points<=8),value:machine.sample_count},
+    {key:"sensory",label:"Sensory Panel ≥ 3 & Avg ≥ 7/10",pass:Number(sensorySum.panel_count)>=3&&Number(sensorySum.overall_avg)>=7,value:sensorySum.overall_avg},
+    {key:"bio",label:"Biological Validation",pass:bioSum.status==="lab_validated",value:bioSum.status},
+    {key:"shelf",label:"Validated Shelf Life Recorded",pass:Boolean(cleanText(recipe.validated_shelf_life)),value:recipe.validated_shelf_life||null}
+  ];
+  const passedChecks=checks.filter(x=>x.pass).length;
+  const readiness=Number(((passedChecks/checks.length)*100).toFixed(1));
+  let status=checks.every(x=>x.pass)?"ready":"not_ready";
+  if(bioSum.status==="hold")status="hold";
+  const blockers=checks.filter(x=>!x.pass).map(x=>x.label);
+  if(status==="hold")blockers.unshift("Biological HOLD active");
+  return {status:200,data:{
+    release_status:status,
+    readiness_pct:readiness,
+    checks,
+    blockers,
+    machine_calibration:machine,
+    sensory:sensorySum,
+    biological:bioSum,
+    passed_qc_batches:passed,
+    note:"Release Readiness R&D/production checklist hai; regulatory or food-safety approval ka substitute nahi."
+  }};
+}
 async function gelatoBusinessRecipes(sql,req,user){
   await ensureGelatoBusinessRecipes(sql);
   const id=asId(req.query?.id),b=bodyOf(req);
@@ -1357,6 +1440,10 @@ async function handler(req, res) {
     }
     if (resource === "gelato_sensory") {
       const out = await gelatoSensory(sql, req, user);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "gelato_release") {
+      const out = await gelatoRelease(sql, req, user);
       return res.status(out.status).json(out.data);
     }
     await ensureEntryNumbers(sql);
