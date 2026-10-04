@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2563eb">
 <title>Gelato Recipe | Kashif Traders</title>
-<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-2">
-<script defer src="/offline-register.js?v=20261004-2"></script>
-<script defer src="/gelato-recipes.js?v=20261004-2"></script>
+<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-3">
+<script defer src="/offline-register.js?v=20261004-3"></script>
+<script defer src="/gelato-recipes.js?v=20261004-3"></script>
 </head>
 <body>
 <div id="authLoading" class="loading">Gelato Recipe Lab loading…</div>
@@ -25,13 +25,19 @@
   <div class="heroCard">
     <span class="eyebrow">Professional Production Assistant</span>
     <h1>Recipe type select karein, batch quantity likhein.</h1>
-    <p>Gelato, hard ice cream, soft serve, frozen yogurt aur sherbet/sorbet ke liye professional source-based formulation, exact weighing sheet, technical balance aur production method.</p>
+    <p>Gelato, hard ice cream, soft serve, frozen yogurt, sherbet/sorbet, sundae sauces aur brownies ke liye professional source-based formulation, exact weighing sheet aur production method.</p>
   </div>
-  <div class="heroCard quick"><small>Recipe Systems</small><strong>5 Professional Systems</strong><span>Gelato • Hard • Soft • Frozen Yogurt • Sherbet/Sorbet</span></div>
+  <div class="heroCard quick"><small>Professional Recipe Lab</small><strong>Ice Cream + Sundae + Brownies</strong><span>Verified sources • Exact scaling • Production method</span></div>
 </section>
 <section class="layout">
   <aside class="panel sticky">
     <h2>Recipe Calculator</h2>
+    <label class="label" for="department">Recipe Department</label>
+    <select class="field" id="department">
+      <option value="icecream">Ice Cream & Frozen Desserts</option>
+      <option value="sauces">Sundae Syrups & Sauces</option>
+      <option value="brownies">Professional Brownies</option>
+    </select>
     <label class="label" for="sourceType">Recipe Source</label>
     <select class="field" id="sourceType">
       <option value="all">All Verified Sources</option>
@@ -40,14 +46,16 @@
       <option value="creator">Professional Creator / Business</option>
     </select>
 
-    <label class="label" for="system">Ice Cream Type</label>
-    <select class="field" id="system">
-      <option value="gelato">Gelato</option>
-      <option value="hard">Hard Ice Cream</option>
-      <option value="soft">Soft Serve</option>
-      <option value="frozen-yogurt">Frozen Yogurt</option>
-      <option value="sherbet">Sherbet / Sorbet</option>
-    </select>
+    <div id="systemWrap">
+      <label class="label" for="system">Ice Cream Type</label>
+      <select class="field" id="system">
+        <option value="gelato">Gelato</option>
+        <option value="hard">Hard Ice Cream</option>
+        <option value="soft">Soft Serve</option>
+        <option value="frozen-yogurt">Frozen Yogurt</option>
+        <option value="sherbet">Sherbet / Sorbet</option>
+      </select>
+    </div>
 
     <div id="baseModeWrap">
       <label class="label" for="baseMode">Base System</label>
