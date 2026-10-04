@@ -91,8 +91,12 @@ let ingredientSettings={
   cream:{name:'Cream',fat_pct:35,msnf_pct:5.5,protein_pct:2.1,lactose_pct:3.0,ash_pct:.5,moisture_pct:59.4},
   dry_milk_profiles:[{id:'melco-26',name:'Melco Vegetable Fat Filled Powder',fat_pct:26,protein_pct:16,carbs_pct:50,lactose_pct:null,moisture_pct:4,ash_pct:null,other_pct:4,added_sugar_pct:null,total_solids_pct:96,note:'Bag label profile; lactose/added sugar split requires current COA.'}],
   cremodan_profiles:[],
+  machine_profiles:[],
+  cost_settings:{currency:'PKR',whole_milk_per_kg:0,cream_per_kg:0,sucrose_per_kg:0,glucose_per_kg:0,water_per_kg:0,stabilizer_per_kg:0,emulsifier_per_kg:0},
+  quality_lock:{fat_tolerance_pct:.35,msnf_tolerance_pct:.50,total_solids_tolerance_pct:1,sweetness_index_tolerance:1.5,freezing_index_tolerance:2},
   default_dry_milk_id:'melco-26',
-  default_cremodan_id:null
+  default_cremodan_id:null,
+  default_machine_id:null
 };
 const settingsKey='kt_gelato_ingredient_settings_v1';
 
@@ -288,6 +292,77 @@ const PREMIUM_RESEARCH_RANGES={
 };
 function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
 
+
+function ingredientRatePerKg(name){
+  const n=String(name||'').toLowerCase(),cost=ingredientSettings.cost_settings||{};
+  const powder=activeDryMilkProfile(),cremodan=activeCremodanProfile();
+  if(powder&&(n===String(powder.name||'').toLowerCase()||n.includes('milk powder')||n.includes('fat filled')))return Number(powder.price_per_kg||0);
+  if(cremodan&&(n===String(cremodan.grade||'').toLowerCase()||n.includes('cremodan')))return Number(cremodan.price_per_kg||0);
+  if(n.includes('whole milk')||n.includes('fresh whole milk'))return Number(cost.whole_milk_per_kg||0);
+  if(n.includes('cream'))return Number(cost.cream_per_kg||0);
+  if(n.includes('sugar')||n.includes('sucrose'))return Number(cost.sucrose_per_kg||0);
+  if(n.includes('glucose')||n.includes('dextrose'))return Number(cost.glucose_per_kg||0);
+  if(n==='water')return Number(cost.water_per_kg||0);
+  if(n.includes('stabilizer')||n.includes('base 50'))return Number(cost.stabilizer_per_kg||0);
+  if(n.includes('emulsifier'))return Number(cost.emulsifier_per_kg||0);
+  return 0;
+}
+function recipeCost(items){
+  const currency=ingredientSettings.cost_settings?.currency||'PKR';
+  let total=0,knownWeight=0,weight=0;
+  const lines=items.map(i=>{
+    const rate=ingredientRatePerKg(i.name),g=Number(i.g||0),cost=(g/1000)*rate;
+    weight+=g;if(rate>0)knownWeight+=g;total+=cost;
+    return {name:i.name,g,rate,cost};
+  });
+  return {currency,total,perKg:weight?total/(weight/1000):0,coverage:weight?knownWeight/weight*100:0,lines};
+}
+function qualityLockCheck(items,total,master,referenceItems){
+  const a=compositionAnalysis(items,total),ref=compositionAnalysis(referenceItems||items,total);
+  const lock=ingredientSettings.quality_lock||{};
+  const actualMsnf=a.protein+a.lactose+a.ash,refMsnf=ref.protein+ref.lactose+ref.ash;
+  const targetFat=Number(master.fat),targetMsnf=Number(master.msnf);
+  const expectedSolids=ref.totalSolids;
+  const checks=[
+    {name:'Fat',actual:a.fat,target:targetFat,tol:Number(lock.fat_tolerance_pct??.35)},
+    {name:'MSNF',actual:actualMsnf,target:targetMsnf,tol:Number(lock.msnf_tolerance_pct??.5)},
+    {name:'Total Solids',actual:a.totalSolids,target:expectedSolids,tol:Number(lock.total_solids_tolerance_pct??1)},
+    {name:'Sweetness Index',actual:a.pod,target:ref.pod,tol:Number(lock.sweetness_index_tolerance??1.5)},
+    {name:'Freezing Index',actual:a.pac,target:ref.pac,tol:Number(lock.freezing_index_tolerance??2)}
+  ];
+  const dataComplete=a.coverage>=90&&ref.coverage>=90;
+  checks.forEach(x=>x.pass=Math.abs(x.actual-x.target)<=x.tol);
+  return {pass:dataComplete&&checks.every(x=>x.pass),dataComplete,coverage:a.coverage,checks,a};
+}
+function costOptimizerCandidates(master,total,currentBase){
+  const modes=[currentBase,currentBase==='fresh'?'dry':'fresh'];
+  const candidates=[];
+  for(const base of modes){
+    try{
+      const reference=scale(componentRecipe(master,base),total);
+      const variants=controlledTrialVariants(master,base,total);
+      variants.forEach(v=>{
+        const q=qualityLockCheck(v.items,total,master,reference);
+        const cost=recipeCost(v.items);
+        candidates.push({base,variant:v.code,name:v.name,items:v.items,q,cost});
+      });
+    }catch{}
+  }
+  candidates.sort((a,b)=>a.cost.total-b.cost.total);
+  return candidates;
+}
+function costOptimizerHtml(master,total,base){
+  const candidates=costOptimizerCandidates(master,total,base);
+  if(!candidates.length)return '<div class="warning">Cost candidates calculate nahi ho sake. Ingredient profiles check karein.</div>';
+  const accepted=candidates.filter(x=>x.q.pass&&x.cost.coverage>=90);
+  const best=accepted[0]||null;
+  const rows=candidates.map(x=>{
+    const state=!x.q.dataComplete?'DATA INCOMPLETE':x.q.pass?'PASS':'REJECTED';
+    return '<div class="costCandidate '+(best===x?'bestCost':'')+'"><div><b>'+esc(x.base.toUpperCase()+' • Variant '+x.variant)+'</b><small>'+esc(x.name)+'</small></div><span>'+esc(x.cost.currency)+' '+x.cost.total.toFixed(2)+'<small>'+x.cost.perKg.toFixed(2)+'/kg</small></span><em class="'+(x.q.pass?'ok':'')+'">'+state+'</em></div>';
+  }).join('');
+  const saving=best&&candidates.length?Math.max(0,candidates.filter(x=>x.q.pass)[0]?.cost.total-best.cost.total||0):0;
+  return '<div class="subpanel"><h3>Quality Lock + Cost Optimizer</h3><div class="costSummary">'+(best?'<b>Best approved: '+esc(best.base.toUpperCase())+' • Variant '+best.variant+'</b><span>'+esc(best.cost.currency)+' '+best.cost.total.toFixed(2)+' total • '+best.cost.perKg.toFixed(2)+'/kg</span>':'<b>No cost option approved yet</b><span>COA/rates/quality lock complete karein.</span>')+'</div>'+rows+'<div class="source">Cost optimization quality ke baad hoti hai. Research composition ya COA coverage fail ho to cheapest option automatically reject hota hai.</div></div>';
+}
 function machineCheck(machine,batchKg,overrun){
   if(!machine)return {ok:true,warnings:['No machine profile selected; process compatibility not checked.'],notes:[]};
   const warnings=[],notes=[];
@@ -383,7 +458,7 @@ function previewPremiumWizard(){
     const machine=activeMachineProfile($('wizardMachine').value);
     const a=premiumWizardAnalysis(items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value,machine);
     const variants=controlledTrialVariants(master,base,total);
-    $('wizardPreview').innerHTML=premiumWizardHtml(a)+'<div class="subpanel"><h3>A/B/C Controlled R&D Trials</h3><div class="trialGrid">'+variants.map(v=>trialVariantHtml(v,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,machine)).join('')+'</div></div>';
+    $('wizardPreview').innerHTML=premiumWizardHtml(a)+'<div class="subpanel"><h3>A/B/C Controlled R&D Trials</h3><div class="trialGrid">'+variants.map(v=>trialVariantHtml(v,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,machine)).join('')+'</div></div>'+costOptimizerHtml(master,total,base);
     $('wizardStatus').textContent=a.researchPass&&a.machineResult.ok?'Research + machine range matched':'Review warnings before production';
     $('wizardPreview').querySelectorAll('[data-variant]').forEach(b=>b.onclick=()=>{window.__premiumVariant=b.dataset.variant;$('wizardStatus').textContent='Variant '+b.dataset.variant+' selected for production trial';});
   }catch(e){
@@ -543,12 +618,12 @@ function renderIngredientProfiles(){
   $('creamFat').value=c.fat_pct??35;$('creamMsnf').value=c.msnf_pct??5.5;
   $('creamProtein').value=c.protein_pct??2.1;$('creamLactose').value=c.lactose_pct??3;$('creamAsh').value=c.ash_pct??.5;$('creamMoisture').value=c.moisture_pct??59.4;
   const powders=ingredientSettings.dry_milk_profiles||[];
-  $('dryMilkProfiles').innerHTML=powders.map((p,i)=>'<div class="profileCard" data-powder="'+i+'"><div class="profileCardHead"><b>'+esc(p.name||('Dry Milk '+(i+1)))+'</b><button type="button" class="danger miniDelete" data-del-powder="'+i+'">Delete</button></div><div class="profileGrid"><label>Name<input data-k="name" value="'+esc(p.name||'')+'"></label><label>Fat %<input data-k="fat_pct" type="number" step="0.1" value="'+Number(p.fat_pct||0)+'"></label><label>Protein %<input data-k="protein_pct" type="number" step="0.1" value="'+Number(p.protein_pct||0)+'"></label><label>Carbohydrates %<input data-k="carbs_pct" type="number" step="0.1" value="'+Number(p.carbs_pct||0)+'"></label><label>Lactose %<input data-k="lactose_pct" type="number" step="0.1" value="'+(p.lactose_pct??'')+'" placeholder="COA"></label><label>Moisture %<input data-k="moisture_pct" type="number" step="0.1" value="'+Number(p.moisture_pct||0)+'"></label><label>Ash %<input data-k="ash_pct" type="number" step="0.1" value="'+(p.ash_pct??'')+'" placeholder="COA"></label><label>Total Solids %<input data-k="total_solids_pct" type="number" step="0.1" value="'+(p.total_solids_pct??'')+'" placeholder="optional"></label><label>Other Solids %<input data-k="other_pct" type="number" step="0.1" value="'+Number(p.other_pct||0)+'"></label><label>Known Added Sugar %<input data-k="added_sugar_pct" type="number" step="0.1" value="'+(p.added_sugar_pct??'')+'" placeholder="COA"></label><label class="wide">Notes<input data-k="note" value="'+esc(p.note||'')+'"></label></div></div>').join('');
+  $('dryMilkProfiles').innerHTML=powders.map((p,i)=>'<div class="profileCard" data-powder="'+i+'"><div class="profileCardHead"><b>'+esc(p.name||('Dry Milk '+(i+1)))+'</b><button type="button" class="danger miniDelete" data-del-powder="'+i+'">Delete</button></div><div class="profileGrid"><label>Name<input data-k="name" value="'+esc(p.name||'')+'"></label><label>Fat %<input data-k="fat_pct" type="number" step="0.1" value="'+Number(p.fat_pct||0)+'"></label><label>Protein %<input data-k="protein_pct" type="number" step="0.1" value="'+Number(p.protein_pct||0)+'"></label><label>Carbohydrates %<input data-k="carbs_pct" type="number" step="0.1" value="'+Number(p.carbs_pct||0)+'"></label><label>Lactose %<input data-k="lactose_pct" type="number" step="0.1" value="'+(p.lactose_pct??'')+'" placeholder="COA"></label><label>Moisture %<input data-k="moisture_pct" type="number" step="0.1" value="'+Number(p.moisture_pct||0)+'"></label><label>Ash %<input data-k="ash_pct" type="number" step="0.1" value="'+(p.ash_pct??'')+'" placeholder="COA"></label><label>Total Solids %<input data-k="total_solids_pct" type="number" step="0.1" value="'+(p.total_solids_pct??'')+'" placeholder="optional"></label><label>Other Solids %<input data-k="other_pct" type="number" step="0.1" value="'+Number(p.other_pct||0)+'"></label><label>Known Added Sugar %<input data-k="added_sugar_pct" type="number" step="0.1" value="'+(p.added_sugar_pct??'')+'" placeholder="COA"></label><label>Price / kg<input data-k="price_per_kg" type="number" step="0.01" value="'+Number(p.price_per_kg||0)+'"></label><label class="wide">Notes<input data-k="note" value="'+esc(p.note||'')+'"></label></div></div>').join('');
   $('defaultDryMilk').innerHTML=powders.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('');
   $('defaultDryMilk').value=ingredientSettings.default_dry_milk_id||powders[0]?.id||'';
 
   const creams=ingredientSettings.cremodan_profiles||[];
-  $('cremodanProfiles').innerHTML=creams.map((p,i)=>'<div class="profileCard" data-cremodan="'+i+'"><div class="profileCardHead"><b>'+esc(p.grade||('CREMODAN '+(i+1)))+'</b><button type="button" class="danger miniDelete" data-del-cremodan="'+i+'">Delete</button></div><div class="profileGrid"><label>Grade / Number<input data-k="grade" value="'+esc(p.grade||'')+'" placeholder="e.g. SE 46"></label><label>Dosage g/kg<input data-k="dosage_g_per_kg" type="number" step="0.1" value="'+Number(p.dosage_g_per_kg||0)+'"></label><label>Product Type<input data-k="product_type" value="'+esc(p.product_type||'General')+'"></label><label>Includes Emulsifier<select data-k="includes_emulsifier"><option value="true" '+(p.includes_emulsifier!==false?'selected':'')+'>Yes</option><option value="false" '+(p.includes_emulsifier===false?'selected':'')+'>No</option></select></label><label class="wide">Notes<input data-k="note" value="'+esc(p.note||'')+'"></label></div></div>').join('');
+  $('cremodanProfiles').innerHTML=creams.map((p,i)=>'<div class="profileCard" data-cremodan="'+i+'"><div class="profileCardHead"><b>'+esc(p.grade||('CREMODAN '+(i+1)))+'</b><button type="button" class="danger miniDelete" data-del-cremodan="'+i+'">Delete</button></div><div class="profileGrid"><label>Grade / Number<input data-k="grade" value="'+esc(p.grade||'')+'" placeholder="e.g. SE 46"></label><label>Dosage g/kg<input data-k="dosage_g_per_kg" type="number" step="0.1" value="'+Number(p.dosage_g_per_kg||0)+'"></label><label>Product Type<input data-k="product_type" value="'+esc(p.product_type||'General')+'"></label><label>Includes Emulsifier<select data-k="includes_emulsifier"><option value="true" '+(p.includes_emulsifier!==false?'selected':'')+'>Yes</option><option value="false" '+(p.includes_emulsifier===false?'selected':'')+'>No</option></select></label><label>Price / kg<input data-k="price_per_kg" type="number" step="0.01" value="'+Number(p.price_per_kg||0)+'"></label><label class="wide">Notes<input data-k="note" value="'+esc(p.note||'')+'"></label></div></div>').join('');
   $('defaultCremodan').innerHTML='<option value="">None</option>'+creams.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.grade)+'</option>').join('');
   $('defaultCremodan').value=ingredientSettings.default_cremodan_id||'';
 
@@ -558,6 +633,13 @@ function renderIngredientProfiles(){
   $('defaultMachine').value=ingredientSettings.default_machine_id||'';
   $('wizardMachine').innerHTML='<option value="">No Machine Profile</option>'+machines.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('');
   $('wizardMachine').value=ingredientSettings.default_machine_id||'';
+  const cost=ingredientSettings.cost_settings||{},lock=ingredientSettings.quality_lock||{};
+  $('costCurrency').value=cost.currency||'PKR';
+  $('costMilk').value=Number(cost.whole_milk_per_kg||0);$('costCream').value=Number(cost.cream_per_kg||0);
+  $('costSugar').value=Number(cost.sucrose_per_kg||0);$('costGlucose').value=Number(cost.glucose_per_kg||0);
+  $('costWater').value=Number(cost.water_per_kg||0);$('costStabilizer').value=Number(cost.stabilizer_per_kg||0);$('costEmulsifier').value=Number(cost.emulsifier_per_kg||0);
+  $('lockFat').value=lock.fat_tolerance_pct??.35;$('lockMsnf').value=lock.msnf_tolerance_pct??.5;$('lockSolids').value=lock.total_solids_tolerance_pct??1;
+  $('lockSweet').value=lock.sweetness_index_tolerance??1.5;$('lockFreeze').value=lock.freezing_index_tolerance??2;
   $('machineProfiles').querySelectorAll('[data-del-machine]').forEach(b=>b.onclick=()=>{ingredientSettings.machine_profiles.splice(Number(b.dataset.delMachine),1);renderIngredientProfiles()});
   $('dryMilkProfiles').querySelectorAll('[data-del-powder]').forEach(b=>b.onclick=()=>{ingredientSettings.dry_milk_profiles.splice(Number(b.dataset.delPowder),1);renderIngredientProfiles()});
   $('cremodanProfiles').querySelectorAll('[data-del-cremodan]').forEach(b=>b.onclick=()=>{ingredientSettings.cremodan_profiles.splice(Number(b.dataset.delCremodan),1);renderIngredientProfiles()});
@@ -578,6 +660,17 @@ function collectProfiles(){
     const p=ingredientSettings.machine_profiles[Number(card.dataset.machine)];
     card.querySelectorAll('[data-k]').forEach(x=>{const k=x.dataset.k;p[k]=x.type==='number'?(x.value===''?null:Number(x.value)):x.value});
   });
+  ingredientSettings.cost_settings={
+    currency:$('costCurrency').value.trim()||'PKR',
+    whole_milk_per_kg:Number($('costMilk').value||0),cream_per_kg:Number($('costCream').value||0),
+    sucrose_per_kg:Number($('costSugar').value||0),glucose_per_kg:Number($('costGlucose').value||0),
+    water_per_kg:Number($('costWater').value||0),stabilizer_per_kg:Number($('costStabilizer').value||0),emulsifier_per_kg:Number($('costEmulsifier').value||0)
+  };
+  ingredientSettings.quality_lock={
+    fat_tolerance_pct:Number($('lockFat').value||.35),msnf_tolerance_pct:Number($('lockMsnf').value||.5),
+    total_solids_tolerance_pct:Number($('lockSolids').value||1),sweetness_index_tolerance:Number($('lockSweet').value||1.5),
+    freezing_index_tolerance:Number($('lockFreeze').value||2)
+  };
   ingredientSettings.default_cremodan_id=$('defaultCremodan').value||null;
   ingredientSettings.default_machine_id=$('defaultMachine').value||null;
 }
@@ -858,8 +951,8 @@ $('buildPremiumRecipe').onclick=buildPremiumRecipe;
 $('ingredientSettingsBtn').onclick=()=>{renderIngredientProfiles();$('profileModal').classList.remove('hidden')};
 $('profileClose').onclick=()=>$('profileModal').classList.add('hidden');
 $('profileModal').onclick=e=>{if(e.target===$('profileModal'))$('profileModal').classList.add('hidden')};
-$('addDryMilkProfile').onclick=()=>{ingredientSettings.dry_milk_profiles=ingredientSettings.dry_milk_profiles||[];ingredientSettings.dry_milk_profiles.push({id:profileId('powder'),name:'New Dry Milk',fat_pct:0,protein_pct:0,carbs_pct:0,lactose_pct:null,moisture_pct:0,ash_pct:null,total_solids_pct:null,other_pct:0,added_sugar_pct:null,note:''});renderIngredientProfiles()};
-$('addCremodanProfile').onclick=()=>{ingredientSettings.cremodan_profiles=ingredientSettings.cremodan_profiles||[];ingredientSettings.cremodan_profiles.push({id:profileId('cremodan'),grade:'CREMODAN',dosage_g_per_kg:0,includes_emulsifier:true,product_type:'General',note:''});renderIngredientProfiles()};
+$('addDryMilkProfile').onclick=()=>{ingredientSettings.dry_milk_profiles=ingredientSettings.dry_milk_profiles||[];ingredientSettings.dry_milk_profiles.push({id:profileId('powder'),name:'New Dry Milk',fat_pct:0,protein_pct:0,carbs_pct:0,lactose_pct:null,moisture_pct:0,ash_pct:null,total_solids_pct:null,other_pct:0,added_sugar_pct:null,price_per_kg:0,note:''});renderIngredientProfiles()};
+$('addCremodanProfile').onclick=()=>{ingredientSettings.cremodan_profiles=ingredientSettings.cremodan_profiles||[];ingredientSettings.cremodan_profiles.push({id:profileId('cremodan'),grade:'CREMODAN',dosage_g_per_kg:0,includes_emulsifier:true,product_type:'General',price_per_kg:0,note:''});renderIngredientProfiles()};
 $('addMachineProfile').onclick=()=>{ingredientSettings.machine_profiles=ingredientSettings.machine_profiles||[];ingredientSettings.machine_profiles.push({id:profileId('machine'),name:'New Batch Freezer',type:'Batch Freezer',min_batch_kg:0,max_batch_kg:0,overrun_min_pct:0,overrun_max_pct:0,draw_temp_c:null,ageing_min_hours:4,hardening_temp_c:-30,notes:''});renderIngredientProfiles()};
 $('saveProfiles').onclick=saveIngredientSettings;
 $('saveTrial').onclick=()=>saveCurrentBusinessRecipe(false);
