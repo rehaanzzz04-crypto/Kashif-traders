@@ -1097,6 +1097,51 @@ async function editBusinessRecipe(id){
 }
 
 
+
+async function loadMaterialLots(){
+  const r=await fetch('/api/data?resource=gelato_lots',{cache:'no-store'});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(j.error||'Material lots load failed');
+  materialLotsCache=j.records||[];
+  return materialLotsCache;
+}
+function lotStatusClass(s){return String(s||'pending').toLowerCase()==='verified'?'finalBadge':''}
+function renderMaterialLots(){
+  const el=$('materialLotsList'); if(!el)return;
+  if(!materialLotsCache.length){el.innerHTML='<div class="note">No material lots saved yet.</div>';return}
+  el.innerHTML='<button type="button" class="secondary profileBtn" id="quickCremodanLot">+ Cremodan 1275590</button>'+materialLotsCache.map(x=>
+    '<div class="profileCard"><div class="profileCardHead"><div><b>'+esc(x.ingredient_name)+'</b><small>'+esc(x.material_number||'No material no.')+' • '+esc(x.lot_number||'No lot')+'</small></div><span class="badge '+lotStatusClass(x.verification_status)+'">'+esc(String(x.verification_status||'pending').toUpperCase())+'</span></div>'+
+    '<div class="businessMetrics"><span>Supplier <b>'+esc(x.supplier||'—')+'</b></span><span>Pack <b>'+esc(x.pack_size_kg??'—')+' kg</b></span><span>Prod <b>'+esc(x.production_date?String(x.production_date).slice(0,10):'—')+'</b></span><span>Best Before <b>'+esc(x.best_before?String(x.best_before).slice(0,10):'—')+'</b></span><span>COA <b>'+esc(x.coa_reference||'Missing')+'</b></span><span>TDS <b>'+esc(x.tds_reference||'Missing')+'</b></span></div></div>'
+  ).join('');
+  const q=$('quickCremodanLot');if(q)q.onclick=()=>showMaterialLotForm({ingredient_name:'CREMODAN / Emulsifier & Stabiliser System',profile_type:'cremodan',manufacturer:'IFF / exact grade pending verification',material_number:'1275590',production_date:'2025-06-02',best_before:'2028-06-01',pack_size_kg:25,verification_status:'tds_pending',notes:'Bag image verified for material number/date/pack size; exact CREMODAN grade and dosage require TDS/clear label verification.'});
+}
+async function openMaterialLots(){
+  try{await loadMaterialLots();renderMaterialLots();$('materialLotsModal').classList.remove('hidden')}catch(e){alert(e.message)}
+}
+function showMaterialLotForm(prefill={}){
+  $('materialLotsList').insertAdjacentHTML('afterbegin','<div class="profileCard" id="newLotCard"><div class="profileCardHead"><b>New Material Lot</b><button id="cancelLot" class="ghost" type="button">Cancel</button></div><div class="profileGrid">'+
+    '<label>Ingredient Name<input id="lotIngredient" value="'+esc(prefill.ingredient_name||'')+'"></label><label>Profile Type<input id="lotProfileType" value="'+esc(prefill.profile_type||'')+'"></label>'+
+    '<label>Supplier<input id="lotSupplier" value="'+esc(prefill.supplier||'')+'"></label><label>Manufacturer<input id="lotManufacturer" value="'+esc(prefill.manufacturer||'')+'"></label>'+
+    '<label>Material No.<input id="lotMaterialNo" value="'+esc(prefill.material_number||'')+'"></label><label>Lot / Batch No.<input id="lotNumber" value="'+esc(prefill.lot_number||'')+'"></label>'+
+    '<label>Production Date<input id="lotProdDate" type="date" value="'+esc(prefill.production_date||'')+'"></label><label>Best Before<input id="lotBestBefore" type="date" value="'+esc(prefill.best_before||'')+'"></label>'+
+    '<label>Pack Size kg<input id="lotPack" type="number" step="0.001" value="'+esc(prefill.pack_size_kg??'')+'"></label><label>Status<select id="lotStatus"><option value="pending">Pending</option><option value="tds_pending" '+(prefill.verification_status==='tds_pending'?'selected':'')+'>TDS Pending</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select></label>'+
+    '<label>COA Reference<input id="lotCoa" value="'+esc(prefill.coa_reference||'')+'"></label><label>TDS Reference<input id="lotTds" value="'+esc(prefill.tds_reference||'')+'"></label>'+
+    '<label class="wide">Notes<input id="lotNotes" value="'+esc(prefill.notes||'')+'"></label></div><button class="primary" id="saveLot" type="button">Save Material Lot</button></div>');
+  $('cancelLot').onclick=()=>$('newLotCard')?.remove();
+  $('saveLot').onclick=async()=>{
+    const body={ingredient_name:$('lotIngredient').value,profile_type:$('lotProfileType').value,supplier:$('lotSupplier').value,manufacturer:$('lotManufacturer').value,material_number:$('lotMaterialNo').value,lot_number:$('lotNumber').value,production_date:$('lotProdDate').value||null,best_before:$('lotBestBefore').value||null,pack_size_kg:$('lotPack').value,verification_status:$('lotStatus').value,coa_reference:$('lotCoa').value,tds_reference:$('lotTds').value,notes:$('lotNotes').value};
+    const r=await fetch('/api/data?resource=gelato_lots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){alert(j.error||'Material lot save failed');return}
+    await loadMaterialLots();renderMaterialLots();alert('Material lot saved');
+  };
+}
+function qcLotSelectorHtml(){
+  if(!materialLotsCache.length)return '<div class="note wide">Raw Material Lots abhi saved nahi hain.</div>';
+  return '<div class="wide"><div class="label">Raw Material Lots Used</div><div class="lotPickGrid">'+materialLotsCache.map(x=>
+    '<label class="lotPick"><input type="checkbox" data-qc-lot="'+x.id+'"><span><b>'+esc(x.ingredient_name)+'</b><small>'+esc(x.material_number||'No material no.')+' • '+esc(x.lot_number||'No lot')+' • '+esc(String(x.verification_status||'pending').toUpperCase())+'</small></span><input data-qc-lot-qty="'+x.id+'" type="number" min="0" step="0.1" placeholder="g">'
+  ).join('')+'</div></div>';
+}
 function rdFeedbackAdvice(rows){
   if(!rows?.length)return ['QC batch save karne ke baad R&D feedback yahan generate hoga.'];
   const q=rows[0],a=[];
@@ -1131,7 +1176,7 @@ function renderReleaseReadiness(j){
   const blockers=(j.blockers||[]).map(x=>'<li>'+esc(x)+'</li>').join('');
   $('businessRecipeList').insertAdjacentHTML('beforeend',
     '<div class="businessRecipeCard releaseCard"><div class="businessRecipeHead"><div><h3>Commercial Release Readiness</h3><small>R&D + Production + Biological release checklist</small></div><span class="badge '+(j.release_status==='ready'?'finalBadge':'')+'">'+esc(label)+'</span></div>'+
-    '<div class="stats"><div class="stat"><small>Readiness</small><strong>'+Number(j.readiness_pct||0).toFixed(1)+'%</strong></div><div class="stat"><small>Passed QC</small><strong>'+Number(j.passed_qc_batches||0)+'</strong></div><div class="stat"><small>Machine Calibration</small><strong>'+esc((m.status||'insufficient').toUpperCase())+'</strong></div><div class="stat"><small>Bio Status</small><strong>'+esc(String(j.biological?.status||'incomplete').toUpperCase())+'</strong></div><div class="stat"><small>Physical Stability</small><strong>'+esc(String(j.stability?.status||'not_started').toUpperCase())+'</strong></div><div class="stat"><small>Texture Calibration</small><strong>'+esc(String(j.texture_calibration?.status||'insufficient').toUpperCase())+'</strong></div></div>'+
+    '<div class="stats"><div class="stat"><small>Readiness</small><strong>'+Number(j.readiness_pct||0).toFixed(1)+'%</strong></div><div class="stat"><small>Passed QC</small><strong>'+Number(j.passed_qc_batches||0)+'</strong></div><div class="stat"><small>Machine Calibration</small><strong>'+esc((m.status||'insufficient').toUpperCase())+'</strong></div><div class="stat"><small>Bio Status</small><strong>'+esc(String(j.biological?.status||'incomplete').toUpperCase())+'</strong></div><div class="stat"><small>Physical Stability</small><strong>'+esc(String(j.stability?.status||'not_started').toUpperCase())+'</strong></div><div class="stat"><small>Texture Calibration</small><strong>'+esc(String(j.texture_calibration?.status||'insufficient').toUpperCase())+'</strong></div><div class="stat"><small>Lot Traceability</small><strong>'+esc(String(j.material_traceability?.status||'incomplete').toUpperCase())+'</strong></div></div>'+
     '<div class="releaseGrid">'+checks+'</div>'+
     (blockers?'<div class="warning"><b>Release blockers:</b><ul>'+blockers+'</ul></div>':'<div class="source"><b>No checklist blocker detected.</b> Final commercial/regulatory review still required.</div>')+
     '<div class="subpanel"><h3>Machine Calibration</h3><div class="businessMetrics">'+
@@ -1171,23 +1216,25 @@ async function loadQcForRecipe(recipeId){
 }
 function renderQcPanel(recipeId,rows,recipe){
   const feedback=rdFeedbackAdvice(rows);
-  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.batch_code||('QC #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • '+esc(x.machine||'No machine')+'</small></div><span class="badge '+(x.result==='pass'?'finalBadge':'')+'">'+esc(x.result)+'</span></div><div class="businessMetrics"><span>Overrun <b>'+esc(x.calculated_overrun_pct??x.overrun_pct??'—')+'%</b></span><span>Draw Temp <b>'+esc(x.draw_temp_c??'—')+'°C</b></span><span>Yield <b>'+esc(x.finished_yield_l??'—')+' L</b></span><span>Process <b>'+esc(x.process_compliance_pct??'—')+'%</b></span></div></div>').join('');
+  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.batch_code||('QC #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • '+esc(x.machine||'No machine')+'</small></div><span class="badge '+(x.result==='pass'?'finalBadge':'')+'">'+esc(x.result)+'</span></div><div class="businessMetrics"><span>Overrun <b>'+esc(x.calculated_overrun_pct??x.overrun_pct??'—')+'%</b></span><span>Draw Temp <b>'+esc(x.draw_temp_c??'—')+'°C</b></span><span>Yield <b>'+esc(x.finished_yield_l??'—')+' L</b></span><span>Process <b>'+esc(x.process_compliance_pct??'—')+'%</b></span></div>'+(Array.isArray(x.material_lots)&&x.material_lots.length?'<div class="miniComment">Lots: '+x.material_lots.map(l=>esc(l.ingredient_name)+' '+esc(l.material_number||'')+'/'+esc(l.lot_number||'')).join(' • ')+'</div>':'')+'</div>').join('');
   $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><h3>Production QC</h3><div class="stats"><div class="stat"><small>Production Confidence</small><strong>'+Number(recipe.production_confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>QC Batches</small><strong>'+rows.length+'</strong></div></div><div id="qcList">'+(cards||'<div class="note">No QC tests yet.</div>')+'</div><div class="subpanel"><h3>R&D Feedback Rebalancing</h3><div class="steps">'+feedback.map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div><div class="source">Suggestions cause-oriented hain; formula automatically change nahi hoti. Next controlled trial ke baad Research Fit aur Production Confidence dobara compare karein.</div></div><button class="primary" id="addQcBtn" type="button">+ Add QC Test</button><button class="secondary profileBtn" id="goldenBtn" type="button">Mark Golden Production Recipe</button></div>');
   $('addQcBtn').onclick=()=>showQcForm(recipeId);
   $('goldenBtn').onclick=()=>markGolden(recipeId);
 }
-function showQcForm(recipeId){
+async function showQcForm(recipeId){
+  try{await loadMaterialLots()}catch{materialLotsCache=[]}
   $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="profileModal" id="qcModal"><div class="profileBox"><div class="profileHead"><div><h2>Production QC Test</h2><p>Actual production measurements enter karein.</p></div><button id="qcClose" class="ghost">Close</button></div><div class="profileGrid">'+
     '<label>Batch Code<input id="qcBatch"></label><label>Test Date<input id="qcDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label>Machine<input id="qcMachine"></label><label>Operator<input id="qcOperator"></label>'+
     '<label>Mix Temp °C<input id="qcMixTemp" type="number" step="0.1"></label><label>Pasteurization Peak °C<input id="qcPasteur" type="number" step="0.1"></label><label>Pasteurization Hold sec<input id="qcPasteurHold" type="number" step="1"></label><label>Cooling End °C<input id="qcCoolingEnd" type="number" step="0.1"></label><label>Cooling Time min<input id="qcCoolingTime" type="number" step="0.1"></label><label>Homogenization bar<input id="qcHomoBar" type="number" step="1"></label><label>Ageing Temp °C<input id="qcAgeTemp" type="number" step="0.1"></label><label>Ageing Hours<input id="qcAge" type="number" step="0.1"></label><label>Hardening Temp °C<input id="qcHardTemp" type="number" step="0.1"></label><label>Hardening Time min<input id="qcHardTime" type="number" step="1"></label><label>Storage Temp °C<input id="qcStorageTemp" type="number" step="0.1"></label><label>pH<input id="qcPh" type="number" step="0.01"></label>'+
     '<label>Brix<input id="qcBrix" type="number" step="0.1"></label><label>Manual Overrun %<input id="qcOverrun" type="number" step="0.1"></label><label>Draw Temp °C<input id="qcDraw" type="number" step="0.1"></label><label>Melt 30min %<input id="qcMelt" type="number" step="0.1"></label>'+
     '<label>Same-volume Mix Weight g<input id="qcMixSample" type="number" step="0.1"></label><label>Same-volume Frozen Weight g<input id="qcFrozenSample" type="number" step="0.1"></label><label>Sample Volume mL<input id="qcSampleVolume" type="number" step="1"></label><label>Finished Yield L<input id="qcYieldL" type="number" step="0.01"></label><label>Batch Output kg<input id="qcOutputKg" type="number" step="0.01"></label>'+
-    '<label>Hardness 1-10<input id="qcHard" type="number" min="1" max="10"></label><label>Sweetness 1-10<input id="qcSweet" type="number" min="1" max="10"></label><label>Iciness 1-10<input id="qcIce" type="number" min="1" max="10"></label><label>Body 1-10<input id="qcBody" type="number" min="1" max="10"></label>'+
+    '<label>Hardness 1-10<input id="qcHard" type="number" min="1" max="10"></label><label>Hardness Test Temp °C<input id="qcHardTemp" type="number" step="0.1" value="-13"></label><label>Sweetness 1-10<input id="qcSweet" type="number" min="1" max="10"></label><label>Iciness 1-10<input id="qcIce" type="number" min="1" max="10"></label><label>Body 1-10<input id="qcBody" type="number" min="1" max="10"></label>'+
     '<label>Aftertaste 1-10<input id="qcAfter" type="number" min="1" max="10"></label><label>Result<select id="qcResult"><option value="trial">Trial</option><option value="pass">Pass</option><option value="fail">Fail</option></select></label><label class="wide">Day 1 Notes<input id="qcDay1"></label><label class="wide">Day 7 Notes<input id="qcDay7"></label>'+
+    qcLotSelectorHtml()+
     '</div><button class="primary" id="saveQc">Save QC Test</button></div></div>');
   $('qcClose').onclick=()=>$('qcModal').remove();
   $('saveQc').onclick=async()=>{
-    const body={batch_code:$('qcBatch').value,test_date:$('qcDate').value,machine:$('qcMachine').value,operator_name:$('qcOperator').value,mix_temp_c:$('qcMixTemp').value,pasteurization_peak_c:$('qcPasteur').value,pasteurization_hold_sec:$('qcPasteurHold').value,cooling_end_temp_c:$('qcCoolingEnd').value,cooling_time_min:$('qcCoolingTime').value,homogenization_pressure_bar:$('qcHomoBar').value,ageing_temp_c:$('qcAgeTemp').value,ageing_hours:$('qcAge').value,hardening_temp_c:$('qcHardTemp').value,hardening_time_min:$('qcHardTime').value,storage_temp_c:$('qcStorageTemp').value,ph:$('qcPh').value,brix:$('qcBrix').value,overrun_pct:$('qcOverrun').value,draw_temp_c:$('qcDraw').value,melt_30min_pct:$('qcMelt').value,mix_sample_g:$('qcMixSample').value,frozen_sample_g:$('qcFrozenSample').value,sample_volume_ml:$('qcSampleVolume').value,finished_yield_l:$('qcYieldL').value,batch_output_kg:$('qcOutputKg').value,hardness_score:$('qcHard').value,sweetness_score:$('qcSweet').value,iciness_score:$('qcIce').value,body_score:$('qcBody').value,aftertaste_score:$('qcAfter').value,day1_notes:$('qcDay1').value,day7_notes:$('qcDay7').value,result:$('qcResult').value};
+    const body={batch_code:$('qcBatch').value,test_date:$('qcDate').value,machine:$('qcMachine').value,operator_name:$('qcOperator').value,mix_temp_c:$('qcMixTemp').value,pasteurization_peak_c:$('qcPasteur').value,pasteurization_hold_sec:$('qcPasteurHold').value,cooling_end_temp_c:$('qcCoolingEnd').value,cooling_time_min:$('qcCoolingTime').value,homogenization_pressure_bar:$('qcHomoBar').value,ageing_temp_c:$('qcAgeTemp').value,ageing_hours:$('qcAge').value,hardening_temp_c:$('qcHardTemp').value,hardening_time_min:$('qcHardTime').value,storage_temp_c:$('qcStorageTemp').value,ph:$('qcPh').value,brix:$('qcBrix').value,overrun_pct:$('qcOverrun').value,draw_temp_c:$('qcDraw').value,melt_30min_pct:$('qcMelt').value,mix_sample_g:$('qcMixSample').value,frozen_sample_g:$('qcFrozenSample').value,sample_volume_ml:$('qcSampleVolume').value,finished_yield_l:$('qcYieldL').value,batch_output_kg:$('qcOutputKg').value,hardness_score:$('qcHard').value,hardness_test_temp_c:$('qcHardTemp').value,sweetness_score:$('qcSweet').value,iciness_score:$('qcIce').value,body_score:$('qcBody').value,aftertaste_score:$('qcAfter').value,day1_notes:$('qcDay1').value,day7_notes:$('qcDay7').value,result:$('qcResult').value,material_lots:[...document.querySelectorAll('[data-qc-lot]:checked')].map(x=>({lot_id:Number(x.dataset.qcLot),ingredient_name:materialLotsCache.find(y=>Number(y.id)===Number(x.dataset.qcLot))?.ingredient_name||'',quantity_g:document.querySelector('[data-qc-lot-qty="'+x.dataset.qcLot+'"]')?.value||null}))};
     const r=await fetch('/api/data?resource=gelato_qc&recipe_id='+recipeId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const j=await r.json().catch(()=>({}));
     if(!r.ok){alert(j.error||'QC save failed');return}
@@ -1320,6 +1367,11 @@ $('premiumWizardModal').onclick=e=>{if(e.target===$('premiumWizardModal'))$('pre
 ['wizardMaster','wizardBase','wizardBatch','wizardServingTemp','wizardSweetness','wizardTexture','wizardOverrun','wizardMachine','wizardFlavor','wizardFlavorDose','wizardPasteurMin','wizardPasteurMax','wizardPasteurHold','wizardCoolMax','wizardCoolTime','wizardAgeTemp','wizardAgeMin','wizardAgeMax','wizardDrawTarget','wizardDrawTol','wizardHardeningTemp','wizardHardeningTime','wizardStorageTemp','wizardShelfLifeDays','wizardSugarProfile'].forEach(id=>$(id).oninput=previewPremiumWizard);
 $('buildPremiumRecipe').onclick=buildPremiumRecipe;
 $('ingredientSettingsBtn').onclick=()=>{renderIngredientProfiles();$('profileModal').classList.remove('hidden')};
+$('materialLotsBtn').onclick=openMaterialLots;
+$('materialLotsClose').onclick=()=>$('materialLotsModal').classList.add('hidden');
+$('materialLotsModal').onclick=e=>{if(e.target===$('materialLotsModal'))$('materialLotsModal').classList.add('hidden')};
+$('addMaterialLot').onclick=()=>showMaterialLotForm();
+
 $('profileClose').onclick=()=>$('profileModal').classList.add('hidden');
 $('profileModal').onclick=e=>{if(e.target===$('profileModal'))$('profileModal').classList.add('hidden')};
 $('addDryMilkProfile').onclick=()=>{ingredientSettings.dry_milk_profiles=ingredientSettings.dry_milk_profiles||[];ingredientSettings.dry_milk_profiles.push({id:profileId('powder'),name:'New Dry Milk',fat_pct:0,protein_pct:0,carbs_pct:0,lactose_pct:null,true_msnf_pct:null,moisture_pct:0,ash_pct:null,total_solids_pct:null,other_pct:0,added_sugar_pct:null,price_per_kg:0,note:''});renderIngredientProfiles()};
