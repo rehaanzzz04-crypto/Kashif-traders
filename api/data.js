@@ -26,6 +26,7 @@ const allowed = new Set([
   "gelato_settings",
   "gelato_recipes",
   "gelato_qc",
+  "gelato_bio",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -836,6 +837,32 @@ async function ensureGelatoBusinessRecipes(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_qc_recipe_idx ON gelato_recipe_qc(recipe_id,test_date DESC,id DESC)`;
+  await sql`CREATE TABLE IF NOT EXISTS gelato_recipe_bio(
+    id BIGSERIAL PRIMARY KEY,
+    recipe_id BIGINT NOT NULL REFERENCES gelato_business_recipes(id) ON DELETE CASCADE,
+    sample_code TEXT,
+    lab_name TEXT,
+    report_reference TEXT,
+    test_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    storage_day INTEGER,
+    storage_temp_c NUMERIC(7,2),
+    packaging TEXT,
+    ph NUMERIC(6,3),
+    water_activity NUMERIC(6,4),
+    total_plate_count NUMERIC,
+    coliform_count NUMERIC,
+    yeast_mold_count NUMERIC,
+    listeria_status TEXT,
+    salmonella_status TEXT,
+    staph_status TEXT,
+    probiotic_cfu NUMERIC,
+    culture_strain TEXT,
+    notes TEXT,
+    created_by_id BIGINT,
+    created_by_name TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_bio_recipe_idx ON gelato_recipe_bio(recipe_id,test_date DESC,id DESC)`;
 }
 function cleanFormula(v){
   const arr=Array.isArray(v)?v:[];
@@ -951,6 +978,78 @@ async function recalcProductionConfidence(sql,recipeId){
   const score=Math.max(0,Math.min(100,passScore+completeness+storage-(recentFails*10)));
   await sql`UPDATE gelato_business_recipes SET production_confidence=${score},updated_at=now() WHERE id=${recipeId}`;
   return Number(score.toFixed(2));
+}
+
+function bioStatusValue(v){
+  const s=String(v||"").trim().toLowerCase();
+  if(["not detected","negative","nd","absent"].includes(s))return "not_detected";
+  if(["detected","positive","present"].includes(s))return "detected";
+  return s||null;
+}
+function bioValidationSummary(rows){
+  if(!rows.length)return {status:"incomplete",confidence:0,comments:["Biological validation data enter nahi ki gayi."]};
+  const latest=rows[0];
+  const pathogenFields=["listeria_status","salmonella_status","staph_status"];
+  const pathogenDetected=pathogenFields.some(k=>bioStatusValue(latest[k])==="detected");
+  const pathogenKnown=pathogenFields.filter(k=>bioStatusValue(latest[k])==="not_detected").length;
+  const countFields=["total_plate_count","coliform_count","yeast_mold_count"];
+  const countsFilled=countFields.filter(k=>latest[k]!==null&&latest[k]!==undefined).length;
+  const physFilled=["ph","water_activity","storage_temp_c"].filter(k=>latest[k]!==null&&latest[k]!==undefined).length;
+  const hasStorageSeries=new Set(rows.map(x=>Number(x.storage_day)).filter(Number.isFinite)).size>=2;
+  const hasPackaging=Boolean(cleanText(latest.packaging));
+  const completeness=((pathogenKnown/3)*35)+((countsFilled/3)*25)+((physFilled/3)*20)+(hasStorageSeries?15:0)+(hasPackaging?5:0);
+  let status="incomplete";
+  const comments=[];
+  if(pathogenDetected){
+    status="hold";
+    comments.push("Pathogen result Detected/Positive hai — product HOLD par rahega; release nahi kiya ja sakta.");
+  }else if(pathogenKnown===3&&countsFilled===3&&physFilled>=2&&hasStorageSeries){
+    status="lab_validated";
+    comments.push("Required biological validation fields complete hain aur pathogen results Not Detected hain.");
+  }else{
+    comments.push("Biological validation incomplete hai; missing lab/storage fields complete karein.");
+  }
+  if(!hasStorageSeries)comments.push("Shelf-life confidence ke liye kam az kam 2 storage checkpoints required hain.");
+  if(pathogenKnown<3&&!pathogenDetected)comments.push("Listeria, Salmonella aur Staphylococcus status complete karein.");
+  if(countsFilled<3)comments.push("TPC, Coliform aur Yeast/Mold counts complete karein.");
+  return {status,confidence:Number(Math.max(0,Math.min(100,completeness)).toFixed(1)),comments};
+}
+async function gelatoBio(sql,req,user){
+  await ensureGelatoBusinessRecipes(sql);
+  const id=asId(req.query?.id),recipeId=asId(req.query?.recipe_id),b=bodyOf(req);
+  if(req.method==="GET"){
+    if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
+    const rows=await sql\`SELECT * FROM gelato_recipe_bio WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC LIMIT 200\`;
+    return {status:200,data:{records:rows,summary:bioValidationSummary(rows)}};
+  }
+  if(req.method==="POST"){
+    if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
+    const recipe=(await sql\`SELECT id FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
+    const n=v=>v===null||v===undefined||v===""?null:Number(v);
+    const row=(await sql\`INSERT INTO gelato_recipe_bio(
+      recipe_id,sample_code,lab_name,report_reference,test_date,storage_day,storage_temp_c,packaging,ph,water_activity,
+      total_plate_count,coliform_count,yeast_mold_count,listeria_status,salmonella_status,staph_status,probiotic_cfu,culture_strain,notes,
+      created_by_id,created_by_name
+    ) VALUES(
+      \${recipeId},\${cleanText(b.sample_code)},\${cleanText(b.lab_name)},\${cleanText(b.report_reference)},COALESCE(\${cleanText(b.test_date)}::date,CURRENT_DATE),
+      \${n(b.storage_day)},\${n(b.storage_temp_c)},\${cleanText(b.packaging)},\${n(b.ph)},\${n(b.water_activity)},
+      \${n(b.total_plate_count)},\${n(b.coliform_count)},\${n(b.yeast_mold_count)},\${cleanText(b.listeria_status)},\${cleanText(b.salmonella_status)},\${cleanText(b.staph_status)},
+      \${n(b.probiotic_cfu)},\${cleanText(b.culture_strain)},\${cleanText(b.notes)},\${user.id},\${user.full_name||user.employee_code||"User"}
+    ) RETURNING *\`)[0];
+    const rows=await sql\`SELECT * FROM gelato_recipe_bio WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC\`;
+    return {status:201,data:{record:row,summary:bioValidationSummary(rows)}};
+  }
+  if(req.method==="DELETE"){
+    if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin biological record delete kar sakta hai"}};
+    if(!id)return {status:400,data:{error:"Valid biological record id required hai"}};
+    const old=(await sql\`SELECT recipe_id FROM gelato_recipe_bio WHERE id=\${id}\`)[0];
+    if(!old)return {status:404,data:{error:"Biological record not found"}};
+    await sql\`DELETE FROM gelato_recipe_bio WHERE id=\${id}\`;
+    const rows=await sql\`SELECT * FROM gelato_recipe_bio WHERE recipe_id=\${old.recipe_id} ORDER BY test_date DESC,id DESC\`;
+    return {status:200,data:{deleted:true,summary:bioValidationSummary(rows)}};
+  }
+  return {status:405,data:{error:"Method not allowed"}};
 }
 async function gelatoQc(sql,req,user){
   await ensureGelatoBusinessRecipes(sql);
@@ -1127,6 +1226,10 @@ async function handler(req, res) {
     }
     if (resource === "gelato_qc") {
       const out = await gelatoQc(sql, req, user);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "gelato_bio") {
+      const out = await gelatoBio(sql, req, user);
       return res.status(out.status).json(out.data);
     }
     await ensureEntryNumbers(sql);
