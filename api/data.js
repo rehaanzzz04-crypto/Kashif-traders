@@ -712,6 +712,8 @@ async function ensureGelatoSettings(sql){
       dry_milk_profiles:[{id:"melco-26",name:"Melco Vegetable Fat Filled Powder",fat_pct:26,protein_pct:16,carbs_pct:50,lactose_pct:null,moisture_pct:4,ash_pct:null,other_pct:4,added_sugar_pct:null,total_solids_pct:96,note:"Bag label profile; lactose/added sugar split requires current COA."}],
       cremodan_profiles:[],
       machine_profiles:[],
+      cost_settings:{currency:"PKR",whole_milk_per_kg:0,cream_per_kg:0,sucrose_per_kg:0,glucose_per_kg:0,water_per_kg:0,stabilizer_per_kg:0,emulsifier_per_kg:0},
+      quality_lock:{fat_tolerance_pct:0.35,msnf_tolerance_pct:0.50,total_solids_tolerance_pct:1.0,sweetness_index_tolerance:1.5,freezing_index_tolerance:2.0},
       default_dry_milk_id:"melco-26",
       default_cremodan_id:null,
       default_machine_id:null
@@ -733,6 +735,7 @@ function normalizeGelatoSettings(b={}){
     other_pct:gelatoPct(p?.other_pct),
     added_sugar_pct:p?.added_sugar_pct===null||p?.added_sugar_pct===""?null:gelatoPct(p?.added_sugar_pct),
     total_solids_pct:p?.total_solids_pct===null||p?.total_solids_pct===""?null:gelatoPct(p?.total_solids_pct),
+    price_per_kg:Math.max(0,Number(p?.price_per_kg)||0),
     note:cleanText(p?.note)
   }));
   const cremodan=(Array.isArray(b.cremodan_profiles)?b.cremodan_profiles:[]).slice(0,20).map((p,i)=>({
@@ -741,6 +744,7 @@ function normalizeGelatoSettings(b={}){
     dosage_g_per_kg:Math.max(0,Math.min(30,Number(p?.dosage_g_per_kg)||0)),
     includes_emulsifier:p?.includes_emulsifier!==false,
     product_type:cleanText(p?.product_type)||"General",
+    price_per_kg:Math.max(0,Number(p?.price_per_kg)||0),
     note:cleanText(p?.note)
   }));
   const machines=(Array.isArray(b.machine_profiles)?b.machine_profiles:[]).slice(0,20).map((p,i)=>({
@@ -756,12 +760,31 @@ function normalizeGelatoSettings(b={}){
     hardening_temp_c:p?.hardening_temp_c===null||p?.hardening_temp_c===""?null:Number(p?.hardening_temp_c),
     notes:cleanText(p?.notes)
   }));
+  const costSettings={
+    currency:cleanText(b?.cost_settings?.currency)||"PKR",
+    whole_milk_per_kg:Math.max(0,Number(b?.cost_settings?.whole_milk_per_kg)||0),
+    cream_per_kg:Math.max(0,Number(b?.cost_settings?.cream_per_kg)||0),
+    sucrose_per_kg:Math.max(0,Number(b?.cost_settings?.sucrose_per_kg)||0),
+    glucose_per_kg:Math.max(0,Number(b?.cost_settings?.glucose_per_kg)||0),
+    water_per_kg:Math.max(0,Number(b?.cost_settings?.water_per_kg)||0),
+    stabilizer_per_kg:Math.max(0,Number(b?.cost_settings?.stabilizer_per_kg)||0),
+    emulsifier_per_kg:Math.max(0,Number(b?.cost_settings?.emulsifier_per_kg)||0)
+  };
+  const qualityLock={
+    fat_tolerance_pct:Math.max(0,Math.min(5,Number(b?.quality_lock?.fat_tolerance_pct)||0.35)),
+    msnf_tolerance_pct:Math.max(0,Math.min(5,Number(b?.quality_lock?.msnf_tolerance_pct)||0.50)),
+    total_solids_tolerance_pct:Math.max(0,Math.min(10,Number(b?.quality_lock?.total_solids_tolerance_pct)||1.0)),
+    sweetness_index_tolerance:Math.max(0,Math.min(10,Number(b?.quality_lock?.sweetness_index_tolerance)||1.5)),
+    freezing_index_tolerance:Math.max(0,Math.min(15,Number(b?.quality_lock?.freezing_index_tolerance)||2.0))
+  };
   return {
     whole_milk:{name:"Whole Milk",fat_pct:gelatoPct(b?.whole_milk?.fat_pct||3.5),msnf_pct:gelatoPct(b?.whole_milk?.msnf_pct||8.5),protein_pct:gelatoPct(b?.whole_milk?.protein_pct||3.2),lactose_pct:gelatoPct(b?.whole_milk?.lactose_pct||4.8),ash_pct:gelatoPct(b?.whole_milk?.ash_pct||0.7),moisture_pct:gelatoPct(b?.whole_milk?.moisture_pct||87.8)},
     cream:{name:"Cream",fat_pct:gelatoPct(b?.cream?.fat_pct||35),msnf_pct:gelatoPct(b?.cream?.msnf_pct||5.5),protein_pct:gelatoPct(b?.cream?.protein_pct||2.1),lactose_pct:gelatoPct(b?.cream?.lactose_pct||3.0),ash_pct:gelatoPct(b?.cream?.ash_pct||0.5),moisture_pct:gelatoPct(b?.cream?.moisture_pct||59.4)},
     dry_milk_profiles:dry.length?dry:[{id:"melco-26",name:"Melco Vegetable Fat Filled Powder",fat_pct:26,protein_pct:16,carbs_pct:50,lactose_pct:null,moisture_pct:4,ash_pct:null,other_pct:4,added_sugar_pct:null,total_solids_pct:96,note:"Bag label profile; lactose/added sugar split requires current COA."}],
     cremodan_profiles:cremodan,
     machine_profiles:machines,
+    cost_settings:costSettings,
+    quality_lock:qualityLock,
     default_dry_milk_id:cleanText(b.default_dry_milk_id)||(dry[0]?.id||"melco-26"),
     default_cremodan_id:cleanText(b.default_cremodan_id),
     default_machine_id:cleanText(b.default_machine_id)
