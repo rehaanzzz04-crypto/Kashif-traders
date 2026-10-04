@@ -379,7 +379,7 @@ function collectProfiles(){
 }
 async function loadIngredientSettings(){
   try{
-    const r=await fetch('/api/gelato-settings',{cache:'no-store'});
+    const r=await fetch('/api/data?resource=gelato_settings',{cache:'no-store'});
     if(r.ok){const j=await r.json();if(j.settings)ingredientSettings=j.settings;}
     else throw Error('settings unavailable');
   }catch{
@@ -391,7 +391,7 @@ async function saveIngredientSettings(){
   collectProfiles();$('profileStatus').textContent='Saving…';
   localStorage.setItem(settingsKey,JSON.stringify(ingredientSettings));
   try{
-    const r=await fetch('/api/gelato-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(ingredientSettings)});
+    const r=await fetch('/api/data?resource=gelato_settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(ingredientSettings)});
     const j=await r.json().catch(()=>({}));
     if(!r.ok)throw Error(j.error||'Save failed');
     if(j.settings)ingredientSettings=j.settings;
