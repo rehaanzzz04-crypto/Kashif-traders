@@ -27,6 +27,7 @@ const allowed = new Set([
   "gelato_recipes",
   "gelato_qc",
   "gelato_bio",
+  "gelato_sensory",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -876,6 +877,12 @@ async function ensureGelatoBusinessRecipes(sql){
     created_by_name TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS mix_sample_g NUMERIC(10,3)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS frozen_sample_g NUMERIC(10,3)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS sample_volume_ml NUMERIC(10,3)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS calculated_overrun_pct NUMERIC(10,3)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS finished_yield_l NUMERIC(12,3)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS batch_output_kg NUMERIC(12,3)`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_qc_recipe_idx ON gelato_recipe_qc(recipe_id,test_date DESC,id DESC)`;
   await sql`CREATE TABLE IF NOT EXISTS gelato_recipe_bio(
     id BIGSERIAL PRIMARY KEY,
@@ -903,6 +910,26 @@ async function ensureGelatoBusinessRecipes(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_bio_recipe_idx ON gelato_recipe_bio(recipe_id,test_date DESC,id DESC)`;
+  await sql`CREATE TABLE IF NOT EXISTS gelato_recipe_sensory(
+    id BIGSERIAL PRIMARY KEY,
+    recipe_id BIGINT NOT NULL REFERENCES gelato_business_recipes(id) ON DELETE CASCADE,
+    qc_id BIGINT REFERENCES gelato_recipe_qc(id) ON DELETE SET NULL,
+    tester_name TEXT,
+    panel_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    creaminess_score INTEGER,
+    smoothness_score INTEGER,
+    sweetness_score INTEGER,
+    flavor_score INTEGER,
+    body_score INTEGER,
+    melt_score INTEGER,
+    aftertaste_score INTEGER,
+    overall_score INTEGER,
+    comments TEXT,
+    created_by_id BIGINT,
+    created_by_name TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_sensory_recipe_idx ON gelato_recipe_sensory(recipe_id,panel_date DESC,id DESC)`;
 }
 function cleanFormula(v){
   const arr=Array.isArray(v)?v:[];
@@ -1110,10 +1137,14 @@ async function gelatoQc(sql,req,user){
     const n=v=>v===null||v===undefined||v===""?null:Number(v);
     const row=(await sql`INSERT INTO gelato_recipe_qc(
       recipe_id,batch_code,test_date,machine,operator_name,mix_temp_c,pasteurization_peak_c,ageing_hours,ph,brix,overrun_pct,draw_temp_c,melt_30min_pct,
+      mix_sample_g,frozen_sample_g,sample_volume_ml,calculated_overrun_pct,finished_yield_l,batch_output_kg,
       hardness_score,sweetness_score,iciness_score,body_score,aftertaste_score,day1_notes,day7_notes,result,created_by_id,created_by_name
     ) VALUES(
       ${recipeId},${cleanText(b.batch_code)},COALESCE(${cleanText(b.test_date)}::date,CURRENT_DATE),${cleanText(b.machine)},${cleanText(b.operator_name)},
       ${n(b.mix_temp_c)},${n(b.pasteurization_peak_c)},${n(b.ageing_hours)},${n(b.ph)},${n(b.brix)},${n(b.overrun_pct)},${n(b.draw_temp_c)},${n(b.melt_30min_pct)},
+      ${n(b.mix_sample_g)},${n(b.frozen_sample_g)},${n(b.sample_volume_ml)},
+      ${(()=>{const m=Number(b.mix_sample_g),f=Number(b.frozen_sample_g);return Number.isFinite(m)&&Number.isFinite(f)&&f>0?((m-f)/f)*100:null})()},
+      ${n(b.finished_yield_l)},${n(b.batch_output_kg)},
       ${score(b.hardness_score)},${score(b.sweetness_score)},${score(b.iciness_score)},${score(b.body_score)},${score(b.aftertaste_score)},
       ${cleanText(b.day1_notes)},${cleanText(b.day7_notes)},${result},${user.id},${user.full_name||user.employee_code||"User"}
     ) RETURNING *`)[0];
@@ -1128,6 +1159,58 @@ async function gelatoQc(sql,req,user){
     await sql`DELETE FROM gelato_recipe_qc WHERE id=${id}`;
     const confidence=await recalcProductionConfidence(sql,Number(old.recipe_id));
     return {status:200,data:{deleted:true,production_confidence:confidence}};
+  }
+  return {status:405,data:{error:"Method not allowed"}};
+}
+
+function sensorySummary(rows){
+  if(!rows.length)return {panel_count:0,overall_avg:null,attribute_avg:{},confidence:0,comments:["Sensory panel data abhi available nahi."]};
+  const attrs=["creaminess_score","smoothness_score","sweetness_score","flavor_score","body_score","melt_score","aftertaste_score","overall_score"];
+  const avg={};
+  attrs.forEach(k=>{
+    const vals=rows.map(r=>Number(r[k])).filter(Number.isFinite);
+    avg[k]=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+  });
+  const confidence=Math.min(100,(Math.min(rows.length,5)/5)*70+(attrs.filter(k=>avg[k]!==null).length/attrs.length)*30);
+  const comments=[];
+  if(avg.creaminess_score!==null&&avg.creaminess_score<6)comments.push("Panel creaminess low report kar raha hai; fat/protein/emulsification aur freezing rate review karein.");
+  if(avg.smoothness_score!==null&&avg.smoothness_score<6)comments.push("Smoothness low hai; ice-crystal control, hardening speed aur heat-shock history review karein.");
+  if(avg.sweetness_score!==null&&avg.sweetness_score>8)comments.push("Panel sweetness high report kar raha hai; sugar profile ko freezing power ke saath rebalance karein.");
+  if(avg.flavor_score!==null&&avg.flavor_score<6)comments.push("Flavor intensity/quality low hai; flavor dose aur base masking effect review karein.");
+  if(avg.melt_score!==null&&avg.melt_score<6)comments.push("Melt performance weak hai; stabilizer/emulsifier, fat destabilization aur overrun review karein.");
+  if(!comments.length)comments.push("Sensory panel mein koi major low-score trigger nahi hua; repeatability ke liye multiple batches continue karein.");
+  return {panel_count:rows.length,overall_avg:avg.overall_score===null?null:Number(avg.overall_score.toFixed(2)),attribute_avg:avg,confidence:Number(confidence.toFixed(1)),comments};
+}
+async function gelatoSensory(sql,req,user){
+  await ensureGelatoBusinessRecipes(sql);
+  const id=asId(req.query?.id),recipeId=asId(req.query?.recipe_id),b=bodyOf(req);
+  if(req.method==="GET"){
+    if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
+    const rows=await sql\`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=\${recipeId} ORDER BY panel_date DESC,id DESC LIMIT 200\`;
+    return {status:200,data:{records:rows,summary:sensorySummary(rows)}};
+  }
+  if(req.method==="POST"){
+    if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
+    const recipe=(await sql\`SELECT id FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
+    const s=v=>v===null||v===undefined||v===""?null:Math.max(1,Math.min(10,Math.round(Number(v)||0)));
+    const row=(await sql\`INSERT INTO gelato_recipe_sensory(
+      recipe_id,qc_id,tester_name,panel_date,creaminess_score,smoothness_score,sweetness_score,flavor_score,body_score,melt_score,aftertaste_score,overall_score,comments,created_by_id,created_by_name
+    ) VALUES(
+      \${recipeId},\${asId(b.qc_id)},\${cleanText(b.tester_name)},COALESCE(\${cleanText(b.panel_date)}::date,CURRENT_DATE),
+      \${s(b.creaminess_score)},\${s(b.smoothness_score)},\${s(b.sweetness_score)},\${s(b.flavor_score)},\${s(b.body_score)},\${s(b.melt_score)},\${s(b.aftertaste_score)},\${s(b.overall_score)},
+      \${cleanText(b.comments)},\${user.id},\${user.full_name||user.employee_code||"User"}
+    ) RETURNING *\`)[0];
+    const rows=await sql\`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=\${recipeId} ORDER BY panel_date DESC,id DESC\`;
+    return {status:201,data:{record:row,summary:sensorySummary(rows)}};
+  }
+  if(req.method==="DELETE"){
+    if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin sensory record delete kar sakta hai"}};
+    if(!id)return {status:400,data:{error:"Valid sensory id required hai"}};
+    const old=(await sql\`DELETE FROM gelato_recipe_sensory WHERE id=\${id} RETURNING recipe_id\`)[0];
+    if(!old)return {status:404,data:{error:"Sensory record not found"}};
+    const rows=await sql\`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=\${old.recipe_id} ORDER BY panel_date DESC,id DESC\`;
+    return {status:200,data:{deleted:true,summary:sensorySummary(rows)}};
   }
   return {status:405,data:{error:"Method not allowed"}};
 }
@@ -1270,6 +1353,10 @@ async function handler(req, res) {
     }
     if (resource === "gelato_bio") {
       const out = await gelatoBio(sql, req, user);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "gelato_sensory") {
+      const out = await gelatoSensory(sql, req, user);
       return res.status(out.status).json(out.data);
     }
     await ensureEntryNumbers(sql);
