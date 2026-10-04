@@ -854,6 +854,7 @@ function evaluateResearchFit(formula,sourceFormula,context={}){
   const cur=cleanFormula(formula),src=cleanFormula(sourceFormula);
   const total=cur.reduce((s,x)=>s+x.g,0),srcTotal=src.reduce((s,x)=>s+x.g,0);
   if(!cur.length||!src.length||!total||!srcTotal)return {score:null,metrics:{},comments:["Research fit unavailable: complete current and source formulas are required."]};
+
   const normalizeName=s=>String(s||"").trim().toLowerCase();
   const curMap=new Map(cur.map(x=>[normalizeName(x.name),x.g/total]));
   const srcMap=new Map(src.map(x=>[normalizeName(x.name),x.g/srcTotal]));
@@ -867,31 +868,72 @@ function evaluateResearchFit(formula,sourceFormula,context={}){
   }
   const ratioFit=Math.max(0,1-(l1/2));
   const massFit=Math.max(0,1-Math.min(1,Math.abs(total-srcTotal)/srcTotal));
-  const score=Math.max(0,Math.min(100,(ratioFit*.85+massFit*.15)*100));
+
+  const target=context?.research_target||{};
+  const actual=target?.actual||{};
+  const targetChecks=[];
+  const addCheck=(key,label,tolerance,actualKey=key)=>{
+    const targetVal=Number(target?.[key]),actualVal=Number(actual?.[actualKey]);
+    if(Number.isFinite(targetVal)&&Number.isFinite(actualVal)){
+      const delta=Math.abs(actualVal-targetVal);
+      const fit=Math.max(0,1-(delta/Math.max(tolerance,Math.abs(targetVal)*.20,1)));
+      targetChecks.push({key,label,target:targetVal,actual:actualVal,delta,fit});
+    }
+  };
+  addCheck("fat","Fat",2);
+  addCheck("msnf","MSNF",2.5);
+  addCheck("total_solids","Total solids",4);
+  addCheck("water","Water",4);
+  addCheck("sucrose","Sucrose",3);
+  addCheck("glucose","Glucose solids",3);
+  const compositionFit=targetChecks.length?targetChecks.reduce((s,x)=>s+x.fit,0)/targetChecks.length:null;
+  const coverage=Number(actual?.data_coverage);
+  const coverageFactor=Number.isFinite(coverage)?Math.max(.55,Math.min(1,coverage/100)):1;
+
+  let score;
+  if(compositionFit!==null){
+    score=((compositionFit*.70)+(ratioFit*.20)+(massFit*.10))*100*coverageFactor;
+  }else{
+    score=((ratioFit*.85)+(massFit*.15))*100;
+  }
+  score=Math.max(0,Math.min(100,score));
+
   changes.sort((a,b)=>Math.abs(b.delta_pct)-Math.abs(a.delta_pct));
   const comments=[];
-  if(score>=98)comments.push("Formula research/master baseline ke bohat qareeb hai; ratio deviation negligible hai.");
-  else if(score>=93)comments.push("Minor formulation deviation hai. Production sensory/texture trial recommended hai.");
-  else if(score>=85)comments.push("Meaningful deviation hai. Research baseline se effect body, sweetness, freezing behaviour ya texture par aa sakta hai; production test zaroor karein.");
-  else comments.push("Major deviation hai. Is version ko research-aligned final formula samajhne se pehle re-balance aur production validation karein.");
-  changes.slice(0,4).forEach(x=>comments.push((x.delta_pct>0?"Higher":"Lower")+" than research baseline: "+x.name+" ("+Math.abs(x.delta_pct).toFixed(2)+" percentage-points of formula)."));
+  if(score>=98)comments.push("Formula research target ke bohat qareeb hai; measured/known composition deviation negligible hai.");
+  else if(score>=93)comments.push("Minor research deviation hai. Production sensory aur storage trial continue rakhein.");
+  else if(score>=85)comments.push("Meaningful research deviation hai; body, sweetness, freezing behaviour ya texture par effect aa sakta hai.");
+  else comments.push("Major research deviation hai. Is version ko final karne se pehle re-balance aur production validation recommended hai.");
+
+  targetChecks.filter(x=>x.delta>.25).sort((a,b)=>b.delta-a.delta).slice(0,4).forEach(x=>{
+    comments.push(x.label+": target "+x.target.toFixed(2)+"%, calculated "+x.actual.toFixed(2)+"%.");
+  });
+  changes.slice(0,3).forEach(x=>comments.push((x.delta_pct>0?"Higher":"Lower")+" formula share vs saved research master: "+x.name+" ("+Math.abs(x.delta_pct).toFixed(2)+" percentage-points)."));
+
   const settings=context?.ingredient_settings||{};
   const powder=(settings?.dry_milk_profiles||[]).find(x=>x.id===settings?.default_dry_milk_id);
-  if(powder&&powder.added_sugar_pct===null)comments.push("Selected dry milk/fat-filled powder ka added-sugar split unknown hai; sweetness/freezing-point evaluation partial rahegi jab tak current COA mein sugar split enter na ho.");
-  if(context?.department==="icecream")comments.push("Fat/MSNF/sugar targets ko product type ke research master ke against maintain karein; stabilizer/emulsifier dosage manufacturer recommendation ke mutabiq verify karein.");
+  if(powder&&(powder.added_sugar_pct===null||powder.lactose_pct===null))
+    comments.push("Selected dry milk/fat-filled powder ka lactose/added-sugar split incomplete hai; sweetness/freezing analysis partial confidence par hai.");
+  if(Number.isFinite(coverage)&&coverage<90)
+    comments.push("Ingredient composition data coverage "+coverage.toFixed(1)+"% hai. Current COA values add karne se Research Fit zyada reliable hoga.");
+  if(context?.department==="icecream")
+    comments.push("Stabilizer/emulsifier ya CREMODAN dosage ko exact product grade ke manufacturer specification aur production trial ke against verify karein.");
+
   return {
     score:Number(score.toFixed(2)),
     metrics:{
       ratio_fit_pct:Number((ratioFit*100).toFixed(2)),
       batch_mass_fit_pct:Number((massFit*100).toFixed(2)),
+      composition_fit_pct:compositionFit===null?null:Number((compositionFit*100).toFixed(2)),
+      data_coverage_pct:Number.isFinite(coverage)?Number(coverage.toFixed(2)):null,
       current_total_g:Number(total.toFixed(2)),
       source_total_g:Number(srcTotal.toFixed(2)),
+      target_checks:targetChecks,
       largest_deviations:changes.slice(0,6)
     },
     comments
   };
 }
-
 async function recalcProductionConfidence(sql,recipeId){
   const rows=await sql\`SELECT * FROM gelato_recipe_qc WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC\`;
   if(!rows.length){
