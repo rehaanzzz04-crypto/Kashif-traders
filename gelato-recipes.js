@@ -94,6 +94,11 @@ let ingredientSettings={
   machine_profiles:[],
   flavor_profiles:[],
   ingredient_profiles:[],
+  bio_standard_profiles:[
+    {id:'pfa-ppfr-2018-icecream',name:'Punjab Pure Food Regulations 2018 — Ice Cream',jurisdiction:'Punjab, Pakistan',authority:'Punjab Food Authority',version:'PPFR 2018',reference_only:false,criteria:{total_plate_count:{required:true,max:50000,unit:'CFU/g'},coliform_count:{required:true,max:10,unit:'CFU/g or mL'},e_coli_status:{required:true,expected:'not_detected'},salmonella_status:{required:true,expected:'not_detected'},staph_status:{required:true,expected:'not_detected'},listeria_status:{required:false,expected:'not_detected'},yeast_mold_count:{required:false,max:null,unit:'CFU/g'}},source_name:'Punjab Pure Food Regulations, 2018',source_url:'https://www.pfa.gop.pk/wp-content/uploads/2023/02/PPFR-2018-PFA.pdf',notes:'Ice cream microbiological criteria.'},
+    {id:'psqca-969-2010-reference',name:'PSQCA PS 969-2010 — Ice Cream',jurisdiction:'Pakistan',authority:'PSQCA',version:'PS 969-2010 (1st Rev)',reference_only:true,criteria:{},source_name:'PSQCA Agriculture & Food Standards Index',source_url:'https://www.psqca.com.pk/division-wise-standards/agriculture-food-division/',notes:'Reference-only until exact microbiological criteria source text is verified.'},
+    {id:'codex-01-7-reference',name:'Codex GSFA 01.7 — Dairy-based desserts / ice cream',jurisdiction:'International reference',authority:'Codex Alimentarius',version:'GSFA current reference',reference_only:true,criteria:{},source_name:'Codex GSFA Food Category 01.7',source_url:'https://codex.fao.org/codex-texts/codex-online-databases/gsfa/food-categories/food-category-details?categoryId=d672ded6-249a-f111-b8dc-70a8a5613865',notes:'International reference only; not Punjab law.'}
+  ],
   sugar_profiles:[
     {id:'sucrose-ref',name:'Sucrose',type:'sucrose',de:null,dry_solids_pct:100,relative_sweetness:1,fpdf:1,verified:true,price_per_kg:0,source_name:'Tetra Pak Dairy Processing Handbook',source_url:'https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream',note:'Reference factor'},
     {id:'dextrose-ref',name:'Dextrose / Glucose',type:'dextrose',de:100,dry_solids_pct:100,relative_sweetness:.8,fpdf:1.9,verified:true,price_per_kg:0,source_name:'Tetra Pak Dairy Processing Handbook',source_url:'https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream',note:'Reference factor'},
@@ -106,7 +111,8 @@ let ingredientSettings={
   default_cremodan_id:null,
   default_machine_id:null,
   default_flavor_id:null,
-  default_sugar_id:'glucose42-ref'
+  default_sugar_id:'glucose42-ref',
+  default_bio_standard_id:'pfa-ppfr-2018-icecream'
 };
 const settingsKey='kt_gelato_ingredient_settings_v1';
 
@@ -861,6 +867,18 @@ function renderIngredientProfiles(){
   $('wizardSugarProfile').innerHTML='<option value="">Default Sugar Profile</option>'+sugars.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('');
   $('wizardSugarProfile').value=ingredientSettings.default_sugar_id||'';
   $('sugarProfiles').querySelectorAll('[data-del-sugar]').forEach(b=>b.onclick=()=>{ingredientSettings.sugar_profiles.splice(Number(b.dataset.delSugar),1);renderIngredientProfiles()});
+  const bioProfiles=ingredientSettings.bio_standard_profiles||[];
+  $('bioStandardProfiles').innerHTML=bioProfiles.map(p=>{
+    const c=p.criteria||{},bits=[];
+    if(c.total_plate_count?.required)bits.push('TPC ≤ '+c.total_plate_count.max+' '+(c.total_plate_count.unit||''));
+    if(c.coliform_count?.required)bits.push('Coliform ≤ '+c.coliform_count.max+' '+(c.coliform_count.unit||''));
+    if(c.e_coli_status?.required)bits.push('E. coli absent');
+    if(c.salmonella_status?.required)bits.push('Salmonella absent');
+    if(c.staph_status?.required)bits.push('Staphylococcus absent');
+    return '<div class="profileCard"><div class="profileCardHead"><div><b>'+esc(p.name)+'</b><small>'+esc(p.jurisdiction||'')+' • '+esc(p.version||'')+'</small></div><span class="badge '+(p.reference_only?'':'finalBadge')+'">'+(p.reference_only?'REFERENCE':'ACTIVE LIMITS')+'</span></div><div class="businessMetrics">'+bits.map(x=>'<span><b>'+esc(x)+'</b></span>').join('')+'</div><div class="source"><b>Authority:</b> '+esc(p.authority||'—')+'<br><b>Source:</b> '+esc(p.source_name||'—')+'<br>'+esc(p.notes||'')+'</div></div>';
+  }).join('');
+  $('defaultBioStandard').innerHTML='<option value="">None</option>'+bioProfiles.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('');
+  $('defaultBioStandard').value=ingredientSettings.default_bio_standard_id||'';
   const cost=ingredientSettings.cost_settings||{},lock=ingredientSettings.quality_lock||{};
   $('costCurrency').value=cost.currency||'PKR';
   $('costMilk').value=Number(cost.whole_milk_per_kg||0);$('costCream').value=Number(cost.cream_per_kg||0);
@@ -902,6 +920,7 @@ function collectProfiles(){
     card.querySelectorAll('[data-k]').forEach(x=>{const k=x.dataset.k;p[k]=k==='verified'?x.value==='true':x.type==='number'?(x.value===''?null:Number(x.value)):x.value});
   });
   ingredientSettings.default_sugar_id=$('defaultSugar').value||null;
+  ingredientSettings.default_bio_standard_id=$('defaultBioStandard').value||null;
   ingredientSettings.cost_settings={
     currency:$('costCurrency').value.trim()||'PKR',
     whole_milk_per_kg:Number($('costMilk').value||0),cream_per_kg:Number($('costCream').value||0),
@@ -1374,40 +1393,48 @@ function showStabilityForm(recipeId){
     $('stabilityModal').remove();alert('Stability checkpoint saved • '+String(j.summary?.status||'in_progress').toUpperCase()+' • '+Number(j.summary?.confidence||0).toFixed(1)+'%');viewBusinessRecipe(recipeId);
   };
 }
+
 async function loadBioForRecipe(recipeId){
   try{
     const r=await fetch('/api/data?resource=gelato_bio&recipe_id='+encodeURIComponent(recipeId),{cache:'no-store'});
     const j=await r.json().catch(()=>({}));
     if(!r.ok)throw Error(j.error||'Biological validation load failed');
-    renderBioPanel(recipeId,j.records||[],j.summary||{status:'incomplete',confidence:0,comments:[]});
+    renderBioPanel(recipeId,j.records||[],j.summary||{status:'incomplete',confidence:0,comments:[]},j.profiles||[],j.selected_profile_id||null);
   }catch(e){$('businessRecipeList').insertAdjacentHTML('beforeend','<div class="warning">'+esc(e.message)+'</div>')}
 }
-function renderBioPanel(recipeId,rows,summary){
-  const statusLabel=summary.status==='lab_validated'?'LAB-VALIDATED':summary.status==='hold'?'HOLD':'INCOMPLETE';
-  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.sample_code||('BIO #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • Day '+esc(x.storage_day??'—')+' • '+esc(x.lab_name||'No lab')+'</small></div><span class="badge '+(summary.status==='lab_validated'?'finalBadge':'')+'">'+esc(statusLabel)+'</span></div><div class="businessMetrics"><span>Listeria <b>'+esc(x.listeria_status||'—')+'</b></span><span>Salmonella <b>'+esc(x.salmonella_status||'—')+'</b></span><span>TPC <b>'+esc(x.total_plate_count??'—')+'</b></span><span>Yeast/Mold <b>'+esc(x.yeast_mold_count??'—')+'</b></span></div></div>').join('');
-  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><h3>Microbiology & Shelf-Life Validation</h3><div class="stats"><div class="stat"><small>Validation Status</small><strong>'+esc(statusLabel)+'</strong></div><div class="stat"><small>Validation Confidence</small><strong>'+Number(summary.confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>Storage Checkpoints</small><strong>'+rows.length+'</strong></div><div class="stat"><small>Release Rule</small><strong>'+(summary.status==='hold'?'HOLD':'Review')+'</strong></div></div>'+
-    '<div class="warning"><b>Important:</b> Confidence % data-completeness indicator hai; food-safety clearance nahi. Applicable lab/regulatory criteria ke baghair product automatically safe declare nahi hoga.</div>'+
+function renderBioPanel(recipeId,rows,summary,profiles,selectedProfileId){
+  const statusLabel=summary.status==='validation_complete'?'VALIDATION COMPLETE':summary.status==='hold'?'HOLD':summary.status==='reference_only'?'REFERENCE ONLY':'INCOMPLETE';
+  const profile=summary.standard_profile||profiles.find(x=>x.id===selectedProfileId)||null;
+  const criteria=(summary.criteria||[]).map(x=>'<div class="releaseCheck '+(x.pass?'pass':'fail')+'"><span>'+(x.pass?'✓':'!')+'</span><div><b>'+esc(x.label)+'</b><small>'+esc(x.actual==null?'Missing':String(x.actual))+(x.max!=null?' / max '+esc(String(x.max)):'')+(x.expected?' / expected '+esc(x.expected):'')+'</small></div></div>').join('');
+  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.sample_code||('BIO #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • Day '+esc(x.storage_day??'—')+' • '+esc(x.lab_name||'No lab')+'</small></div><span class="badge '+(summary.status==='validation_complete'?'finalBadge':'')+'">'+esc(statusLabel)+'</span></div><div class="businessMetrics"><span>E. coli <b>'+esc(x.e_coli_status||'—')+'</b></span><span>Salmonella <b>'+esc(x.salmonella_status||'—')+'</b></span><span>Staph <b>'+esc(x.staph_status||'—')+'</b></span><span>TPC <b>'+esc(x.total_plate_count??'—')+'</b></span><span>Coliform <b>'+esc(x.coliform_count??'—')+'</b></span><span>Method <b>'+esc(x.test_method||'—')+'</b></span></div></div>').join('');
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><div class="businessRecipeHead"><div><h3>Microbiology & Biological Validation</h3><small>'+esc(profile?.name||'No standard selected')+'</small></div><span class="badge '+(summary.status==='validation_complete'?'finalBadge':'')+'">'+esc(statusLabel)+'</span></div><div class="stats"><div class="stat"><small>Data Completeness</small><strong>'+Number(summary.confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>Standard Status</small><strong>'+esc(String(summary.standard_status||'incomplete').toUpperCase())+'</strong></div><div class="stat"><small>Storage Checkpoints</small><strong>'+rows.length+'</strong></div><div class="stat"><small>Jurisdiction</small><strong>'+esc(profile?.jurisdiction||'—')+'</strong></div></div>'+
+    (criteria?'<div class="releaseGrid">'+criteria+'</div>':'')+
+    '<div class="warning"><b>Important:</b> Validation status selected documented profile ke criteria ke against hai. Ye regulator/lab certification ka substitute nahi hai.</div>'+
     '<div class="steps">'+(summary.comments||[]).map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div>'+
     '<div id="bioList">'+(cards||'<div class="note">No biological validation tests yet.</div>')+'</div><button class="primary" id="addBioBtn" type="button">+ Add Biological / Lab Test</button></div>');
-  $('addBioBtn').onclick=()=>showBioForm(recipeId);
+  $('addBioBtn').onclick=()=>showBioForm(recipeId,profiles,selectedProfileId);
 }
-function showBioForm(recipeId){
-  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="profileModal" id="bioModal"><div class="profileBox"><div class="profileHead"><div><h2>Biological / Shelf-Life Test</h2><p>Lab aur storage validation record karein.</p></div><button id="bioClose" class="ghost">Close</button></div><div class="profileGrid">'+
-    '<label>Sample Code<input id="bioSample"></label><label>Lab Name<input id="bioLab"></label><label>Report Reference<input id="bioReport"></label><label>Test Date<input id="bioDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label>'+
+function showBioForm(recipeId,profiles=[],selectedProfileId=null){
+  const opts=(profiles||ingredientSettings.bio_standard_profiles||[]).map(p=>'<option value="'+esc(p.id)+'" '+(p.id===(selectedProfileId||ingredientSettings.default_bio_standard_id)?'selected':'')+'>'+esc(p.name)+'</option>').join('');
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="profileModal" id="bioModal"><div class="profileBox"><div class="profileHead"><div><h2>Biological / Shelf-Life Test</h2><p>Lab result ko selected standard profile ke against evaluate karein.</p></div><button id="bioClose" class="ghost">Close</button></div><div class="profileGrid">'+
+    '<label class="wide">Standard Profile<select id="bioStandard">'+opts+'</select></label>'+
+    '<label>Sample Code<input id="bioSample"></label><label>Lab Name<input id="bioLab"></label><label>Report Reference<input id="bioReport"></label><label>Test Method<input id="bioMethod" placeholder="e.g. ISO / BAM / lab SOP"></label>'+
+    '<label>Lab Accreditation<input id="bioAccred" placeholder="Accreditation / scope ref"></label><label>Sample Amount<input id="bioSampleAmount" type="number" step="0.001"></label><label>Sample Unit<input id="bioSampleUnit" placeholder="g / mL"></label><label>Test Date<input id="bioDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label>'+
     '<label>Storage Day<input id="bioDay" type="number" min="0"></label><label>Storage Temp °C<input id="bioStoreTemp" type="number" step="0.1"></label><label>Packaging<input id="bioPack"></label><label>pH<input id="bioPh" type="number" step="0.01"></label>'+
     '<label>Water Activity aw<input id="bioAw" type="number" step="0.001"></label><label>Total Plate Count CFU/g<input id="bioTpc" type="number" step="1"></label><label>Coliform CFU/g<input id="bioColi" type="number" step="1"></label><label>Yeast/Mold CFU/g<input id="bioYm" type="number" step="1"></label>'+
-    '<label>Listeria<select id="bioListeria"><option value="">Not Tested</option><option>Not Detected</option><option>Detected</option></select></label><label>Salmonella<select id="bioSalmonella"><option value="">Not Tested</option><option>Not Detected</option><option>Detected</option></select></label><label>Staphylococcus<select id="bioStaph"><option value="">Not Tested</option><option>Not Detected</option><option>Detected</option></select></label>'+
+    '<label>E. coli<select id="bioEcoli"><option value="">Not Tested</option><option>Not Detected</option><option>Detected</option></select></label><label>Salmonella<select id="bioSalmonella"><option value="">Not Tested</option><option>Not Detected</option><option>Detected</option></select></label><label>Staphylococcus<select id="bioStaph"><option value="">Not Tested</option><option>Not Detected</option><option>Detected</option></select></label><label>Listeria<select id="bioListeria"><option value="">Not Tested</option><option>Not Detected</option><option>Detected</option></select></label>'+
     '<label>Probiotic CFU/g<input id="bioProbiotic" type="number" step="1"></label><label class="wide">Culture Strain<input id="bioCulture" placeholder="e.g. Lactobacillus..."></label><label class="wide">Notes<input id="bioNotes"></label>'+
     '</div><button class="primary" id="saveBio">Save Biological Test</button></div></div>');
   $('bioClose').onclick=()=>$('bioModal').remove();
   $('saveBio').onclick=async()=>{
-    const body={sample_code:$('bioSample').value,lab_name:$('bioLab').value,report_reference:$('bioReport').value,test_date:$('bioDate').value,storage_day:$('bioDay').value,storage_temp_c:$('bioStoreTemp').value,packaging:$('bioPack').value,ph:$('bioPh').value,water_activity:$('bioAw').value,total_plate_count:$('bioTpc').value,coliform_count:$('bioColi').value,yeast_mold_count:$('bioYm').value,listeria_status:$('bioListeria').value,salmonella_status:$('bioSalmonella').value,staph_status:$('bioStaph').value,probiotic_cfu:$('bioProbiotic').value,culture_strain:$('bioCulture').value,notes:$('bioNotes').value};
+    const body={standard_profile_id:$('bioStandard').value,sample_code:$('bioSample').value,lab_name:$('bioLab').value,report_reference:$('bioReport').value,test_method:$('bioMethod').value,lab_accreditation:$('bioAccred').value,sample_amount:$('bioSampleAmount').value,sample_unit:$('bioSampleUnit').value,test_date:$('bioDate').value,storage_day:$('bioDay').value,storage_temp_c:$('bioStoreTemp').value,packaging:$('bioPack').value,ph:$('bioPh').value,water_activity:$('bioAw').value,total_plate_count:$('bioTpc').value,coliform_count:$('bioColi').value,yeast_mold_count:$('bioYm').value,e_coli_status:$('bioEcoli').value,listeria_status:$('bioListeria').value,salmonella_status:$('bioSalmonella').value,staph_status:$('bioStaph').value,probiotic_cfu:$('bioProbiotic').value,culture_strain:$('bioCulture').value,notes:$('bioNotes').value};
     const r=await fetch('/api/data?resource=gelato_bio&recipe_id='+recipeId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const j=await r.json().catch(()=>({}));
     if(!r.ok){alert(j.error||'Biological test save failed');return}
     $('bioModal').remove();alert('Biological validation saved • '+String(j.summary?.status||'incomplete').toUpperCase()+' • '+Number(j.summary?.confidence||0).toFixed(1)+'%');viewBusinessRecipe(recipeId);
   };
 }
+
 async function auth(){
   const key='kt_offline_user_v1';let ok=false;
   try{const r=await fetch('/api/auth?action=me',{cache:'no-store'});if(r.status===401||r.status===403){location.replace('/login.html');return}if(r.ok){const j=await r.json();ok=!!j.user;if(j.user)localStorage.setItem(key,JSON.stringify({user:j.user,saved_at:new Date().toISOString()}));}}
