@@ -109,5 +109,8 @@ self.KT_SHELL_ASSETS = [
   "/supplier-payment-invoice.js",
   "/supplier-payment-pdf-ui.js",
   "/tables-consistent.css",
-  "/tables-consistent.css?v=20260910-tables1"
+  "/tables-consistent.css?v=20260910-tables1",
+  "/gelato-recipes.html",
+  "/gelato-recipes.css",
+  "/gelato-recipes.js"
 ];
