@@ -555,6 +555,7 @@ async function viewBusinessRecipe(id){
       '</tbody></table></div><div class="source"><b>Version history:</b> '+(versions||[]).map(v=>'V'+v.version+' • '+new Date(v.changed_at).toLocaleString()).join(' | ')+'</div></div>';
     $('backBusinessList').onclick=loadBusinessRecipes;
     loadQcForRecipe(id);
+    loadBioForRecipe(id);
   }catch(e){alert(e.message)}
 }
 async function editBusinessRecipe(id){
@@ -620,6 +621,41 @@ async function markGolden(recipeId){
   const j=await r.json().catch(()=>({}));
   if(!r.ok){alert(j.error||'Golden recipe requirements not met');return}
   alert('Golden Production Recipe approved');viewBusinessRecipe(recipeId);
+}
+
+async function loadBioForRecipe(recipeId){
+  try{
+    const r=await fetch('/api/data?resource=gelato_bio&recipe_id='+encodeURIComponent(recipeId),{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Biological validation load failed');
+    renderBioPanel(recipeId,j.records||[],j.summary||{status:'incomplete',confidence:0,comments:[]});
+  }catch(e){$('businessRecipeList').insertAdjacentHTML('beforeend','<div class="warning">'+esc(e.message)+'</div>')}
+}
+function renderBioPanel(recipeId,rows,summary){
+  const statusLabel=summary.status==='lab_validated'?'LAB-VALIDATED':summary.status==='hold'?'HOLD':'INCOMPLETE';
+  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.sample_code||('BIO #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • Day '+esc(x.storage_day??'—')+' • '+esc(x.lab_name||'No lab')+'</small></div><span class="badge '+(summary.status==='lab_validated'?'finalBadge':'')+'">'+esc(statusLabel)+'</span></div><div class="businessMetrics"><span>Listeria <b>'+esc(x.listeria_status||'—')+'</b></span><span>Salmonella <b>'+esc(x.salmonella_status||'—')+'</b></span><span>TPC <b>'+esc(x.total_plate_count??'—')+'</b></span><span>Yeast/Mold <b>'+esc(x.yeast_mold_count??'—')+'</b></span></div></div>').join('');
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><h3>Microbiology & Shelf-Life Validation</h3><div class="stats"><div class="stat"><small>Validation Status</small><strong>'+esc(statusLabel)+'</strong></div><div class="stat"><small>Validation Confidence</small><strong>'+Number(summary.confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>Storage Checkpoints</small><strong>'+rows.length+'</strong></div><div class="stat"><small>Release Rule</small><strong>'+(summary.status==='hold'?'HOLD':'Review')+'</strong></div></div>'+
+    '<div class="warning"><b>Important:</b> Confidence % data-completeness indicator hai; food-safety clearance nahi. Applicable lab/regulatory criteria ke baghair product automatically safe declare nahi hoga.</div>'+
+    '<div class="steps">'+(summary.comments||[]).map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div>'+
+    '<div id="bioList">'+(cards||'<div class="note">No biological validation tests yet.</div>')+'</div><button class="primary" id="addBioBtn" type="button">+ Add Biological / Lab Test</button></div>');
+  $('addBioBtn').onclick=()=>showBioForm(recipeId);
+}
+function showBioForm(recipeId){
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="profileModal" id="bioModal"><div class="profileBox"><div class="profileHead"><div><h2>Biological / Shelf-Life Test</h2><p>Lab aur storage validation record karein.</p></div><button id="bioClose" class="ghost">Close</button></div><div class="profileGrid">'+
+    '<label>Sample Code<input id="bioSample"></label><label>Lab Name<input id="bioLab"></label><label>Report Reference<input id="bioReport"></label><label>Test Date<input id="bioDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label>'+
+    '<label>Storage Day<input id="bioDay" type="number" min="0"></label><label>Storage Temp °C<input id="bioStoreTemp" type="number" step="0.1"></label><label>Packaging<input id="bioPack"></label><label>pH<input id="bioPh" type="number" step="0.01"></label>'+
+    '<label>Water Activity aw<input id="bioAw" type="number" step="0.001"></label><label>Total Plate Count CFU/g<input id="bioTpc" type="number" step="1"></label><label>Coliform CFU/g<input id="bioColi" type="number" step="1"></label><label>Yeast/Mold CFU/g<input id="bioYm" type="number" step="1"></label>'+
+    '<label>Listeria<select id="bioListeria"><option value="">Not Tested</option><option>Not Detected</option><option>Detected</option></select></label><label>Salmonella<select id="bioSalmonella"><option value="">Not Tested</option><option>Not Detected</option><option>Detected</option></select></label><label>Staphylococcus<select id="bioStaph"><option value="">Not Tested</option><option>Not Detected</option><option>Detected</option></select></label>'+
+    '<label>Probiotic CFU/g<input id="bioProbiotic" type="number" step="1"></label><label class="wide">Culture Strain<input id="bioCulture" placeholder="e.g. Lactobacillus..."></label><label class="wide">Notes<input id="bioNotes"></label>'+
+    '</div><button class="primary" id="saveBio">Save Biological Test</button></div></div>');
+  $('bioClose').onclick=()=>$('bioModal').remove();
+  $('saveBio').onclick=async()=>{
+    const body={sample_code:$('bioSample').value,lab_name:$('bioLab').value,report_reference:$('bioReport').value,test_date:$('bioDate').value,storage_day:$('bioDay').value,storage_temp_c:$('bioStoreTemp').value,packaging:$('bioPack').value,ph:$('bioPh').value,water_activity:$('bioAw').value,total_plate_count:$('bioTpc').value,coliform_count:$('bioColi').value,yeast_mold_count:$('bioYm').value,listeria_status:$('bioListeria').value,salmonella_status:$('bioSalmonella').value,staph_status:$('bioStaph').value,probiotic_cfu:$('bioProbiotic').value,culture_strain:$('bioCulture').value,notes:$('bioNotes').value};
+    const r=await fetch('/api/data?resource=gelato_bio&recipe_id='+recipeId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){alert(j.error||'Biological test save failed');return}
+    $('bioModal').remove();alert('Biological validation saved • '+String(j.summary?.status||'incomplete').toUpperCase()+' • '+Number(j.summary?.confidence||0).toFixed(1)+'%');viewBusinessRecipe(recipeId);
+  };
 }
 async function auth(){
   const key='kt_offline_user_v1';let ok=false;
