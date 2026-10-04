@@ -1006,7 +1006,7 @@ async function gelatoBusinessRecipes(sql,req,user){
     const rows=await sql`SELECT * FROM gelato_business_recipes
       WHERE (${business}::text IS NULL OR business_name ILIKE ${like})
         AND (${status}::text IS NULL OR status=${status})
-      ORDER BY CASE WHEN status='final' THEN 0 ELSE 1 END,updated_at DESC,id DESC LIMIT 300`;
+      ORDER BY CASE WHEN status='golden' THEN 0 WHEN status='final' THEN 1 ELSE 2 END,updated_at DESC,id DESC LIMIT 300`;
     return {status:200,data:{records:rows}};
   }
   if(req.method==="POST"){
@@ -1014,7 +1014,7 @@ async function gelatoBusinessRecipes(sql,req,user){
     if(!cleanText(b.business_name))return {status:400,data:{error:"Business name required hai"}};
     if(!cleanText(b.recipe_name))return {status:400,data:{error:"Recipe name required hai"}};
     if(!formula.length)return {status:400,data:{error:"Complete ingredient formula required hai"}};
-    const context={department:cleanText(b.department)||"icecream",ingredient_settings:b.ingredient_settings||{}};
+    const context={department:cleanText(b.department)||"icecream",ingredient_settings:b.ingredient_settings||{},research_target:b.research_target||{}};
     const evaluation=evaluateResearchFit(formula,sourceFormula,context);
     const by=user.full_name||user.employee_code||"User";
     const rows=await sql`INSERT INTO gelato_business_recipes(
@@ -1042,7 +1042,8 @@ async function gelatoBusinessRecipes(sql,req,user){
     const sourceFormula=cleanFormula(old.source_formula);
     const ingredientSettings=b.ingredient_settings!==undefined?b.ingredient_settings:old.ingredient_settings;
     const department=cleanText(b.department)||old.department;
-    const evaluation=evaluateResearchFit(formula,sourceFormula,{department,ingredient_settings:ingredientSettings||{}});
+    const nextResearchTarget=b.research_target!==undefined?b.research_target:old.research_target;
+    const evaluation=evaluateResearchFit(formula,sourceFormula,{department,ingredient_settings:ingredientSettings||{},research_target:nextResearchTarget||{}});
     const action=cleanText(b.action);
     let nextStatus=action==="finalize"?"final":(cleanText(b.status)||old.status);
     if(action==="golden"){
