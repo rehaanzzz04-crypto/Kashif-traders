@@ -103,3 +103,7 @@ button,input,select{font:inherit}.top{position:sticky;top:0;z-index:20;backgroun
 .miniComment{margin-top:8px;padding:8px;border-radius:10px;background:#f4f0ff;color:#5b21b6;font-size:10px;line-height:1.4}.researchReview{margin-bottom:12px}
 .editIngredientRow{display:grid;grid-template-columns:minmax(0,1fr) 130px 24px;gap:6px;align-items:center;margin-top:6px}.editIngredientRow input{width:100%;border:1px solid #d8deee;border-radius:9px;padding:8px;font-size:12px}.editIngredientRow span{font-size:10px;color:#667085}
 @media(max-width:560px){.row2{grid-template-columns:1fr}.businessBox{padding:8px}.businessRecipeCard{padding:9px}.businessRecipeHead b{font-size:13px}.businessMetrics{grid-template-columns:1fr 1fr}.editIngredientRow{grid-template-columns:minmax(0,1fr) 100px 18px}.editIngredientRow input{padding:7px;font-size:11px}.notesField{min-height:58px}}
+
+.qcCard{margin-top:8px;padding:9px;border:1px solid #e4e8f2;border-radius:11px;background:#fafbff}
+.qcCard .businessMetrics{grid-template-columns:repeat(4,1fr)}
+@media(max-width:560px){.qcCard .businessMetrics{grid-template-columns:1fr 1fr}.researchReview .stats{grid-template-columns:1fr 1fr}}
