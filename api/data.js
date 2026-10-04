@@ -868,6 +868,7 @@ async function ensureGelatoBusinessRecipes(sql){
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
   await sql`ALTER TABLE gelato_business_recipes ADD COLUMN IF NOT EXISTS production_confidence NUMERIC(5,2)`;
+  await sql`ALTER TABLE gelato_business_recipes ADD COLUMN IF NOT EXISTS process_profile JSONB NOT NULL DEFAULT '{}'::jsonb`;
   await sql`ALTER TABLE gelato_business_recipes ADD COLUMN IF NOT EXISTS golden_at TIMESTAMPTZ`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_business_recipes_business_idx ON gelato_business_recipes(business_name,status,updated_at DESC)`;
   await sql`CREATE TABLE IF NOT EXISTS gelato_business_recipe_versions(
@@ -911,6 +912,16 @@ async function ensureGelatoBusinessRecipes(sql){
   await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS calculated_overrun_pct NUMERIC(10,3)`;
   await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS finished_yield_l NUMERIC(12,3)`;
   await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS batch_output_kg NUMERIC(12,3)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS pasteurization_hold_sec NUMERIC(10,2)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS cooling_end_temp_c NUMERIC(7,2)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS cooling_time_min NUMERIC(10,2)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS homogenization_pressure_bar NUMERIC(10,2)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS ageing_temp_c NUMERIC(7,2)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS hardening_temp_c NUMERIC(7,2)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS hardening_time_min NUMERIC(10,2)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS storage_temp_c NUMERIC(7,2)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS process_compliance_pct NUMERIC(5,2)`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS process_deviations JSONB NOT NULL DEFAULT '[]'::jsonb`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_qc_recipe_idx ON gelato_recipe_qc(recipe_id,test_date DESC,id DESC)`;
   await sql`CREATE TABLE IF NOT EXISTS gelato_recipe_bio(
     id BIGSERIAL PRIMARY KEY,
@@ -1056,6 +1067,67 @@ function evaluateResearchFit(formula,sourceFormula,context={}){
     comments
   };
 }
+
+function normalizeProcessProfile(p={}){
+  const n=v=>v===null||v===undefined||v===""?null:Number(v);
+  return {
+    pasteurization_min_c:n(p.pasteurization_min_c),
+    pasteurization_max_c:n(p.pasteurization_max_c),
+    pasteurization_hold_min_sec:n(p.pasteurization_hold_min_sec),
+    cooling_target_max_c:n(p.cooling_target_max_c),
+    cooling_max_minutes:n(p.cooling_max_minutes),
+    homogenization_min_bar:n(p.homogenization_min_bar),
+    homogenization_max_bar:n(p.homogenization_max_bar),
+    ageing_temp_max_c:n(p.ageing_temp_max_c),
+    ageing_min_hours:n(p.ageing_min_hours),
+    ageing_max_hours:n(p.ageing_max_hours),
+    draw_temp_target_c:n(p.draw_temp_target_c),
+    draw_temp_tolerance_c:n(p.draw_temp_tolerance_c),
+    hardening_target_max_c:n(p.hardening_target_max_c),
+    hardening_max_minutes:n(p.hardening_max_minutes),
+    storage_target_max_c:n(p.storage_target_max_c),
+    source_note:cleanText(p.source_note),
+    notes:cleanText(p.notes)
+  };
+}
+function evaluateProcessCompliance(q={},profile={}){
+  const p=normalizeProcessProfile(profile),checks=[];
+  const n=v=>v===null||v===undefined||v===""?null:Number(v);
+  const add=(label,actual,pass,required=true)=>{
+    const a=n(actual);
+    if(!required&&a===null)return;
+    checks.push({label,actual:a,pass:a!==null&&Boolean(pass(a))});
+  };
+  if(p.pasteurization_min_c!==null||p.pasteurization_max_c!==null)
+    add("Pasteurization temperature",q.pasteurization_peak_c,a=>(p.pasteurization_min_c===null||a>=p.pasteurization_min_c)&&(p.pasteurization_max_c===null||a<=p.pasteurization_max_c));
+  if(p.pasteurization_hold_min_sec!==null)
+    add("Pasteurization hold",q.pasteurization_hold_sec,a=>a>=p.pasteurization_hold_min_sec);
+  if(p.cooling_target_max_c!==null)
+    add("Rapid cooling endpoint",q.cooling_end_temp_c,a=>a<=p.cooling_target_max_c);
+  if(p.cooling_max_minutes!==null)
+    add("Cooling time",q.cooling_time_min,a=>a<=p.cooling_max_minutes);
+  if(p.homogenization_min_bar!==null||p.homogenization_max_bar!==null)
+    add("Homogenization pressure",q.homogenization_pressure_bar,a=>(p.homogenization_min_bar===null||a>=p.homogenization_min_bar)&&(p.homogenization_max_bar===null||a<=p.homogenization_max_bar));
+  if(p.ageing_temp_max_c!==null)
+    add("Ageing temperature",q.ageing_temp_c,a=>a<=p.ageing_temp_max_c);
+  if(p.ageing_min_hours!==null||p.ageing_max_hours!==null)
+    add("Ageing time",q.ageing_hours,a=>(p.ageing_min_hours===null||a>=p.ageing_min_hours)&&(p.ageing_max_hours===null||a<=p.ageing_max_hours));
+  if(p.draw_temp_target_c!==null){
+    const tol=p.draw_temp_tolerance_c===null?1.5:Math.max(.1,p.draw_temp_tolerance_c);
+    add("Draw temperature",q.draw_temp_c,a=>Math.abs(a-p.draw_temp_target_c)<=tol);
+  }
+  if(p.hardening_target_max_c!==null)
+    add("Hardening temperature",q.hardening_temp_c,a=>a<=p.hardening_target_max_c);
+  if(p.hardening_max_minutes!==null)
+    add("Hardening time",q.hardening_time_min,a=>a<=p.hardening_max_minutes);
+  if(p.storage_target_max_c!==null)
+    add("Storage temperature",q.storage_temp_c,a=>a<=p.storage_target_max_c);
+  if(!checks.length)return {score:null,status:"not_configured",checks:[],deviations:["Process profile configured nahi hai."]};
+  const passed=checks.filter(x=>x.pass).length;
+  const score=Number(((passed/checks.length)*100).toFixed(1));
+  const deviations=checks.filter(x=>!x.pass).map(x=>x.label+" target se bahar ya missing hai.");
+  return {score,status:score>=90?"pass":score>=75?"review":"fail",checks,deviations};
+}
 async function recalcProductionConfidence(sql,recipeId){
   const rows=await sql`SELECT * FROM gelato_recipe_qc WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
   if(!rows.length){
@@ -1064,7 +1136,7 @@ async function recalcProductionConfidence(sql,recipeId){
   }
   const passed=rows.filter(x=>x.result==="pass").length;
   const recent=rows[0];
-  const fields=["ph","brix","overrun_pct","draw_temp_c","melt_30min_pct","hardness_score","sweetness_score","iciness_score","body_score","aftertaste_score"];
+  const fields=["ph","brix","overrun_pct","draw_temp_c","melt_30min_pct","hardness_score","sweetness_score","iciness_score","body_score","aftertaste_score","process_compliance_pct"];
   const filled=fields.filter(k=>recent[k]!==null&&recent[k]!==undefined&&recent[k]!=="").length;
   const passScore=passed>=3?50:passed===2?40:passed===1?25:0;
   const completeness=(filled/fields.length)*30;
@@ -1157,8 +1229,9 @@ async function gelatoQc(sql,req,user){
   }
   if(req.method==="POST"){
     if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
-    const recipe=(await sql`SELECT id FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
+    const recipe=(await sql`SELECT id,process_profile FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
     if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
+    const processEval=evaluateProcessCompliance(b,recipe.process_profile||{});
     const result=cleanText(b.result)||"trial";
     if(!["trial","pass","fail"].includes(result))return {status:400,data:{error:"QC result Trial, Pass ya Fail hona chahiye"}};
     const score=v=>v===null||v===undefined||v===""?null:Math.max(1,Math.min(10,Math.round(Number(v)||0)));
@@ -1166,6 +1239,7 @@ async function gelatoQc(sql,req,user){
     const row=(await sql`INSERT INTO gelato_recipe_qc(
       recipe_id,batch_code,test_date,machine,operator_name,mix_temp_c,pasteurization_peak_c,ageing_hours,ph,brix,overrun_pct,draw_temp_c,melt_30min_pct,
       mix_sample_g,frozen_sample_g,sample_volume_ml,calculated_overrun_pct,finished_yield_l,batch_output_kg,
+      pasteurization_hold_sec,cooling_end_temp_c,cooling_time_min,homogenization_pressure_bar,ageing_temp_c,hardening_temp_c,hardening_time_min,storage_temp_c,process_compliance_pct,process_deviations,
       hardness_score,sweetness_score,iciness_score,body_score,aftertaste_score,day1_notes,day7_notes,result,created_by_id,created_by_name
     ) VALUES(
       ${recipeId},${cleanText(b.batch_code)},COALESCE(${cleanText(b.test_date)}::date,CURRENT_DATE),${cleanText(b.machine)},${cleanText(b.operator_name)},
@@ -1173,6 +1247,7 @@ async function gelatoQc(sql,req,user){
       ${n(b.mix_sample_g)},${n(b.frozen_sample_g)},${n(b.sample_volume_ml)},
       ${(()=>{const m=Number(b.mix_sample_g),f=Number(b.frozen_sample_g);return Number.isFinite(m)&&Number.isFinite(f)&&f>0?((m-f)/f)*100:null})()},
       ${n(b.finished_yield_l)},${n(b.batch_output_kg)},
+      ${n(b.pasteurization_hold_sec)},${n(b.cooling_end_temp_c)},${n(b.cooling_time_min)},${n(b.homogenization_pressure_bar)},${n(b.ageing_temp_c)},${n(b.hardening_temp_c)},${n(b.hardening_time_min)},${n(b.storage_temp_c)},${processEval.score},${JSON.stringify(processEval.deviations)}::jsonb,
       ${score(b.hardness_score)},${score(b.sweetness_score)},${score(b.iciness_score)},${score(b.body_score)},${score(b.aftertaste_score)},
       ${cleanText(b.day1_notes)},${cleanText(b.day7_notes)},${result},${user.id},${user.full_name||user.employee_code||"User"}
     ) RETURNING *`)[0];
@@ -1295,6 +1370,8 @@ async function gelatoRelease(sql,req,user){
   const bio=await sql`SELECT * FROM gelato_recipe_bio WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
   const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio),machine=machineCalibrationSummary(qc,recipe);
   const passed=qc.filter(x=>x.result==="pass").length;
+  const processRows=qc.filter(x=>x.result==="pass"&&x.process_compliance_pct!==null&&x.process_compliance_pct!==undefined).slice(0,3);
+  const processAvg=processRows.length?processRows.reduce((s,x)=>s+Number(x.process_compliance_pct||0),0)/processRows.length:null;
   const coverage=Number(recipe?.research_metrics?.data_coverage_pct);
   const checks=[
     {key:"research",label:"Research Fit ≥ 90%",pass:Number(recipe.perfection_score)>=90,value:recipe.perfection_score==null?null:Number(recipe.perfection_score)},
@@ -1302,6 +1379,7 @@ async function gelatoRelease(sql,req,user){
     {key:"production",label:"Production Confidence ≥ 70%",pass:Number(recipe.production_confidence)>=70,value:Number(recipe.production_confidence||0)},
     {key:"qc",label:"Passed QC Batches ≥ 2",pass:passed>=2,value:passed},
     {key:"calibration",label:"Measured Overrun Calibration",pass:machine.sample_count>=2&&(machine.overrun_sd_pct_points===null||machine.overrun_sd_pct_points<=8),value:machine.sample_count},
+    {key:"process",label:"Process Compliance ≥ 85%",pass:processRows.length>=2&&Number(processAvg)>=85,value:processAvg===null?null:Number(processAvg.toFixed(1))},
     {key:"sensory",label:"Sensory Panel ≥ 3 & Avg ≥ 7/10",pass:Number(sensorySum.panel_count)>=3&&Number(sensorySum.overall_avg)>=7,value:sensorySum.overall_avg},
     {key:"bio",label:"Biological Validation",pass:bioSum.status==="lab_validated",value:bioSum.status},
     {key:"shelf",label:"Validated Shelf Life Recorded",pass:Boolean(cleanText(recipe.validated_shelf_life)),value:recipe.validated_shelf_life||null}
@@ -1351,13 +1429,13 @@ async function gelatoBusinessRecipes(sql,req,user){
     const by=user.full_name||user.employee_code||"User";
     const rows=await sql`INSERT INTO gelato_business_recipes(
       business_name,recipe_name,department,system,base_mode,source_recipe_id,source_name,source_url,source_type,
-      formula,source_formula,ingredient_settings,research_target,research_metrics,research_comments,perfection_score,
+      formula,source_formula,ingredient_settings,research_target,research_metrics,research_comments,perfection_score,process_profile,
       validated_shelf_life,storage_conditions,shelf_life_guidance,trial_notes,production_tested_at,created_by_id,created_by_name
     ) VALUES(
       ${cleanText(b.business_name)},${cleanText(b.recipe_name)},${context.department},${cleanText(b.system)},${cleanText(b.base_mode)},
       ${cleanText(b.source_recipe_id)},${cleanText(b.source_name)},${cleanText(b.source_url)},${cleanText(b.source_type)},
       ${JSON.stringify(formula)}::jsonb,${JSON.stringify(sourceFormula)}::jsonb,${JSON.stringify(b.ingredient_settings||{})}::jsonb,
-      ${JSON.stringify(b.research_target||{})}::jsonb,${JSON.stringify(evaluation.metrics)}::jsonb,${JSON.stringify(evaluation.comments)}::jsonb,${evaluation.score},
+      ${JSON.stringify(b.research_target||{})}::jsonb,${JSON.stringify(evaluation.metrics)}::jsonb,${JSON.stringify(evaluation.comments)}::jsonb,${evaluation.score},${JSON.stringify(normalizeProcessProfile(b.process_profile||{}))}::jsonb,
       ${cleanText(b.validated_shelf_life)},${cleanText(b.storage_conditions)},${gelatoShelfGuidance(context.department)},
       ${cleanText(b.trial_notes)},${cleanText(b.production_tested_at)},${user.id},${by}
     ) RETURNING *`;
@@ -1399,6 +1477,7 @@ async function gelatoBusinessRecipes(sql,req,user){
       research_metrics=${JSON.stringify(evaluation.metrics)}::jsonb,
       research_comments=${JSON.stringify(evaluation.comments)}::jsonb,
       perfection_score=${evaluation.score},
+      process_profile=CASE WHEN ${b.process_profile!==undefined} THEN ${JSON.stringify(normalizeProcessProfile(b.process_profile||{}))}::jsonb ELSE process_profile END,
       validated_shelf_life=CASE WHEN ${b.validated_shelf_life!==undefined} THEN ${cleanText(b.validated_shelf_life)} ELSE validated_shelf_life END,
       storage_conditions=CASE WHEN ${b.storage_conditions!==undefined} THEN ${cleanText(b.storage_conditions)} ELSE storage_conditions END,
       shelf_life_guidance=${gelatoShelfGuidance(department)},
