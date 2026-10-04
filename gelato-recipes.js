@@ -264,7 +264,7 @@ function compositionAnalysis(items,total){
   if(knownSolids<32)warnings.push('Total solids low side par hain; body weak ya icy ho sakti hai.');
   if(knownSolids>46)warnings.push('Total solids high hain; body heavy ya freezing difficult ho sakti hai.');
   return {
-    fat:acc.fat,protein:acc.protein,lactose:acc.lactose,totalSolids:knownSolids,water:acc.moisture,
+    fat:acc.fat,protein:acc.protein,lactose:acc.lactose,ash:acc.ash,totalSolids:knownSolids,water:acc.moisture,
     sucrose:acc.sucrose,dextrose:acc.dextrose,glucose:acc.glucose,pod,pac,coverage,warnings
   };
 }
@@ -463,7 +463,7 @@ function currentBusinessPayload(){
     fat:comp.fat,
     protein:comp.protein,
     lactose:comp.lactose,
-    msnf:comp.protein+comp.lactose,
+    msnf:comp.protein+comp.lactose+comp.ash,
     total_solids:comp.totalSolids,
     water:comp.water,
     sucrose:comp.sucrose,
