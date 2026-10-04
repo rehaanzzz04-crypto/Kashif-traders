@@ -102,6 +102,10 @@ function activeDryMilkProfile(){
 function activeCremodanProfile(){
   return ingredientSettings.cremodan_profiles?.find(x=>x.id===ingredientSettings.default_cremodan_id)||null;
 }
+function activeMachineProfile(id){
+  const key=id||ingredientSettings.default_machine_id;
+  return ingredientSettings.machine_profiles?.find(x=>x.id===key)||null;
+}
 function powderNonFatSolids(p){
   if(!p)return .96;
   const sum=Number(p.protein_pct||0)+Number(p.carbs_pct||0)+Number(p.other_pct||0);
@@ -283,7 +287,51 @@ const PREMIUM_RESEARCH_RANGES={
   'Super Premium':{fat:[15,18],solids:[40,46],overrun:[25,50]}
 };
 function clamp(v,min,max){return Math.max(min,Math.min(max,v))}
-function premiumWizardAnalysis(items,total,master,servingTemp,overrun,sweetness,texture){
+
+function machineCheck(machine,batchKg,overrun){
+  if(!machine)return {ok:true,warnings:['No machine profile selected; process compatibility not checked.'],notes:[]};
+  const warnings=[],notes=[];
+  const min=Number(machine.min_batch_kg||0),max=Number(machine.max_batch_kg||0),ovMin=Number(machine.overrun_min_pct||0),ovMax=Number(machine.overrun_max_pct||0);
+  if(min&&batchKg<min)warnings.push('Batch '+batchKg+' kg machine minimum '+min+' kg se kam hai.');
+  if(max&&batchKg>max)warnings.push('Batch '+batchKg+' kg machine maximum '+max+' kg se zyada hai.');
+  if(ovMin&&overrun<ovMin)warnings.push('Target overrun machine practical minimum '+ovMin+'% se kam hai.');
+  if(ovMax&&overrun>ovMax)warnings.push('Target overrun machine practical maximum '+ovMax+'% se zyada hai.');
+  if(machine.draw_temp_c!=null)notes.push('Machine draw target: '+Number(machine.draw_temp_c).toFixed(1)+'°C');
+  if(Number(machine.ageing_min_hours||0)>0)notes.push('Minimum ageing: '+Number(machine.ageing_min_hours)+' h');
+  if(machine.hardening_temp_c!=null)notes.push('Hardening target: '+Number(machine.hardening_temp_c).toFixed(1)+'°C');
+  return {ok:!warnings.length,warnings,notes};
+}
+function controlledTrialVariants(master,base,total){
+  const baseline=scale(componentRecipe(master,base),total).map(x=>({...x}));
+  const adjust=(items,mode)=>{
+    const out=items.map(x=>({...x}));
+    const sugar=out.find(x=>/sugar sucrose/i.test(x.name));
+    const glucose=out.find(x=>/glucose\/corn syrup solids/i.test(x.name));
+    const water=out.find(x=>/^water$/i.test(x.name));
+    if(!sugar||!glucose||!water)return out;
+    const delta=Math.min(total*.01,sugar.g*.12);
+    if(mode==='softer'){
+      sugar.g-=delta; glucose.g+=delta;
+    }else if(mode==='firmer'){
+      const d=Math.min(delta,glucose.g*.35);
+      glucose.g-=d; sugar.g+=d;
+    }
+    return out;
+  };
+  return [
+    {code:'A',name:'Balanced Research Master',items:baseline,note:'Exact research master using current ingredient profile.'},
+    {code:'B',name:'Softer / Easier Scoop',items:adjust(baseline,'softer'),note:'Controlled sucrose→glucose-solids substitution; batch mass unchanged.'},
+    {code:'C',name:'Firmer / Better Hold',items:adjust(baseline,'firmer'),note:'Controlled glucose-solids→sucrose substitution; batch mass unchanged.'}
+  ];
+}
+function trialVariantHtml(v,total,master,servingTemp,overrun,machine){
+  const a=premiumWizardAnalysis(v.items,total,master,servingTemp,overrun,'balanced',v.code==='B'?'softer':v.code==='C'?'firmer':'balanced');
+  const comp=a.a;
+  return '<div class="trialVariant"><div class="trialVariantHead"><span>'+v.code+'</span><div><b>'+esc(v.name)+'</b><small>'+esc(v.note)+'</small></div></div>'+
+    '<div class="businessMetrics"><span>Sweetness <b>'+comp.pod.toFixed(1)+'</b></span><span>Freezing <b>'+comp.pac.toFixed(1)+'</b></span><span>Solids <b>'+comp.totalSolids.toFixed(1)+'%</b></span><span>Texture <b>'+esc(a.zone)+'</b></span></div>'+
+    '<button type="button" class="secondary chooseVariant" data-variant="'+v.code+'">Use Variant '+v.code+'</button></div>';
+}
+function premiumWizardAnalysis(items,total,master,servingTemp,overrun,sweetness,texture,machine=null){
   const a=compositionAnalysis(items,total);
   const tier=String(master.tier||'Premium').includes('Super')?'Super Premium':'Premium';
   const range=PREMIUM_RESEARCH_RANGES[tier];
@@ -310,7 +358,9 @@ function premiumWizardAnalysis(items,total,master,servingTemp,overrun,sweetness,
   if(texture==='firmer')advice.push('Firmer target: lower freezing-power sugar blend ya colder service possible hai, magar iciness/melt test ke saath validate karein.');
   if(a.coverage<90)advice.push('Ingredient COA coverage 90% se kam hai; freezing/texture model ko research-grade decision ke liye incomplete samjhein.');
   if(!researchPass)advice.push('Current calculated composition selected '+tier+' research range se bahar hai. Golden recipe se pehle rebalance required hai.');
-  return {a,tier,range,checks,researchPass,curve,zone,advice,servingTemp:targetT};
+  const machineResult=machineCheck(machine,total/1000,Number(overrun));
+  advice.push(...machineResult.warnings);
+  return {a,tier,range,checks,researchPass,curve,zone,advice,servingTemp:targetT,machineResult,machine};
 }
 function premiumWizardHtml(x){
   const checkHtml=x.checks.map(c=>'<div class="stat"><small>'+esc(c.name)+'</small><strong>'+Number(c.value).toFixed(1)+c.unit+'</strong><span>'+c.range[0]+'–'+c.range[1]+c.unit+'</span></div>').join('');
@@ -318,6 +368,7 @@ function premiumWizardHtml(x){
   return '<div class="wizardResult"><div class="recipeHead"><div><h3>'+esc(x.tier)+' Research Check</h3><p>Serving target '+esc(x.servingTemp)+'°C • '+esc(x.zone)+'</p></div><span class="badge '+(x.researchPass?'finalBadge':'')+'">'+(x.researchPass?'IN RANGE':'REBALANCE')+'</span></div>'+
     '<div class="stats">'+checkHtml+'<div class="stat"><small>Sweetness Index</small><strong>'+x.a.pod.toFixed(1)+'</strong><span>comparative</span></div><div class="stat"><small>Freezing Index</small><strong>'+x.a.pac.toFixed(1)+'</strong><span>comparative</span></div><div class="stat"><small>COA Coverage</small><strong>'+x.a.coverage.toFixed(1)+'%</strong><span>model confidence input</span></div></div>'+
     '<div class="subpanel"><h3>Relative Freezing / Firmness Curve</h3>'+curve+'<div class="source">Curve is a comparative formulation model using sugar freezing power, solids and temperature. It is not a laboratory measurement of frozen-water fraction. Production hardness/draw-temperature data will be used later to calibrate it.</div></div>'+
+    (x.machine?'<div class="source"><b>Machine:</b> '+esc(x.machine.name)+(x.machineResult.notes.length?'<br>'+x.machineResult.notes.map(esc).join(' • '):'')+'</div>':'')+
     (x.advice.length?'<div class="warning">'+x.advice.map(t=>'• '+esc(t)).join('<br>')+'</div>':'')+'</div>';
 }
 function premiumWizardMaster(){
@@ -329,9 +380,12 @@ function previewPremiumWizard(){
     const total=Math.max(.5,Number($('wizardBatch').value)||10)*1000;
     const base=$('wizardBase').value;
     const items=scale(componentRecipe(master,base),total);
-    const a=premiumWizardAnalysis(items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value);
-    $('wizardPreview').innerHTML=premiumWizardHtml(a);
-    $('wizardStatus').textContent=a.researchPass?'Research range matched':'Rebalance needed before production';
+    const machine=activeMachineProfile($('wizardMachine').value);
+    const a=premiumWizardAnalysis(items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value,machine);
+    const variants=controlledTrialVariants(master,base,total);
+    $('wizardPreview').innerHTML=premiumWizardHtml(a)+'<div class="subpanel"><h3>A/B/C Controlled R&D Trials</h3><div class="trialGrid">'+variants.map(v=>trialVariantHtml(v,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,machine)).join('')+'</div></div>';
+    $('wizardStatus').textContent=a.researchPass&&a.machineResult.ok?'Research + machine range matched':'Review warnings before production';
+    $('wizardPreview').querySelectorAll('[data-variant]').forEach(b=>b.onclick=()=>{window.__premiumVariant=b.dataset.variant;$('wizardStatus').textContent='Variant '+b.dataset.variant+' selected for production trial';});
   }catch(e){
     $('wizardPreview').innerHTML='<div class="warning"><b>Cannot build research-grade recipe:</b> '+esc(e.message||'Ingredient profile incomplete')+'</div>';
     $('wizardStatus').textContent='Ingredient profile / COA check required';
@@ -351,11 +405,15 @@ function buildPremiumRecipe(){
   render();
   const total=batch*1000;
   try{
-    const items=scale(componentRecipe(master,$('wizardBase').value),total);
-    const analysis=premiumWizardAnalysis(items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value);
-    current.premiumRAndD={serving_temp_c:Number($('wizardServingTemp').value),target_overrun_pct:Number($('wizardOverrun').value),sweetness_target:$('wizardSweetness').value,texture_target:$('wizardTexture').value,analysis};
+    const machine=activeMachineProfile($('wizardMachine').value);
+    const variants=controlledTrialVariants(master,$('wizardBase').value,total);
+    const selected=variants.find(v=>v.code===(window.__premiumVariant||'A'))||variants[0];
+    current.items=selected.items;
+    const analysis=premiumWizardAnalysis(selected.items,total,master,$('wizardServingTemp').value,$('wizardOverrun').value,$('wizardSweetness').value,$('wizardTexture').value,machine);
+    current.premiumRAndD={variant:selected.code,variant_name:selected.name,machine_id:machine?.id||null,machine_name:machine?.name||null,serving_temp_c:Number($('wizardServingTemp').value),target_overrun_pct:Number($('wizardOverrun').value),sweetness_target:$('wizardSweetness').value,texture_target:$('wizardTexture').value,analysis};
+    $('formulaTable').innerHTML=ingredientTable(selected.items,total);
     $('result').insertAdjacentHTML('afterbegin',premiumWizardHtml(analysis));
-    $('trialNotes').value='Premium R&D Wizard • '+analysis.tier+' • serving '+analysis.servingTemp+'°C • target overrun '+Number($('wizardOverrun').value)+'% • '+analysis.zone;
+    $('trialNotes').value='Premium R&D Wizard • Variant '+current.premiumRAndD.variant+' '+current.premiumRAndD.variant_name+' • '+analysis.tier+' • serving '+analysis.servingTemp+'°C • target overrun '+Number($('wizardOverrun').value)+'% • '+analysis.zone+(machine?' • machine '+machine.name:'');
     $('premiumWizardModal').classList.add('hidden');
   }catch(e){alert(e.message||'Premium formula build failed')}
 }
@@ -493,6 +551,14 @@ function renderIngredientProfiles(){
   $('cremodanProfiles').innerHTML=creams.map((p,i)=>'<div class="profileCard" data-cremodan="'+i+'"><div class="profileCardHead"><b>'+esc(p.grade||('CREMODAN '+(i+1)))+'</b><button type="button" class="danger miniDelete" data-del-cremodan="'+i+'">Delete</button></div><div class="profileGrid"><label>Grade / Number<input data-k="grade" value="'+esc(p.grade||'')+'" placeholder="e.g. SE 46"></label><label>Dosage g/kg<input data-k="dosage_g_per_kg" type="number" step="0.1" value="'+Number(p.dosage_g_per_kg||0)+'"></label><label>Product Type<input data-k="product_type" value="'+esc(p.product_type||'General')+'"></label><label>Includes Emulsifier<select data-k="includes_emulsifier"><option value="true" '+(p.includes_emulsifier!==false?'selected':'')+'>Yes</option><option value="false" '+(p.includes_emulsifier===false?'selected':'')+'>No</option></select></label><label class="wide">Notes<input data-k="note" value="'+esc(p.note||'')+'"></label></div></div>').join('');
   $('defaultCremodan').innerHTML='<option value="">None</option>'+creams.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.grade)+'</option>').join('');
   $('defaultCremodan').value=ingredientSettings.default_cremodan_id||'';
+
+  const machines=ingredientSettings.machine_profiles||[];
+  $('machineProfiles').innerHTML=machines.map((p,i)=>'<div class="profileCard" data-machine="'+i+'"><div class="profileCardHead"><b>'+esc(p.name||('Machine '+(i+1)))+'</b><button type="button" class="danger miniDelete" data-del-machine="'+i+'">Delete</button></div><div class="profileGrid"><label>Name<input data-k="name" value="'+esc(p.name||'')+'"></label><label>Type<input data-k="type" value="'+esc(p.type||'Batch Freezer')+'"></label><label>Min Batch kg<input data-k="min_batch_kg" type="number" step="0.1" value="'+Number(p.min_batch_kg||0)+'"></label><label>Max Batch kg<input data-k="max_batch_kg" type="number" step="0.1" value="'+Number(p.max_batch_kg||0)+'"></label><label>Overrun Min %<input data-k="overrun_min_pct" type="number" step="1" value="'+Number(p.overrun_min_pct||0)+'"></label><label>Overrun Max %<input data-k="overrun_max_pct" type="number" step="1" value="'+Number(p.overrun_max_pct||0)+'"></label><label>Draw Temp °C<input data-k="draw_temp_c" type="number" step="0.1" value="'+(p.draw_temp_c??'')+'"></label><label>Ageing Min h<input data-k="ageing_min_hours" type="number" step="0.1" value="'+Number(p.ageing_min_hours||0)+'"></label><label>Hardening Temp °C<input data-k="hardening_temp_c" type="number" step="0.1" value="'+(p.hardening_temp_c??'')+'"></label><label class="wide">Notes<input data-k="notes" value="'+esc(p.notes||'')+'"></label></div></div>').join('');
+  $('defaultMachine').innerHTML='<option value="">None</option>'+machines.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('');
+  $('defaultMachine').value=ingredientSettings.default_machine_id||'';
+  $('wizardMachine').innerHTML='<option value="">No Machine Profile</option>'+machines.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('');
+  $('wizardMachine').value=ingredientSettings.default_machine_id||'';
+  $('machineProfiles').querySelectorAll('[data-del-machine]').forEach(b=>b.onclick=()=>{ingredientSettings.machine_profiles.splice(Number(b.dataset.delMachine),1);renderIngredientProfiles()});
   $('dryMilkProfiles').querySelectorAll('[data-del-powder]').forEach(b=>b.onclick=()=>{ingredientSettings.dry_milk_profiles.splice(Number(b.dataset.delPowder),1);renderIngredientProfiles()});
   $('cremodanProfiles').querySelectorAll('[data-del-cremodan]').forEach(b=>b.onclick=()=>{ingredientSettings.cremodan_profiles.splice(Number(b.dataset.delCremodan),1);renderIngredientProfiles()});
 }
@@ -508,7 +574,12 @@ function collectProfiles(){
     card.querySelectorAll('[data-k]').forEach(x=>{const k=x.dataset.k;p[k]=k==='includes_emulsifier'?x.value==='true':x.type==='number'?Number(x.value||0):x.value});
   });
   ingredientSettings.default_dry_milk_id=$('defaultDryMilk').value||ingredientSettings.dry_milk_profiles[0]?.id||null;
+  document.querySelectorAll('#machineProfiles [data-machine]').forEach(card=>{
+    const p=ingredientSettings.machine_profiles[Number(card.dataset.machine)];
+    card.querySelectorAll('[data-k]').forEach(x=>{const k=x.dataset.k;p[k]=x.type==='number'?(x.value===''?null:Number(x.value)):x.value});
+  });
   ingredientSettings.default_cremodan_id=$('defaultCremodan').value||null;
+  ingredientSettings.default_machine_id=$('defaultMachine').value||null;
 }
 async function loadIngredientSettings(){
   try{
@@ -547,7 +618,11 @@ function currentBusinessPayload(){
     target_overrun_pct:current.premiumRAndD.target_overrun_pct,
     sweetness_target:current.premiumRAndD.sweetness_target,
     texture_target:current.premiumRAndD.texture_target,
-    tier:current.premiumRAndD.analysis?.tier||null
+    tier:current.premiumRAndD.analysis?.tier||null,
+    variant:current.premiumRAndD.variant||null,
+    variant_name:current.premiumRAndD.variant_name||null,
+    machine_id:current.premiumRAndD.machine_id||null,
+    machine_name:current.premiumRAndD.machine_name||null
   };
   target.actual={
     fat:comp.fat,
@@ -760,13 +835,14 @@ $('backBtn').onclick=()=>location.href='/';
 $('premiumWizardBtn').onclick=()=>{$('premiumWizardModal').classList.remove('hidden');previewPremiumWizard()};
 $('premiumWizardClose').onclick=()=>$('premiumWizardModal').classList.add('hidden');
 $('premiumWizardModal').onclick=e=>{if(e.target===$('premiumWizardModal'))$('premiumWizardModal').classList.add('hidden')};
-['wizardMaster','wizardBase','wizardBatch','wizardServingTemp','wizardSweetness','wizardTexture','wizardOverrun'].forEach(id=>$(id).oninput=previewPremiumWizard);
+['wizardMaster','wizardBase','wizardBatch','wizardServingTemp','wizardSweetness','wizardTexture','wizardOverrun','wizardMachine'].forEach(id=>$(id).oninput=previewPremiumWizard);
 $('buildPremiumRecipe').onclick=buildPremiumRecipe;
 $('ingredientSettingsBtn').onclick=()=>{renderIngredientProfiles();$('profileModal').classList.remove('hidden')};
 $('profileClose').onclick=()=>$('profileModal').classList.add('hidden');
 $('profileModal').onclick=e=>{if(e.target===$('profileModal'))$('profileModal').classList.add('hidden')};
 $('addDryMilkProfile').onclick=()=>{ingredientSettings.dry_milk_profiles=ingredientSettings.dry_milk_profiles||[];ingredientSettings.dry_milk_profiles.push({id:profileId('powder'),name:'New Dry Milk',fat_pct:0,protein_pct:0,carbs_pct:0,lactose_pct:null,moisture_pct:0,ash_pct:null,total_solids_pct:null,other_pct:0,added_sugar_pct:null,note:''});renderIngredientProfiles()};
 $('addCremodanProfile').onclick=()=>{ingredientSettings.cremodan_profiles=ingredientSettings.cremodan_profiles||[];ingredientSettings.cremodan_profiles.push({id:profileId('cremodan'),grade:'CREMODAN',dosage_g_per_kg:0,includes_emulsifier:true,product_type:'General',note:''});renderIngredientProfiles()};
+$('addMachineProfile').onclick=()=>{ingredientSettings.machine_profiles=ingredientSettings.machine_profiles||[];ingredientSettings.machine_profiles.push({id:profileId('machine'),name:'New Batch Freezer',type:'Batch Freezer',min_batch_kg:0,max_batch_kg:0,overrun_min_pct:0,overrun_max_pct:0,draw_temp_c:null,ageing_min_hours:4,hardening_temp_c:-30,notes:''});renderIngredientProfiles()};
 $('saveProfiles').onclick=saveIngredientSettings;
 $('saveTrial').onclick=()=>saveCurrentBusinessRecipe(false);
 $('finalizeRecipe').onclick=()=>saveCurrentBusinessRecipe(true);
