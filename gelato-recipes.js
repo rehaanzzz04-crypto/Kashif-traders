@@ -812,6 +812,7 @@ async function viewBusinessRecipe(id){
       (record.formula||[]).map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+fmt(Number(x.g||0))+'</td><td>'+(((Number(x.g||0)/(record.formula||[]).reduce((s,y)=>s+Number(y.g||0),0))*100)||0).toFixed(2)+'%</td></tr>').join('')+
       '</tbody></table></div><div class="source"><b>Version history:</b> '+(versions||[]).map(v=>'V'+v.version+' • '+new Date(v.changed_at).toLocaleString()).join(' | ')+'</div></div>';
     $('backBusinessList').onclick=loadBusinessRecipes;
+    loadReleaseReadiness(id);
     loadQcForRecipe(id);
     loadSensoryForRecipe(id);
     loadBioForRecipe(id);
@@ -860,6 +861,34 @@ function rdFeedbackAdvice(rows){
   if(Number.isFinite(draw)&&draw>-4)a.push('Draw temperature relatively warm record hui; freezer endpoint/machine load validate karein.');
   if(!a.length)a.push('Latest QC mein koi major sensory/process warning trigger nahi hui. Next batch repeatability aur storage-day results continue karein.');
   return a;
+}
+
+async function loadReleaseReadiness(recipeId){
+  try{
+    const r=await fetch('/api/data?resource=gelato_release&recipe_id='+encodeURIComponent(recipeId),{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Release readiness load failed');
+    renderReleaseReadiness(j);
+  }catch(e){
+    $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="warning">'+esc(e.message)+'</div>');
+  }
+}
+function renderReleaseReadiness(j){
+  const label=j.release_status==='ready'?'READY FOR COMMERCIAL REVIEW':j.release_status==='hold'?'HOLD':'NOT READY';
+  const checks=(j.checks||[]).map(x=>'<div class="releaseCheck '+(x.pass?'pass':'fail')+'"><span>'+(x.pass?'✓':'!')+'</span><div><b>'+esc(x.label)+'</b><small>'+esc(x.value==null?'—':String(x.value))+'</small></div></div>').join('');
+  const m=j.machine_calibration||{};
+  const blockers=(j.blockers||[]).map(x=>'<li>'+esc(x)+'</li>').join('');
+  $('businessRecipeList').insertAdjacentHTML('beforeend',
+    '<div class="businessRecipeCard releaseCard"><div class="businessRecipeHead"><div><h3>Commercial Release Readiness</h3><small>R&D + Production + Biological release checklist</small></div><span class="badge '+(j.release_status==='ready'?'finalBadge':'')+'">'+esc(label)+'</span></div>'+
+    '<div class="stats"><div class="stat"><small>Readiness</small><strong>'+Number(j.readiness_pct||0).toFixed(1)+'%</strong></div><div class="stat"><small>Passed QC</small><strong>'+Number(j.passed_qc_batches||0)+'</strong></div><div class="stat"><small>Machine Calibration</small><strong>'+esc((m.status||'insufficient').toUpperCase())+'</strong></div><div class="stat"><small>Bio Status</small><strong>'+esc(String(j.biological?.status||'incomplete').toUpperCase())+'</strong></div></div>'+
+    '<div class="releaseGrid">'+checks+'</div>'+
+    (blockers?'<div class="warning"><b>Release blockers:</b><ul>'+blockers+'</ul></div>':'<div class="source"><b>No checklist blocker detected.</b> Final commercial/regulatory review still required.</div>')+
+    '<div class="subpanel"><h3>Machine Calibration</h3><div class="businessMetrics">'+
+      '<span>Machine <b>'+esc(m.machine||'—')+'</b></span><span>Samples <b>'+esc(m.sample_count??0)+'</b></span><span>Target Overrun <b>'+esc(m.target_overrun_pct??'—')+'%</b></span><span>Measured Avg <b>'+esc(m.measured_overrun_avg??'—')+'%</b></span>'+
+      '<span>Bias <b>'+esc(m.overrun_bias_pct_points??'—')+'</b></span><span>SD <b>'+esc(m.overrun_sd_pct_points??'—')+'</b></span><span>Avg Draw Temp <b>'+esc(m.avg_draw_temp_c??'—')+'°C</b></span><span>Avg Yield <b>'+esc(m.avg_finished_yield_l??'—')+' L</b></span>'+
+    '</div><div class="steps">'+(m.comments||[]).map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div></div>'+
+    '<div class="source">'+esc(j.note||'')+'</div></div>'
+  );
 }
 async function loadQcForRecipe(recipeId){
   try{
