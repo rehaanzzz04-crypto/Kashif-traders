@@ -399,6 +399,120 @@ async function saveIngredientSettings(){
     renderIngredientProfiles();render();
   }catch(e){$('profileStatus').textContent='Saved locally • '+(e.message||'cloud unavailable');render();}
 }
+
+function currentBusinessPayload(){
+  if(!current?.r||!Array.isArray(current.items)||!current.items.length)throw Error('Pehle complete recipe generate karein');
+  const dep=$('department')?.value||'icecream',kind=$('system')?.value||dep;
+  return {
+    business_name:$('businessAccountName').value.trim()||'Kashif Traders',
+    recipe_name:$('businessName').value.trim()||(current.r.name+' - Final'),
+    department:dep,
+    system:kind,
+    base_mode:$('baseMode')?.value||null,
+    source_recipe_id:current.r.id||null,
+    source_name:current.r.sourceName||(kind==='gelato'?'Carpigiani Gelato University':null),
+    source_url:current.r.sourceUrl||(kind==='gelato'?SOURCE_CARPIGIANI:null),
+    source_type:sourceClassFor(current.r,kind),
+    formula:current.items.map(x=>({name:x.name,g:Number(x.g)})),
+    source_formula:current.items.map(x=>({name:x.name,g:Number(x.g)})),
+    ingredient_settings:ingredientSettings,
+    research_target:current.r.solids?{sugars:current.r.solids[0],fat:current.r.solids[1],msnf:current.r.solids[2],other_solids:current.r.solids[3],water:current.r.solids[4],total_solids:current.r.solids[5]}:{
+      fat:current.r.fat??null,msnf:current.r.msnf??null,sucrose:current.r.sucrose??null,glucose:current.r.glucose??null,stabilizer:current.r.stabilizer??null,emulsifier:current.r.emulsifier??null
+    },
+    trial_notes:$('trialNotes').value.trim()||null,
+    production_tested_at:$('productionTestDate').value||null
+  };
+}
+function researchScoreHtml(r){
+  const score=r?.perfection_score===null||r?.perfection_score===undefined?'—':Number(r.perfection_score).toFixed(1)+'%';
+  const shelf=r?.validated_shelf_life||'Not validated';
+  const comments=Array.isArray(r?.research_comments)?r.research_comments:[];
+  return '<div class="researchReview"><div class="stats"><div class="stat"><small>Research Fit / Perfection</small><strong>'+esc(score)+'</strong></div><div class="stat"><small>Status</small><strong>'+esc((r?.status||'trial').toUpperCase())+'</strong></div><div class="stat"><small>Version</small><strong>V'+esc(r?.version||1)+'</strong></div><div class="stat"><small>Validated Shelf Life</small><strong>'+esc(shelf)+'</strong></div></div>'+
+    '<div class="subpanel"><h3>Research Comments</h3><div class="steps">'+comments.map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div></div>'+
+    '<div class="source"><b>Shelf-life guidance:</b> '+esc(r?.shelf_life_guidance||'Finished product validation required.')+(r?.storage_conditions?'<br><b>Storage:</b> '+esc(r.storage_conditions):'')+'</div></div>';
+}
+async function saveCurrentBusinessRecipe(finalize=false){
+  try{
+    const payload=currentBusinessPayload();
+    if(finalize&&!payload.production_tested_at)throw Error('Final recipe ke liye production test date select karein');
+    const r=await fetch('/api/data?resource=gelato_recipes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Recipe save failed');
+    let record=j.record;
+    if(finalize){
+      const r2=await fetch('/api/data?resource=gelato_recipes&id='+encodeURIComponent(record.id),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'finalize',production_tested_at:payload.production_tested_at,trial_notes:payload.trial_notes})});
+      const j2=await r2.json().catch(()=>({}));
+      if(!r2.ok)throw Error(j2.error||'Finalize failed');
+      record=j2.record;
+    }
+    alert(finalize?'Production test passed — Business Final Recipe saved':'Production Trial saved');
+    loadBusinessRecipes();
+    $('result').insertAdjacentHTML('afterbegin',researchScoreHtml(record));
+  }catch(e){alert(e.message||'Recipe save failed')}
+}
+async function loadBusinessRecipes(){
+  try{
+    const business=$('businessAccountName')?.value?.trim()||'Kashif Traders';
+    const r=await fetch('/api/data?resource=gelato_recipes&business='+encodeURIComponent(business),{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Load failed');
+    renderBusinessRecipes(j.records||[]);
+  }catch(e){$('businessRecipeList').innerHTML='<div class="warning">'+esc(e.message||'Business recipes unavailable')+'</div>'}
+}
+function renderBusinessRecipes(rows){
+  if(!rows.length){$('businessRecipeList').innerHTML='<div class="note">No business recipes saved yet.</div>';return}
+  $('businessRecipeList').innerHTML=rows.map(r=>{
+    const comments=Array.isArray(r.research_comments)?r.research_comments:[];
+    return '<div class="businessRecipeCard"><div class="businessRecipeHead"><div><b>'+esc(r.recipe_name)+'</b><small>'+esc(r.business_name)+' • '+esc(r.department)+' • V'+esc(r.version)+'</small></div><span class="badge '+(r.status==='final'?'finalBadge':'')+'">'+esc(r.status)+'</span></div>'+
+      '<div class="businessMetrics"><span>Research Fit <b>'+(r.perfection_score==null?'—':Number(r.perfection_score).toFixed(1)+'%')+'</b></span><span>Shelf Life <b>'+esc(r.validated_shelf_life||'Not validated')+'</b></span></div>'+
+      (comments[0]?'<div class="miniComment">'+esc(comments[0])+'</div>':'')+
+      '<div class="actions"><button class="ghost" data-view-business="'+r.id+'" type="button">View</button><button class="secondary" data-edit-business="'+r.id+'" type="button">Edit / Rebalance</button></div></div>';
+  }).join('');
+  $('businessRecipeList').querySelectorAll('[data-view-business]').forEach(b=>b.onclick=()=>viewBusinessRecipe(Number(b.dataset.viewBusiness)));
+  $('businessRecipeList').querySelectorAll('[data-edit-business]').forEach(b=>b.onclick=()=>editBusinessRecipe(Number(b.dataset.editBusiness)));
+}
+async function fetchBusinessRecipe(id){
+  const r=await fetch('/api/data?resource=gelato_recipes&id='+encodeURIComponent(id),{cache:'no-store'});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(j.error||'Recipe not found');
+  return j;
+}
+async function viewBusinessRecipe(id){
+  try{
+    const {record,versions}=await fetchBusinessRecipe(id);
+    $('businessRecipeList').innerHTML='<button class="ghost" id="backBusinessList" type="button">← Back</button><div class="businessRecipeCard"><h2>'+esc(record.recipe_name)+'</h2>'+researchScoreHtml(record)+
+      '<div class="tablewrap"><table><thead><tr><th>Ingredient</th><th>Weight</th><th>% Formula</th></tr></thead><tbody>'+
+      (record.formula||[]).map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+fmt(Number(x.g||0))+'</td><td>'+(((Number(x.g||0)/(record.formula||[]).reduce((s,y)=>s+Number(y.g||0),0))*100)||0).toFixed(2)+'%</td></tr>').join('')+
+      '</tbody></table></div><div class="source"><b>Version history:</b> '+(versions||[]).map(v=>'V'+v.version+' • '+new Date(v.changed_at).toLocaleString()).join(' | ')+'</div></div>';
+    $('backBusinessList').onclick=loadBusinessRecipes;
+  }catch(e){alert(e.message)}
+}
+async function editBusinessRecipe(id){
+  try{
+    const {record}=await fetchBusinessRecipe(id);
+    const formula=Array.isArray(record.formula)?record.formula:[];
+    $('businessRecipeList').innerHTML='<button class="ghost" id="backBusinessList" type="button">← Back</button><div class="businessRecipeCard"><h2>Edit '+esc(record.recipe_name)+'</h2><div class="warning">Manual change ke baad research score automatically recalculate hoga. Original research/master formula preserve rahega.</div>'+
+      '<div id="businessFormulaEditor">'+formula.map((x,i)=>'<div class="editIngredientRow"><input data-edit-name="'+i+'" value="'+esc(x.name)+'"><input data-edit-g="'+i+'" type="number" step="0.1" min="0" value="'+Number(x.g||0)+'"><span>g</span></div>').join('')+'</div>'+
+      '<label class="label">Trial / Change Notes</label><textarea class="field notesField" id="editRecipeNotes">'+esc(record.trial_notes||'')+'</textarea>'+
+      '<label class="label">Production Test Date</label><input class="field" id="editTestDate" type="date" value="'+esc(record.production_tested_at?String(record.production_tested_at).slice(0,10):'')+'">'+
+      '<label class="label">Validated Shelf Life</label><input class="field" id="editShelfLife" value="'+esc(record.validated_shelf_life||'')+'" placeholder="e.g. 12 weeks — validated">'+
+      '<label class="label">Storage Conditions</label><input class="field" id="editStorage" value="'+esc(record.storage_conditions||'')+'" placeholder="e.g. -18°C or colder">'+
+      '<div class="actions"><button class="secondary" id="saveBusinessEdit" type="button">Save New Version</button><button class="primary noTop" id="saveBusinessFinal" type="button">Save & Mark Final</button></div></div>';
+    $('backBusinessList').onclick=loadBusinessRecipes;
+    const save=async final=>{
+      const updated=formula.map((x,i)=>({name:document.querySelector('[data-edit-name="'+i+'"]').value.trim()||x.name,g:Number(document.querySelector('[data-edit-g="'+i+'"]').value||0)})).filter(x=>x.g>0);
+      const body={formula:updated,trial_notes:$('editRecipeNotes').value,production_tested_at:$('editTestDate').value||null,validated_shelf_life:$('editShelfLife').value,storage_conditions:$('editStorage').value};
+      if(final)body.action='finalize';
+      const r=await fetch('/api/data?resource=gelato_recipes&id='+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok)throw Error(j.error||'Update failed');
+      alert('Recipe V'+j.record.version+' saved • Research Fit '+(j.record.perfection_score==null?'—':Number(j.record.perfection_score).toFixed(1)+'%'));
+      viewBusinessRecipe(id);
+    };
+    $('saveBusinessEdit').onclick=()=>save(false).catch(e=>alert(e.message));
+    $('saveBusinessFinal').onclick=()=>save(true).catch(e=>alert(e.message));
+  }catch(e){alert(e.message)}
+}
 async function auth(){
   const key='kt_offline_user_v1';let ok=false;
   try{const r=await fetch('/api/auth?action=me',{cache:'no-store'});if(r.status===401||r.status===403){location.replace('/login.html');return}if(r.ok){const j=await r.json();ok=!!j.user;if(j.user)localStorage.setItem(key,JSON.stringify({user:j.user,saved_at:new Date().toISOString()}));}}
@@ -415,6 +529,11 @@ $('profileModal').onclick=e=>{if(e.target===$('profileModal'))$('profileModal').
 $('addDryMilkProfile').onclick=()=>{ingredientSettings.dry_milk_profiles=ingredientSettings.dry_milk_profiles||[];ingredientSettings.dry_milk_profiles.push({id:profileId('powder'),name:'New Dry Milk',fat_pct:0,protein_pct:0,carbs_pct:0,moisture_pct:0,other_pct:0,added_sugar_pct:null,note:''});renderIngredientProfiles()};
 $('addCremodanProfile').onclick=()=>{ingredientSettings.cremodan_profiles=ingredientSettings.cremodan_profiles||[];ingredientSettings.cremodan_profiles.push({id:profileId('cremodan'),grade:'CREMODAN',dosage_g_per_kg:0,includes_emulsifier:true,product_type:'General',note:''});renderIngredientProfiles()};
 $('saveProfiles').onclick=saveIngredientSettings;
+$('saveTrial').onclick=()=>saveCurrentBusinessRecipe(false);
+$('finalizeRecipe').onclick=()=>saveCurrentBusinessRecipe(true);
+$('businessRecipesBtn').onclick=()=>{$('businessRecipesModal').classList.remove('hidden');loadBusinessRecipes()};
+$('businessRecipesClose').onclick=()=>$('businessRecipesModal').classList.add('hidden');
+$('businessRecipesModal').onclick=e=>{if(e.target===$('businessRecipesModal'))$('businessRecipesModal').classList.add('hidden')};
 $('department').onchange=populate;$('sourceType').onchange=populate;$('system').onchange=populate;$('baseMode').onchange=render;$('recipe').onchange=render;$('batch').oninput=render;$('unit').onchange=render;$('generate').onclick=render;
 document.querySelectorAll('[data-kg]').forEach(b=>b.onclick=()=>{$('batch').value=b.dataset.kg;$('unit').value='kg';render()});
 $('save').onclick=saveBatch;$('print').onclick=()=>window.print();$('share').onclick=shareRecipe;
