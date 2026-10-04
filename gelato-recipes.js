@@ -1061,6 +1061,7 @@ async function viewBusinessRecipe(id){
       (record.formula||[]).map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+fmt(Number(x.g||0))+'</td><td>'+(((Number(x.g||0)/(record.formula||[]).reduce((s,y)=>s+Number(y.g||0),0))*100)||0).toFixed(2)+'%</td></tr>').join('')+
       '</tbody></table></div><div class="source"><b>Version history:</b> '+(versions||[]).map(v=>'V'+v.version+' • '+new Date(v.changed_at).toLocaleString()).join(' | ')+'</div></div>';
     $('backBusinessList').onclick=loadBusinessRecipes;
+    loadProductionBatches(id);
     loadReleaseReadiness(id);
     loadTextureCalibration(id);
     loadQcForRecipe(id);
@@ -1098,6 +1099,62 @@ async function editBusinessRecipe(id){
 
 
 
+
+async function startProductionBatch(recipeId){
+  try{
+    const code='PB-'+recipeId+'-'+Date.now().toString(36).toUpperCase();
+    const r=await fetch('/api/data?resource=gelato_batches&recipe_id='+recipeId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({batch_code:code,planned_date:new Date().toISOString().slice(0,10)})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Production batch create failed');
+    showProductionBatch(j.record.id);
+  }catch(e){alert(e.message)}
+}
+async function loadProductionBatches(recipeId){
+  try{
+    const r=await fetch('/api/data?resource=gelato_batches&recipe_id='+recipeId,{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Production batches load failed');
+    renderProductionBatchList(recipeId,j.records||[]);
+  }catch(e){$('businessRecipeList').insertAdjacentHTML('beforeend','<div class="warning">'+esc(e.message)+'</div>')}
+}
+function renderProductionBatchList(recipeId,rows){
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><div class="businessRecipeHead"><div><h3>Production Batches</h3><small>Formula version locked weighing sheets</small></div><button class="primary" id="startProductionBatchBtn" type="button">+ Start Production Batch</button></div><div id="productionBatchList">'+(rows.length?rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.batch_code)+'</b><small>Recipe V'+esc(x.recipe_version)+' • '+esc(String(x.planned_date||'').slice(0,10))+'</small></div><span class="badge '+(x.status==='completed'?'finalBadge':'')+'">'+esc(String(x.status||'draft').toUpperCase())+'</span></div><button class="secondary" type="button" data-open-prod-batch="'+x.id+'">Open Batch Sheet</button></div>').join(''):'<div class="note">No production batches yet.</div>')+'</div></div>');
+  $('startProductionBatchBtn').onclick=()=>startProductionBatch(recipeId);
+  document.querySelectorAll('[data-open-prod-batch]').forEach(b=>b.onclick=()=>showProductionBatch(Number(b.dataset.openProdBatch)));
+}
+async function showProductionBatch(batchId){
+  try{
+    await loadMaterialLots().catch(()=>{materialLotsCache=[]});
+    const r=await fetch('/api/data?resource=gelato_batches&id='+batchId,{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Production batch load failed');
+    const b=j.record,s=j.summary||{},items=j.items||[];
+    const rows=items.map(x=>{
+      const lotOptions='<option value="">No lot</option>'+materialLotsCache.map(l=>'<option value="'+l.id+'" '+(Number(x.lot_id)===Number(l.id)?'selected':'')+'>'+esc(l.ingredient_name)+' • '+esc(l.material_number||'')+' / '+esc(l.lot_number||'')+' • '+esc(String(l.verification_status||'pending').toUpperCase())+'</option>').join('');
+      return '<div class="weighRow" data-weigh-line="'+x.id+'"><div><b>'+esc(x.ingredient_name)+'</b><small>Target '+fmt(Number(x.target_g||0))+' g</small></div><input data-actual type="number" step="0.1" min="0" value="'+(x.actual_g??'')+'" placeholder="Actual g"><select data-lot>'+lotOptions+'</select><input data-tol type="number" step="0.01" min="0" value="'+(x.tolerance_pct??'')+'" placeholder="Tol %"><input data-tol-source value="'+esc(x.tolerance_source||'')+'" placeholder="Tolerance source"><button class="secondary" data-save-weigh type="button">Save</button><span class="badge '+(x.weigh_status==='pass'?'finalBadge':'')+'">'+esc(String(x.weigh_status||'pending').toUpperCase())+'</span></div>';
+    }).join('');
+    $('businessRecipeList').innerHTML='<button class="ghost" id="backFromProdBatch" type="button">← Back</button><div class="businessRecipeCard"><div class="businessRecipeHead"><div><h2>'+esc(b.batch_code)+'</h2><small>'+esc(b.recipe_name)+' • Recipe V'+esc(b.recipe_version)+'</small></div><span class="badge '+(b.status==='completed'?'finalBadge':'')+'">'+esc(String(b.status||'draft').toUpperCase())+'</span></div>'+
+      '<div class="stats"><div class="stat"><small>Weighing Complete</small><strong>'+Number(s.weighing_complete_pct||0).toFixed(1)+'%</strong></div><div class="stat"><small>Target</small><strong>'+fmt(Number(s.target_total_g||0))+' g</strong></div><div class="stat"><small>Actual</small><strong>'+fmt(Number(s.actual_total_g||0))+' g</strong></div><div class="stat"><small>Out of Tolerance</small><strong>'+Number(s.out_of_tolerance_lines||0)+'</strong></div></div>'+
+      '<div class="warning">Tolerance optional hai. Agar tolerance use karein to verified SOP/manufacturer source reference required hai. Tolerance blank ho to line sirf actual weight record karegi.</div>'+
+      '<div class="weighGrid">'+rows+'</div>'+
+      '<button class="primary" id="completeProductionBatch" type="button" '+(b.status==='completed'?'disabled':'')+'>Complete Production Batch</button></div>';
+    $('backFromProdBatch').onclick=()=>viewBusinessRecipe(Number(b.recipe_id));
+    document.querySelectorAll('[data-save-weigh]').forEach(btn=>btn.onclick=async()=>{
+      const row=btn.closest('[data-weigh-line]'),itemId=Number(row.dataset.weighLine);
+      const body={action:'weigh_item',item_id:itemId,actual_g:row.querySelector('[data-actual]').value,lot_id:row.querySelector('[data-lot]').value||null,tolerance_pct:row.querySelector('[data-tol]').value||null,tolerance_source:row.querySelector('[data-tol-source]').value};
+      const rr=await fetch('/api/data?resource=gelato_batches&id='+batchId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const jj=await rr.json().catch(()=>({}));
+      if(!rr.ok){alert(jj.error||'Weight save failed');return}
+      showProductionBatch(batchId);
+    });
+    $('completeProductionBatch').onclick=async()=>{
+      const rr=await fetch('/api/data?resource=gelato_batches&id='+batchId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'complete'})});
+      const jj=await rr.json().catch(()=>({}));
+      if(!rr.ok){alert(jj.error||'Batch complete failed');return}
+      alert('Production batch completed and formula version locked');showProductionBatch(batchId);
+    };
+  }catch(e){alert(e.message)}
+}
 async function loadMaterialLots(){
   const r=await fetch('/api/data?resource=gelato_lots',{cache:'no-store'});
   const j=await r.json().catch(()=>({}));
