@@ -31,6 +31,7 @@ const allowed = new Set([
   "gelato_release",
   "gelato_stability",
   "gelato_texture",
+  "gelato_lots",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -993,6 +994,38 @@ async function ensureGelatoBusinessRecipes(sql){
   await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS process_deviations JSONB NOT NULL DEFAULT '[]'::jsonb`;
   await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS hardness_test_temp_c NUMERIC(7,2)`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_qc_recipe_idx ON gelato_recipe_qc(recipe_id,test_date DESC,id DESC)`;
+  await sql`CREATE TABLE IF NOT EXISTS gelato_material_lots(
+    id BIGSERIAL PRIMARY KEY,
+    ingredient_name TEXT NOT NULL,
+    profile_type TEXT,
+    profile_id TEXT,
+    supplier TEXT,
+    manufacturer TEXT,
+    material_number TEXT,
+    lot_number TEXT,
+    production_date DATE,
+    best_before DATE,
+    pack_size_kg NUMERIC(12,3),
+    coa_reference TEXT,
+    tds_reference TEXT,
+    verification_status TEXT NOT NULL DEFAULT 'pending',
+    notes TEXT,
+    created_by_id BIGINT,
+    created_by_name TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS gelato_material_lots_material_idx ON gelato_material_lots(material_number,lot_number,best_before DESC,id DESC)`;
+  await sql`CREATE TABLE IF NOT EXISTS gelato_qc_material_lots(
+    id BIGSERIAL PRIMARY KEY,
+    qc_id BIGINT NOT NULL REFERENCES gelato_recipe_qc(id) ON DELETE CASCADE,
+    lot_id BIGINT NOT NULL REFERENCES gelato_material_lots(id) ON DELETE RESTRICT,
+    ingredient_name TEXT,
+    quantity_g NUMERIC(14,3),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(qc_id,lot_id)
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS gelato_qc_material_lots_qc_idx ON gelato_qc_material_lots(qc_id,lot_id)`;
   await sql`CREATE TABLE IF NOT EXISTS gelato_recipe_bio(
     id BIGSERIAL PRIMARY KEY,
     recipe_id BIGINT NOT NULL REFERENCES gelato_business_recipes(id) ON DELETE CASCADE,
@@ -1313,12 +1346,110 @@ async function gelatoBio(sql,req,user){
   }
   return {status:405,data:{error:"Method not allowed"}};
 }
+
+function lotTraceabilitySummary(qcRows,usageRows){
+  const passed=(qcRows||[]).filter(x=>x.result==="pass");
+  const usage=usageRows||[];
+  const qcWithLots=new Set(usage.map(x=>Number(x.qc_id))).size;
+  const unverified=usage.filter(x=>String(x.verification_status||"pending").toLowerCase()!=="verified");
+  const rejected=usage.filter(x=>String(x.verification_status||"").toLowerCase()==="rejected");
+  const expired=usage.filter(x=>{
+    if(!x.best_before||!x.test_date)return false;
+    return String(x.best_before).slice(0,10)<String(x.test_date).slice(0,10);
+  });
+  const missingDocs=usage.filter(x=>!cleanText(x.coa_reference)&&!cleanText(x.tds_reference));
+  const distinctLots=new Set(usage.map(x=>Number(x.lot_id))).size;
+  let confidence=0;
+  if(passed.length)confidence+=20;
+  confidence+=Math.min(35,(qcWithLots/2)*35);
+  confidence+=usage.length&&unverified.length===0?25:Math.max(0,25-(unverified.length*8));
+  confidence+=usage.length&&expired.length===0?10:0;
+  confidence+=usage.length&&missingDocs.length===0?10:Math.max(0,10-(missingDocs.length*3));
+  confidence=Math.max(0,Math.min(100,confidence));
+  let status="incomplete";
+  if(rejected.length||expired.length)status="review";
+  else if(passed.length>=2&&qcWithLots>=2&&usage.length&&unverified.length===0)status="verified";
+  else if(usage.length)status="in_progress";
+  const comments=[];
+  if(!usage.length)comments.push("Passed QC batches ke saath raw-material lots link nahi kiye gaye.");
+  if(qcWithLots<2)comments.push("Release traceability ke liye kam az kam 2 passed QC batches mein lot usage record karein.");
+  if(unverified.length)comments.push(unverified.length+" lot(s) abhi Verified status par nahi hain.");
+  if(rejected.length)comments.push(rejected.length+" rejected lot(s) production history mein linked hain; investigation required hai.");
+  if(expired.length)comments.push(expired.length+" lot(s) test date par best-before ke baad thay; release review required hai.");
+  if(missingDocs.length)comments.push(missingDocs.length+" lot(s) ke saath COA/TDS reference missing hai.");
+  if(status==="verified")comments.push("Passed QC batches ke critical raw-material lots verified aur traceable hain.");
+  return {status,confidence:Number(confidence.toFixed(1)),passed_qc_batches:passed.length,qc_batches_with_lots:qcWithLots,distinct_lots:distinctLots,unverified_lots:unverified.length,rejected_lots:rejected.length,expired_at_use:expired.length,missing_document_refs:missingDocs.length,comments};
+}
+async function gelatoLots(sql,req,user){
+  await ensureGelatoBusinessRecipes(sql);
+  const id=asId(req.query?.id),b=bodyOf(req);
+  if(req.method==="GET"){
+    if(id){
+      const row=(await sql`SELECT * FROM gelato_material_lots WHERE id=${id}`)[0];
+      if(!row)return {status:404,data:{error:"Material lot not found"}};
+      return {status:200,data:{record:row}};
+    }
+    const rows=await sql`SELECT * FROM gelato_material_lots ORDER BY best_before NULLS LAST,ingredient_name,id DESC LIMIT 500`;
+    return {status:200,data:{records:rows}};
+  }
+  if(req.method==="POST"){
+    if(!cleanText(b.ingredient_name))return {status:400,data:{error:"Ingredient name required hai"}};
+    const admin=String(user.designation||"").toLowerCase()==="admin";
+    const allowedStatus=["pending","tds_pending","verified","rejected"];
+    let status=allowedStatus.includes(String(b.verification_status||"").toLowerCase())?String(b.verification_status).toLowerCase():"pending";
+    if(!admin&&status!=="pending"&&status!=="tds_pending")status="pending";
+    const row=(await sql`INSERT INTO gelato_material_lots(
+      ingredient_name,profile_type,profile_id,supplier,manufacturer,material_number,lot_number,production_date,best_before,pack_size_kg,coa_reference,tds_reference,verification_status,notes,created_by_id,created_by_name
+    ) VALUES(
+      ${cleanText(b.ingredient_name)},${cleanText(b.profile_type)},${cleanText(b.profile_id)},${cleanText(b.supplier)},${cleanText(b.manufacturer)},${cleanText(b.material_number)},${cleanText(b.lot_number)},
+      ${cleanText(b.production_date)},${cleanText(b.best_before)},${b.pack_size_kg===null||b.pack_size_kg===undefined||b.pack_size_kg===""?null:Number(b.pack_size_kg)},
+      ${cleanText(b.coa_reference)},${cleanText(b.tds_reference)},${status},${cleanText(b.notes)},${user.id},${user.full_name||user.employee_code||"User"}
+    ) RETURNING *`)[0];
+    return {status:201,data:{record:row}};
+  }
+  if(req.method==="PATCH"){
+    if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin material lot verify/update kar sakta hai"}};
+    if(!id)return {status:400,data:{error:"Valid material lot id required hai"}};
+    const old=(await sql`SELECT * FROM gelato_material_lots WHERE id=${id}`)[0];
+    if(!old)return {status:404,data:{error:"Material lot not found"}};
+    const allowedStatus=["pending","tds_pending","verified","rejected"];
+    const status=allowedStatus.includes(String(b.verification_status||old.verification_status).toLowerCase())?String(b.verification_status||old.verification_status).toLowerCase():old.verification_status;
+    const row=(await sql`UPDATE gelato_material_lots SET
+      ingredient_name=${cleanText(b.ingredient_name)??old.ingredient_name},
+      profile_type=${b.profile_type!==undefined?cleanText(b.profile_type):old.profile_type},
+      profile_id=${b.profile_id!==undefined?cleanText(b.profile_id):old.profile_id},
+      supplier=${b.supplier!==undefined?cleanText(b.supplier):old.supplier},
+      manufacturer=${b.manufacturer!==undefined?cleanText(b.manufacturer):old.manufacturer},
+      material_number=${b.material_number!==undefined?cleanText(b.material_number):old.material_number},
+      lot_number=${b.lot_number!==undefined?cleanText(b.lot_number):old.lot_number},
+      production_date=${b.production_date!==undefined?cleanText(b.production_date):old.production_date},
+      best_before=${b.best_before!==undefined?cleanText(b.best_before):old.best_before},
+      pack_size_kg=${b.pack_size_kg!==undefined?(b.pack_size_kg===""?null:Number(b.pack_size_kg)):old.pack_size_kg},
+      coa_reference=${b.coa_reference!==undefined?cleanText(b.coa_reference):old.coa_reference},
+      tds_reference=${b.tds_reference!==undefined?cleanText(b.tds_reference):old.tds_reference},
+      verification_status=${status},
+      notes=${b.notes!==undefined?cleanText(b.notes):old.notes},
+      updated_at=now()
+      WHERE id=${id} RETURNING *`)[0];
+    return {status:200,data:{record:row}};
+  }
+  if(req.method==="DELETE"){
+    if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin material lot delete kar sakta hai"}};
+    if(!id)return {status:400,data:{error:"Valid material lot id required hai"}};
+    const used=(await sql`SELECT count(*)::int count FROM gelato_qc_material_lots WHERE lot_id=${id}`)[0]?.count||0;
+    if(used)return {status:409,data:{error:"Ye lot production QC history mein use ho chuka hai; traceability ke liye delete nahi ho sakta"}};
+    const row=(await sql`DELETE FROM gelato_material_lots WHERE id=${id} RETURNING id`)[0];
+    if(!row)return {status:404,data:{error:"Material lot not found"}};
+    return {status:200,data:{deleted:true}};
+  }
+  return {status:405,data:{error:"Method not allowed"}};
+}
 async function gelatoQc(sql,req,user){
   await ensureGelatoBusinessRecipes(sql);
   const id=asId(req.query?.id),recipeId=asId(req.query?.recipe_id),b=bodyOf(req);
   if(req.method==="GET"){
     if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
-    const rows=await sql`SELECT * FROM gelato_recipe_qc WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC LIMIT 100`;
+    const rows=await sql`SELECT q.*,COALESCE((SELECT jsonb_agg(jsonb_build_object('lot_id',l.id,'ingredient_name',COALESCE(u.ingredient_name,l.ingredient_name),'quantity_g',u.quantity_g,'material_number',l.material_number,'lot_number',l.lot_number,'best_before',l.best_before,'verification_status',l.verification_status,'coa_reference',l.coa_reference,'tds_reference',l.tds_reference) ORDER BY l.ingredient_name,l.id) FROM gelato_qc_material_lots u JOIN gelato_material_lots l ON l.id=u.lot_id WHERE u.qc_id=q.id),'[]'::jsonb) material_lots FROM gelato_recipe_qc q WHERE q.recipe_id=${recipeId} ORDER BY q.test_date DESC,q.id DESC LIMIT 100`;
     const recipe=(await sql`SELECT id,recipe_name,status,production_confidence FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
     return {status:200,data:{records:rows,recipe}};
   }
@@ -1331,6 +1462,8 @@ async function gelatoQc(sql,req,user){
     if(!["trial","pass","fail"].includes(result))return {status:400,data:{error:"QC result Trial, Pass ya Fail hona chahiye"}};
     const score=v=>v===null||v===undefined||v===""?null:Math.max(1,Math.min(10,Math.round(Number(v)||0)));
     const n=v=>v===null||v===undefined||v===""?null:Number(v);
+    const lotItems=Array.isArray(b.material_lots)?b.material_lots.slice(0,50).map(x=>({lot_id:asId(x?.lot_id),ingredient_name:cleanText(x?.ingredient_name),quantity_g:n(x?.quantity_g)})).filter(x=>x.lot_id):[];
+    for(const x of lotItems){const ok=(await sql`SELECT id FROM gelato_material_lots WHERE id=${x.lot_id}`)[0];if(!ok)return {status:400,data:{error:"Selected material lot not found: "+x.lot_id}};}
     const row=(await sql`INSERT INTO gelato_recipe_qc(
       recipe_id,batch_code,test_date,machine,operator_name,mix_temp_c,pasteurization_peak_c,ageing_hours,ph,brix,overrun_pct,draw_temp_c,melt_30min_pct,
       mix_sample_g,frozen_sample_g,sample_volume_ml,calculated_overrun_pct,finished_yield_l,batch_output_kg,
@@ -1346,8 +1479,9 @@ async function gelatoQc(sql,req,user){
       ${score(b.hardness_score)},${n(b.hardness_test_temp_c)},${score(b.sweetness_score)},${score(b.iciness_score)},${score(b.body_score)},${score(b.aftertaste_score)},
       ${cleanText(b.day1_notes)},${cleanText(b.day7_notes)},${result},${user.id},${user.full_name||user.employee_code||"User"}
     ) RETURNING *`)[0];
+    for(const x of lotItems){await sql`INSERT INTO gelato_qc_material_lots(qc_id,lot_id,ingredient_name,quantity_g) VALUES(${row.id},${x.lot_id},${x.ingredient_name},${x.quantity_g}) ON CONFLICT(qc_id,lot_id) DO UPDATE SET ingredient_name=EXCLUDED.ingredient_name,quantity_g=EXCLUDED.quantity_g`;}
     const confidence=await recalcProductionConfidence(sql,recipeId);
-    return {status:201,data:{record:row,production_confidence:confidence}};
+    return {status:201,data:{record:row,production_confidence:confidence,material_lots:lotItems}};
   }
   if(req.method==="DELETE"){
     if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin QC record delete kar sakta hai"}};
@@ -1633,7 +1767,8 @@ async function gelatoRelease(sql,req,user){
   const sensory=await sql`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=${recipeId} ORDER BY panel_date DESC,id DESC`;
   const bio=await sql`SELECT * FROM gelato_recipe_bio WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
   const stability=await sql`SELECT * FROM gelato_recipe_stability WHERE recipe_id=${recipeId} ORDER BY checkpoint_day DESC,test_date DESC,id DESC`;
-  const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio),stabilitySum=stabilitySummary(stability,recipe),textureSum=textureCalibrationSummary(qc,recipe),machine=machineCalibrationSummary(qc,recipe);
+  const lotUsage=await sql`SELECT q.id qc_id,q.test_date,l.id lot_id,l.ingredient_name,l.material_number,l.lot_number,l.best_before,l.verification_status,l.coa_reference,l.tds_reference FROM gelato_recipe_qc q JOIN gelato_qc_material_lots u ON u.qc_id=q.id JOIN gelato_material_lots l ON l.id=u.lot_id WHERE q.recipe_id=${recipeId} AND q.result='pass' ORDER BY q.test_date DESC,q.id DESC,l.ingredient_name`;
+  const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio),stabilitySum=stabilitySummary(stability,recipe),textureSum=textureCalibrationSummary(qc,recipe),machine=machineCalibrationSummary(qc,recipe),lotTrace=lotTraceabilitySummary(qc,lotUsage);
   const passed=qc.filter(x=>x.result==="pass").length;
   const processRows=qc.filter(x=>x.result==="pass"&&x.process_compliance_pct!==null&&x.process_compliance_pct!==undefined).slice(0,3);
   const processAvg=processRows.length?processRows.reduce((s,x)=>s+Number(x.process_compliance_pct||0),0)/processRows.length:null;
@@ -1645,6 +1780,7 @@ async function gelatoRelease(sql,req,user){
     {key:"qc",label:"Passed QC Batches ≥ 2",pass:passed>=2,value:passed},
     {key:"calibration",label:"Measured Overrun Calibration",pass:machine.sample_count>=2&&(machine.overrun_sd_pct_points===null||machine.overrun_sd_pct_points<=8),value:machine.sample_count},
     {key:"texture",label:"Empirical Texture Calibration",pass:textureSum.status==="calibrated"&&Number(textureSum.confidence)>=60,value:textureSum.status+" • "+textureSum.confidence+"%"},
+    {key:"traceability",label:"Raw Material Lot Traceability",pass:lotTrace.status==="verified",value:lotTrace.status+" • "+lotTrace.confidence+"%"},
     {key:"process",label:"Process Compliance ≥ 85%",pass:processRows.length>=2&&Number(processAvg)>=85,value:processAvg===null?null:Number(processAvg.toFixed(1))},
     {key:"sensory",label:"Sensory Panel ≥ 3 & Avg ≥ 7/10",pass:Number(sensorySum.panel_count)>=3&&Number(sensorySum.overall_avg)>=7,value:sensorySum.overall_avg},
     {key:"stability",label:"Physical Stability Study",pass:stabilitySum.status==="stable",value:stabilitySum.status},
@@ -1664,6 +1800,7 @@ async function gelatoRelease(sql,req,user){
     blockers,
     machine_calibration:machine,
     texture_calibration:textureSum,
+    material_traceability:lotTrace,
     sensory:sensorySum,
     biological:bioSum,
     stability:stabilitySum,
@@ -1827,6 +1964,10 @@ async function handler(req, res) {
     }
     if (resource === "gelato_texture") {
       const out = await gelatoTexture(sql, req, user);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "gelato_lots") {
+      const out = await gelatoLots(sql, req, user);
       return res.status(out.status).json(out.data);
     }
     await ensureEntryNumbers(sql);
