@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2563eb">
 <title>Gelato Recipe | Kashif Traders</title>
-<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-15">
-<script defer src="/offline-register.js?v=20261004-15"></script>
-<script defer src="/gelato-recipes.js?v=20261004-15"></script>
+<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-16">
+<script defer src="/offline-register.js?v=20261004-16"></script>
+<script defer src="/gelato-recipes.js?v=20261004-16"></script>
 </head>
 <body>
 <div id="authLoading" class="loading">Gelato Recipe Lab loading…</div>
@@ -242,6 +242,13 @@
       <div id="sugarProfiles"></div>
       <label class="profileDefault">Default Glucose / Syrup<select id="defaultSugar"><option value="">None</option></select></label>
       <div class="note">Glucose syrup ke liye exact DE, dry solids %, relative sweetness aur freezing-point-depression factor supplier TDS/COA ke mutabiq save karein. Reference profiles sirf documented baseline hain.</div>
+    </section>
+
+    <section class="profileSection">
+      <div class="profileSectionHead"><h3>Biological Standards Profiles</h3></div>
+      <div id="bioStandardProfiles"></div>
+      <label class="profileDefault">Default Biological Standard<select id="defaultBioStandard"><option value="">None</option></select></label>
+      <div class="note">Punjab profile explicit microbiological limits apply karta hai. PSQCA/Codex reference-only profiles tab tak pass/fail generate nahi karenge jab tak exact source criteria verified na hon.</div>
     </section>
 
     <section class="profileSection" id="costSettings">
