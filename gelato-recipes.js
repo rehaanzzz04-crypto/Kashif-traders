@@ -1109,11 +1109,11 @@ function lotStatusClass(s){return String(s||'pending').toLowerCase()==='verified
 function renderMaterialLots(){
   const el=$('materialLotsList'); if(!el)return;
   if(!materialLotsCache.length){el.innerHTML='<div class="note">No material lots saved yet.</div>';return}
-  el.innerHTML='<button type="button" class="secondary profileBtn" id="quickCremodanLot">+ Cremodan 1275590</button>'+materialLotsCache.map(x=>
+  el.innerHTML='<button type="button" class="secondary profileBtn" id="quickCremodanLot">+ CREMODAN SE 46-M • 1275590</button>'+materialLotsCache.map(x=>
     '<div class="profileCard"><div class="profileCardHead"><div><b>'+esc(x.ingredient_name)+'</b><small>'+esc(x.material_number||'No material no.')+' • '+esc(x.lot_number||'No lot')+'</small></div><span class="badge '+lotStatusClass(x.verification_status)+'">'+esc(String(x.verification_status||'pending').toUpperCase())+'</span></div>'+
     '<div class="businessMetrics"><span>Supplier <b>'+esc(x.supplier||'—')+'</b></span><span>Pack <b>'+esc(x.pack_size_kg??'—')+' kg</b></span><span>Prod <b>'+esc(x.production_date?String(x.production_date).slice(0,10):'—')+'</b></span><span>Best Before <b>'+esc(x.best_before?String(x.best_before).slice(0,10):'—')+'</b></span><span>COA <b>'+esc(x.coa_reference||'Missing')+'</b></span><span>TDS <b>'+esc(x.tds_reference||'Missing')+'</b></span></div></div>'
   ).join('');
-  const q=$('quickCremodanLot');if(q)q.onclick=()=>showMaterialLotForm({ingredient_name:'CREMODAN / Emulsifier & Stabiliser System',profile_type:'cremodan',manufacturer:'IFF / exact grade pending verification',material_number:'1275590',production_date:'2025-06-02',best_before:'2028-06-01',pack_size_kg:25,verification_status:'tds_pending',notes:'Bag image verified for material number/date/pack size; exact CREMODAN grade and dosage require TDS/clear label verification.'});
+  const q=$('quickCremodanLot');if(q)q.onclick=()=>showMaterialLotForm({ingredient_name:'CREMODAN SE 46-M',profile_type:'cremodan',manufacturer:'Danisco / IFF',material_number:'1275590',lot_number:'711489461',production_date:'2025-06-02',best_before:'2028-06-01',pack_size_kg:25,verification_status:'tds_pending',notes:'Bag label confirms CREMODAN SE 46-M, material 1275590, batch 711489461, 25 kg, production 02-Jun-2025, best before 01-Jun-2028. Dosage/application range still requires manufacturer TDS before verification.'});
 }
 async function openMaterialLots(){
   try{await loadMaterialLots();renderMaterialLots();$('materialLotsModal').classList.remove('hidden')}catch(e){alert(e.message)}
