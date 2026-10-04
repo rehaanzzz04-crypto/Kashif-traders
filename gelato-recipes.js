@@ -86,7 +86,27 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const fmt=g=>g>=1000?(g/1000).toLocaleString('en',{maximumFractionDigits:3})+' kg':g.toLocaleString('en',{maximumFractionDigits:1})+' g';
 const batchGrams=()=>{const n=Number($('batch').value||0);return $('unit').value==='kg'?n*1000:n};
 let current={};
+let ingredientSettings={
+  whole_milk:{name:'Whole Milk',fat_pct:3.5,msnf_pct:8.5},
+  cream:{name:'Cream',fat_pct:35,msnf_pct:5.5},
+  dry_milk_profiles:[{id:'melco-26',name:'Melco Vegetable Fat Filled Powder',fat_pct:26,protein_pct:16,carbs_pct:50,moisture_pct:4,other_pct:4,added_sugar_pct:null,note:'Bag label profile'}],
+  cremodan_profiles:[],
+  default_dry_milk_id:'melco-26',
+  default_cremodan_id:null
+};
+const settingsKey='kt_gelato_ingredient_settings_v1';
 
+function activeDryMilkProfile(){
+  return ingredientSettings.dry_milk_profiles?.find(x=>x.id===ingredientSettings.default_dry_milk_id)||ingredientSettings.dry_milk_profiles?.[0]||null;
+}
+function activeCremodanProfile(){
+  return ingredientSettings.cremodan_profiles?.find(x=>x.id===ingredientSettings.default_cremodan_id)||null;
+}
+function powderNonFatSolids(p){
+  if(!p)return .96;
+  const sum=Number(p.protein_pct||0)+Number(p.carbs_pct||0)+Number(p.other_pct||0);
+  return Math.max(0,Math.min(.99,(sum>0?sum:(100-Number(p.fat_pct||0)-Number(p.moisture_pct||0)))/100));
+}
 function solve3(A,b){
   const M=A.map((r,i)=>[...r,b[i]]);
   for(let i=0;i<3;i++){
@@ -104,27 +124,37 @@ function componentRecipe(t,mode){
     const base=Number(t.baseMass||t.items.reduce((s,i)=>s+Number(i[1]||0),0))||1000;
     return t.items.map(i=>[i[0],Number(i[1])*1000/base]);
   }
-  const sugar=t.sucrose*10, glucose=t.glucose*10, stab=t.stabilizer*10, emul=t.emulsifier*10, citric=Number(t.citric||0)*10;
-  const fixedWater=Number(t.water||0)*10;
-  const dairy=1000-sugar-glucose-stab-emul-citric-fixedWater, fat=t.fat*10, msnf=t.msnf*10;
+  const powder=activeDryMilkProfile(),cremodan=activeCremodanProfile();
+  const sugar=t.sucrose*10, glucose=t.glucose*10, citric=Number(t.citric||0)*10, fixedWater=Number(t.water||0)*10;
+  const cremodanG=cremodan?Math.max(0,Number(cremodan.dosage_g_per_kg||0)):0;
+  const stab=cremodan?0:t.stabilizer*10;
+  const emul=cremodan&&cremodan.includes_emulsifier!==false?0:t.emulsifier*10;
+  const dairy=1000-sugar-glucose-stab-emul-cremodanG-citric-fixedWater, fat=t.fat*10, msnf=t.msnf*10;
+  const milkFat=Math.max(.0001,Number(ingredientSettings.whole_milk?.fat_pct||3.5)/100);
+  const milkMsnf=Math.max(0,Number(ingredientSettings.whole_milk?.msnf_pct||8.5)/100);
+  const creamFat=Math.max(.0001,Number(ingredientSettings.cream?.fat_pct||35)/100);
+  const creamMsnf=Math.max(0,Number(ingredientSettings.cream?.msnf_pct||5.5)/100);
+  const powderFat=Math.max(0,Number(powder?.fat_pct||1)/100);
+  const powderMsnf=powderNonFatSolids(powder);
   let x,names;
   if(mode==='fresh'){
-    x=solve3([[1,1,1],[.035,.35,.01],[.085,.055,.96]],[dairy,fat,msnf]);
-    names=['Whole milk (3.5% fat)','Cream (35% fat)','Skim milk powder (1% fat)'];
+    x=solve3([[1,1,1],[milkFat,creamFat,powderFat],[milkMsnf,creamMsnf,powderMsnf]],[dairy,fat,msnf]);
+    names=[ingredientSettings.whole_milk?.name||'Whole Milk',ingredientSettings.cream?.name||'Cream',powder?.name||'Dry Milk Powder'];
   }else{
-    x=solve3([[1,1,1],[0,.35,.01],[0,.055,.96]],[dairy,fat,msnf]);
-    names=['Water','Cream (35% fat)','Skim milk powder (1% fat)'];
+    x=solve3([[1,1,1],[0,creamFat,powderFat],[0,creamMsnf,powderMsnf]],[dairy,fat,msnf]);
+    names=['Water',ingredientSettings.cream?.name||'Cream',powder?.name||'Dry Milk Powder'];
   }
+  if(x.some(v=>!Number.isFinite(v)||v<-.01))throw Error('Selected ingredient composition is not able to meet this recipe target. Dry milk / cream profile check karein.');
   const items=names.map((n,i)=>[n,Math.max(0,x[i])]);
   if(sugar)items.push(['Sugar sucrose',sugar]);
   if(glucose)items.push(['Glucose/corn syrup solids',glucose]);
+  if(cremodanG)items.push([cremodan.grade||'CREMODAN',cremodanG]);
   if(stab)items.push(['Stabilizer (supplier dosage check)',stab]);
   if(emul)items.push(['Emulsifier (supplier dosage check)',emul]);
   if(citric)items.push(['Citric acid 50% solution - add before freezing',citric]);
   if(fixedWater)items.unshift(['Water',fixedWater]);
   return items;
 }
-
 function scale(items,total){const f=total/1000;return items.map(x=>({name:x[0],g:x[1]*f}))}
 function expand(items,total){
   const out={}; const add=(name,g,depth)=>{
@@ -315,15 +345,76 @@ async function shareRecipe(){
   const txt=current.r.name+' - '+fmt(current.total)+'\\n\\n'+current.items.map(x=>x.name+': '+fmt(x.g)).join('\\n')+'\\n\\nKashif Traders Ice Cream Lab';
   try{if(navigator.share)await navigator.share({title:current.r.name,text:txt});else{await navigator.clipboard.writeText(txt);alert('Recipe copied')}}catch(e){if(e?.name!=='AbortError')alert('Share unavailable')}
 }
+
+function profileId(prefix){return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6)}
+function renderIngredientProfiles(){
+  const w=ingredientSettings.whole_milk||{},c=ingredientSettings.cream||{};
+  $('wholeMilkFat').value=w.fat_pct??3.5;$('wholeMilkMsnf').value=w.msnf_pct??8.5;
+  $('creamFat').value=c.fat_pct??35;$('creamMsnf').value=c.msnf_pct??5.5;
+  const powders=ingredientSettings.dry_milk_profiles||[];
+  $('dryMilkProfiles').innerHTML=powders.map((p,i)=>'<div class="profileCard" data-powder="'+i+'"><div class="profileCardHead"><b>'+esc(p.name||('Dry Milk '+(i+1)))+'</b><button type="button" class="danger miniDelete" data-del-powder="'+i+'">Delete</button></div><div class="profileGrid"><label>Name<input data-k="name" value="'+esc(p.name||'')+'"></label><label>Fat %<input data-k="fat_pct" type="number" step="0.1" value="'+Number(p.fat_pct||0)+'"></label><label>Protein %<input data-k="protein_pct" type="number" step="0.1" value="'+Number(p.protein_pct||0)+'"></label><label>Carbohydrates %<input data-k="carbs_pct" type="number" step="0.1" value="'+Number(p.carbs_pct||0)+'"></label><label>Moisture %<input data-k="moisture_pct" type="number" step="0.1" value="'+Number(p.moisture_pct||0)+'"></label><label>Other Solids %<input data-k="other_pct" type="number" step="0.1" value="'+Number(p.other_pct||0)+'"></label><label>Known Added Sugar %<input data-k="added_sugar_pct" type="number" step="0.1" value="'+(p.added_sugar_pct??'')+'" placeholder="optional"></label><label class="wide">Notes<input data-k="note" value="'+esc(p.note||'')+'"></label></div></div>').join('');
+  $('defaultDryMilk').innerHTML=powders.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.name)+'</option>').join('');
+  $('defaultDryMilk').value=ingredientSettings.default_dry_milk_id||powders[0]?.id||'';
+
+  const creams=ingredientSettings.cremodan_profiles||[];
+  $('cremodanProfiles').innerHTML=creams.map((p,i)=>'<div class="profileCard" data-cremodan="'+i+'"><div class="profileCardHead"><b>'+esc(p.grade||('CREMODAN '+(i+1)))+'</b><button type="button" class="danger miniDelete" data-del-cremodan="'+i+'">Delete</button></div><div class="profileGrid"><label>Grade / Number<input data-k="grade" value="'+esc(p.grade||'')+'" placeholder="e.g. SE 46"></label><label>Dosage g/kg<input data-k="dosage_g_per_kg" type="number" step="0.1" value="'+Number(p.dosage_g_per_kg||0)+'"></label><label>Product Type<input data-k="product_type" value="'+esc(p.product_type||'General')+'"></label><label>Includes Emulsifier<select data-k="includes_emulsifier"><option value="true" '+(p.includes_emulsifier!==false?'selected':'')+'>Yes</option><option value="false" '+(p.includes_emulsifier===false?'selected':'')+'>No</option></select></label><label class="wide">Notes<input data-k="note" value="'+esc(p.note||'')+'"></label></div></div>').join('');
+  $('defaultCremodan').innerHTML='<option value="">None</option>'+creams.map(p=>'<option value="'+esc(p.id)+'">'+esc(p.grade)+'</option>').join('');
+  $('defaultCremodan').value=ingredientSettings.default_cremodan_id||'';
+  $('dryMilkProfiles').querySelectorAll('[data-del-powder]').forEach(b=>b.onclick=()=>{ingredientSettings.dry_milk_profiles.splice(Number(b.dataset.delPowder),1);renderIngredientProfiles()});
+  $('cremodanProfiles').querySelectorAll('[data-del-cremodan]').forEach(b=>b.onclick=()=>{ingredientSettings.cremodan_profiles.splice(Number(b.dataset.delCremodan),1);renderIngredientProfiles()});
+}
+function collectProfiles(){
+  ingredientSettings.whole_milk={name:'Whole Milk',fat_pct:Number($('wholeMilkFat').value||0),msnf_pct:Number($('wholeMilkMsnf').value||0)};
+  ingredientSettings.cream={name:'Cream',fat_pct:Number($('creamFat').value||0),msnf_pct:Number($('creamMsnf').value||0)};
+  document.querySelectorAll('#dryMilkProfiles [data-powder]').forEach(card=>{
+    const p=ingredientSettings.dry_milk_profiles[Number(card.dataset.powder)];
+    card.querySelectorAll('[data-k]').forEach(x=>{const k=x.dataset.k;p[k]=x.type==='number'?(x.value===''?null:Number(x.value)):x.value});
+  });
+  document.querySelectorAll('#cremodanProfiles [data-cremodan]').forEach(card=>{
+    const p=ingredientSettings.cremodan_profiles[Number(card.dataset.cremodan)];
+    card.querySelectorAll('[data-k]').forEach(x=>{const k=x.dataset.k;p[k]=k==='includes_emulsifier'?x.value==='true':x.type==='number'?Number(x.value||0):x.value});
+  });
+  ingredientSettings.default_dry_milk_id=$('defaultDryMilk').value||ingredientSettings.dry_milk_profiles[0]?.id||null;
+  ingredientSettings.default_cremodan_id=$('defaultCremodan').value||null;
+}
+async function loadIngredientSettings(){
+  try{
+    const r=await fetch('/api/gelato-settings',{cache:'no-store'});
+    if(r.ok){const j=await r.json();if(j.settings)ingredientSettings=j.settings;}
+    else throw Error('settings unavailable');
+  }catch{
+    try{const saved=JSON.parse(localStorage.getItem(settingsKey)||'null');if(saved)ingredientSettings=saved;}catch{}
+  }
+  localStorage.setItem(settingsKey,JSON.stringify(ingredientSettings));
+}
+async function saveIngredientSettings(){
+  collectProfiles();$('profileStatus').textContent='Saving…';
+  localStorage.setItem(settingsKey,JSON.stringify(ingredientSettings));
+  try{
+    const r=await fetch('/api/gelato-settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(ingredientSettings)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Save failed');
+    if(j.settings)ingredientSettings=j.settings;
+    $('profileStatus').textContent='Saved';
+    renderIngredientProfiles();render();
+  }catch(e){$('profileStatus').textContent='Saved locally • '+(e.message||'cloud unavailable');render();}
+}
 async function auth(){
   const key='kt_offline_user_v1';let ok=false;
   try{const r=await fetch('/api/auth?action=me',{cache:'no-store'});if(r.status===401||r.status===403){location.replace('/login.html');return}if(r.ok){const j=await r.json();ok=!!j.user;if(j.user)localStorage.setItem(key,JSON.stringify({user:j.user,saved_at:new Date().toISOString()}));}}
   catch(e){if(!navigator.onLine){try{ok=!!JSON.parse(localStorage.getItem(key)||'null')?.user}catch{}}}
   if(!ok&&navigator.onLine){location.replace('/login.html');return}
-  $('authLoading').classList.add('hidden');$('app').classList.remove('hidden');
+  await loadIngredientSettings();
+  $('authLoading').classList.add('hidden');$('app').classList.remove('hidden');render();
 }
 
 $('backBtn').onclick=()=>location.href='/';
+$('ingredientSettingsBtn').onclick=()=>{renderIngredientProfiles();$('profileModal').classList.remove('hidden')};
+$('profileClose').onclick=()=>$('profileModal').classList.add('hidden');
+$('profileModal').onclick=e=>{if(e.target===$('profileModal'))$('profileModal').classList.add('hidden')};
+$('addDryMilkProfile').onclick=()=>{ingredientSettings.dry_milk_profiles=ingredientSettings.dry_milk_profiles||[];ingredientSettings.dry_milk_profiles.push({id:profileId('powder'),name:'New Dry Milk',fat_pct:0,protein_pct:0,carbs_pct:0,moisture_pct:0,other_pct:0,added_sugar_pct:null,note:''});renderIngredientProfiles()};
+$('addCremodanProfile').onclick=()=>{ingredientSettings.cremodan_profiles=ingredientSettings.cremodan_profiles||[];ingredientSettings.cremodan_profiles.push({id:profileId('cremodan'),grade:'CREMODAN',dosage_g_per_kg:0,includes_emulsifier:true,product_type:'General',note:''});renderIngredientProfiles()};
+$('saveProfiles').onclick=saveIngredientSettings;
 $('department').onchange=populate;$('sourceType').onchange=populate;$('system').onchange=populate;$('baseMode').onchange=render;$('recipe').onchange=render;$('batch').oninput=render;$('unit').onchange=render;$('generate').onclick=render;
 document.querySelectorAll('[data-kg]').forEach(b=>b.onclick=()=>{$('batch').value=b.dataset.kg;$('unit').value='kg';render()});
 $('save').onclick=saveBatch;$('print').onclick=()=>window.print();$('share').onclick=shareRecipe;
