@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2563eb">
 <title>Gelato Recipe | Kashif Traders</title>
-<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-8">
-<script defer src="/offline-register.js?v=20261004-8"></script>
-<script defer src="/gelato-recipes.js?v=20261004-8"></script>
+<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-9">
+<script defer src="/offline-register.js?v=20261004-9"></script>
+<script defer src="/gelato-recipes.js?v=20261004-9"></script>
 </head>
 <body>
 <div id="authLoading" class="loading">Gelato Recipe Lab loading…</div>
@@ -193,6 +193,32 @@
       <div class="profileSectionHead"><h3>Machine Profiles</h3><button id="addMachineProfile" class="secondary" type="button">+ Add Machine</button></div>
       <div id="machineProfiles"></div>
       <label class="profileDefault">Default Machine<select id="defaultMachine"><option value="">None</option></select></label>
+    </section>
+
+    <section class="profileSection" id="costSettings">
+      <h3>Ingredient Cost / kg</h3>
+      <div class="profileGrid">
+        <label>Currency<input id="costCurrency" value="PKR"></label>
+        <label>Whole Milk<input id="costMilk" type="number" step="0.01" min="0"></label>
+        <label>Cream<input id="costCream" type="number" step="0.01" min="0"></label>
+        <label>Sucrose<input id="costSugar" type="number" step="0.01" min="0"></label>
+        <label>Glucose Solids<input id="costGlucose" type="number" step="0.01" min="0"></label>
+        <label>Water<input id="costWater" type="number" step="0.01" min="0"></label>
+        <label>Generic Stabilizer<input id="costStabilizer" type="number" step="0.01" min="0"></label>
+        <label>Generic Emulsifier<input id="costEmulsifier" type="number" step="0.01" min="0"></label>
+      </div>
+    </section>
+
+    <section class="profileSection">
+      <h3>Quality Lock</h3>
+      <div class="profileGrid">
+        <label>Fat tolerance ±%<input id="lockFat" type="number" step="0.05" min="0" max="5"></label>
+        <label>MSNF tolerance ±%<input id="lockMsnf" type="number" step="0.05" min="0" max="5"></label>
+        <label>Total Solids tolerance ±%<input id="lockSolids" type="number" step="0.1" min="0" max="10"></label>
+        <label>Sweetness Index ±<input id="lockSweet" type="number" step="0.1" min="0" max="10"></label>
+        <label>Freezing Index ±<input id="lockFreeze" type="number" step="0.1" min="0" max="15"></label>
+      </div>
+      <div class="note">Cost optimizer sirf un formulas ko accept karega jo research target aur in quality tolerances ke andar hon.</div>
     </section>
 
     <div class="profileSaveRow"><span id="profileStatus"></span><button id="saveProfiles" class="primary" type="button">Save Ingredient Profiles</button></div>
