@@ -716,6 +716,7 @@ async function ensureGelatoSettings(sql){
       cremodan_profiles:[],
       machine_profiles:[],
       flavor_profiles:[],
+      ingredient_profiles:[],
       sugar_profiles:[
         {id:"sucrose-ref",name:"Sucrose",type:"sucrose",de:null,dry_solids_pct:100,relative_sweetness:1.0,fpdf:1.0,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"},
         {id:"dextrose-ref",name:"Dextrose / Glucose",type:"dextrose",de:100,dry_solids_pct:100,relative_sweetness:0.8,fpdf:1.9,verified:true,price_per_kg:0,source_name:"Tetra Pak Dairy Processing Handbook",source_url:"https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream",note:"Reference factor"},
@@ -805,6 +806,31 @@ function normalizeGelatoSettings(b={}){
     source_note:cleanText(p?.source_note),
     note:cleanText(p?.note)
   }));
+  const ingredients=(Array.isArray(b.ingredient_profiles)?b.ingredient_profiles:[]).slice(0,100).map((p,i)=>({
+    id:cleanText(p?.id)||("ingredient-"+i+"-"+Date.now()),
+    name:cleanText(p?.name)||("Ingredient Profile "+(i+1)),
+    aliases:cleanText(p?.aliases),
+    category:cleanText(p?.category)||"Other",
+    fat_pct:gelatoPct(p?.fat_pct),
+    protein_pct:gelatoPct(p?.protein_pct),
+    lactose_pct:p?.lactose_pct===null||p?.lactose_pct===""?null:gelatoPct(p?.lactose_pct),
+    ash_pct:p?.ash_pct===null||p?.ash_pct===""?null:gelatoPct(p?.ash_pct),
+    moisture_pct:p?.moisture_pct===null||p?.moisture_pct===""?null:gelatoPct(p?.moisture_pct),
+    total_solids_pct:p?.total_solids_pct===null||p?.total_solids_pct===""?null:gelatoPct(p?.total_solids_pct),
+    dairy_msnf_pct:p?.dairy_msnf_pct===null||p?.dairy_msnf_pct===""?null:gelatoPct(p?.dairy_msnf_pct),
+    sucrose_pct:gelatoPct(p?.sucrose_pct),
+    dextrose_pct:gelatoPct(p?.dextrose_pct),
+    glucose_pct:gelatoPct(p?.glucose_pct),
+    fructose_pct:gelatoPct(p?.fructose_pct),
+    relative_sweetness:p?.relative_sweetness===null||p?.relative_sweetness===""?null:Math.max(0,Math.min(5,Number(p?.relative_sweetness))),
+    fpdf:p?.fpdf===null||p?.fpdf===""?null:Math.max(0,Math.min(10,Number(p?.fpdf))),
+    verified:p?.verified===true,
+    price_per_kg:Math.max(0,Number(p?.price_per_kg)||0),
+    source_name:cleanText(p?.source_name),
+    source_url:cleanText(p?.source_url),
+    coa_reference:cleanText(p?.coa_reference),
+    note:cleanText(p?.note)
+  }));
   const sugars=(Array.isArray(b.sugar_profiles)?b.sugar_profiles:[]).slice(0,30).map((p,i)=>({
     id:cleanText(p?.id)||("sugar-"+i+"-"+Date.now()),
     name:cleanText(p?.name)||("Sugar Profile "+(i+1)),
@@ -850,6 +876,7 @@ function normalizeGelatoSettings(b={}){
     cremodan_profiles:cremodan,
     machine_profiles:machines,
     flavor_profiles:flavors,
+    ingredient_profiles:ingredients,
     sugar_profiles:sugarProfiles,
     cost_settings:costSettings,
     quality_lock:qualityLock,
