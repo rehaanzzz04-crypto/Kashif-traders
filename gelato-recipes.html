@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2563eb">
 <title>Gelato Recipe | Kashif Traders</title>
-<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-3">
-<script defer src="/offline-register.js?v=20261004-3"></script>
-<script defer src="/gelato-recipes.js?v=20261004-3"></script>
+<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-4">
+<script defer src="/offline-register.js?v=20261004-4"></script>
+<script defer src="/gelato-recipes.js?v=20261004-4"></script>
 </head>
 <body>
 <div id="authLoading" class="loading">Gelato Recipe Lab loading…</div>
@@ -82,7 +82,7 @@
       <button class="chip" data-kg="50">50 kg</button>
     </div>
 
-    <button class="primary" id="generate">Generate Complete Recipe</button>
+    <button class="primary" id="generate">Generate Complete Recipe</button><button class="ghost profileBtn" id="ingredientSettingsBtn" type="button">Ingredient Profiles</button>
     <div class="actions">
       <button class="secondary" id="save">Save Batch</button>
       <button class="ghost" id="print">Print</button>
@@ -101,6 +101,35 @@
   <section class="panel" id="result"></section>
 </section>
 </main>
+<div class="profileModal hidden" id="profileModal">
+  <div class="profileBox">
+    <div class="profileHead"><div><h2>Ingredient Profiles</h2><p>Dry milk composition aur CREMODAN grades save karein.</p></div><button id="profileClose" class="ghost" type="button">Close</button></div>
+
+    <section class="profileSection">
+      <h3>Liquid Dairy</h3>
+      <div class="profileGrid">
+        <label>Whole Milk Fat %<input id="wholeMilkFat" type="number" step="0.1" min="0" max="100"></label>
+        <label>Whole Milk MSNF %<input id="wholeMilkMsnf" type="number" step="0.1" min="0" max="100"></label>
+        <label>Cream Fat %<input id="creamFat" type="number" step="0.1" min="0" max="100"></label>
+        <label>Cream MSNF %<input id="creamMsnf" type="number" step="0.1" min="0" max="100"></label>
+      </div>
+    </section>
+
+    <section class="profileSection">
+      <div class="profileSectionHead"><h3>Dry Milk / Fat Filled Powder</h3><button id="addDryMilkProfile" class="secondary" type="button">+ Add Profile</button></div>
+      <div id="dryMilkProfiles"></div>
+      <label class="profileDefault">Default Dry Milk<select id="defaultDryMilk"></select></label>
+    </section>
+
+    <section class="profileSection">
+      <div class="profileSectionHead"><h3>CREMODAN Profiles</h3><button id="addCremodanProfile" class="secondary" type="button">+ Add CREMODAN</button></div>
+      <div id="cremodanProfiles"></div>
+      <label class="profileDefault">Default CREMODAN<select id="defaultCremodan"><option value="">None</option></select></label>
+    </section>
+
+    <div class="profileSaveRow"><span id="profileStatus"></span><button id="saveProfiles" class="primary" type="button">Save Ingredient Profiles</button></div>
+  </div>
+</div>
 </div>
 </body>
 </html>
