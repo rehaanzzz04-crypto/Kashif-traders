@@ -1062,6 +1062,7 @@ async function viewBusinessRecipe(id){
       '</tbody></table></div><div class="source"><b>Version history:</b> '+(versions||[]).map(v=>'V'+v.version+' • '+new Date(v.changed_at).toLocaleString()).join(' | ')+'</div></div>';
     $('backBusinessList').onclick=loadBusinessRecipes;
     loadReleaseReadiness(id);
+    loadTextureCalibration(id);
     loadQcForRecipe(id);
     loadSensoryForRecipe(id);
     loadStabilityForRecipe(id);
@@ -1130,7 +1131,7 @@ function renderReleaseReadiness(j){
   const blockers=(j.blockers||[]).map(x=>'<li>'+esc(x)+'</li>').join('');
   $('businessRecipeList').insertAdjacentHTML('beforeend',
     '<div class="businessRecipeCard releaseCard"><div class="businessRecipeHead"><div><h3>Commercial Release Readiness</h3><small>R&D + Production + Biological release checklist</small></div><span class="badge '+(j.release_status==='ready'?'finalBadge':'')+'">'+esc(label)+'</span></div>'+
-    '<div class="stats"><div class="stat"><small>Readiness</small><strong>'+Number(j.readiness_pct||0).toFixed(1)+'%</strong></div><div class="stat"><small>Passed QC</small><strong>'+Number(j.passed_qc_batches||0)+'</strong></div><div class="stat"><small>Machine Calibration</small><strong>'+esc((m.status||'insufficient').toUpperCase())+'</strong></div><div class="stat"><small>Bio Status</small><strong>'+esc(String(j.biological?.status||'incomplete').toUpperCase())+'</strong></div><div class="stat"><small>Physical Stability</small><strong>'+esc(String(j.stability?.status||'not_started').toUpperCase())+'</strong></div></div>'+
+    '<div class="stats"><div class="stat"><small>Readiness</small><strong>'+Number(j.readiness_pct||0).toFixed(1)+'%</strong></div><div class="stat"><small>Passed QC</small><strong>'+Number(j.passed_qc_batches||0)+'</strong></div><div class="stat"><small>Machine Calibration</small><strong>'+esc((m.status||'insufficient').toUpperCase())+'</strong></div><div class="stat"><small>Bio Status</small><strong>'+esc(String(j.biological?.status||'incomplete').toUpperCase())+'</strong></div><div class="stat"><small>Physical Stability</small><strong>'+esc(String(j.stability?.status||'not_started').toUpperCase())+'</strong></div><div class="stat"><small>Texture Calibration</small><strong>'+esc(String(j.texture_calibration?.status||'insufficient').toUpperCase())+'</strong></div></div>'+
     '<div class="releaseGrid">'+checks+'</div>'+
     (blockers?'<div class="warning"><b>Release blockers:</b><ul>'+blockers+'</ul></div>':'<div class="source"><b>No checklist blocker detected.</b> Final commercial/regulatory review still required.</div>')+
     '<div class="subpanel"><h3>Machine Calibration</h3><div class="businessMetrics">'+
@@ -1138,6 +1139,26 @@ function renderReleaseReadiness(j){
       '<span>Bias <b>'+esc(m.overrun_bias_pct_points??'—')+'</b></span><span>SD <b>'+esc(m.overrun_sd_pct_points??'—')+'</b></span><span>Avg Draw Temp <b>'+esc(m.avg_draw_temp_c??'—')+'°C</b></span><span>Avg Yield <b>'+esc(m.avg_finished_yield_l??'—')+' L</b></span>'+
     '</div><div class="steps">'+(m.comments||[]).map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div></div>'+
     '<div class="source">'+esc(j.note||'')+'</div></div>'
+  );
+}
+
+async function loadTextureCalibration(recipeId){
+  try{
+    const r=await fetch('/api/data?resource=gelato_texture&recipe_id='+encodeURIComponent(recipeId),{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Texture calibration load failed');
+    renderTextureCalibration(j.summary||{});
+  }catch(e){$('businessRecipeList').insertAdjacentHTML('beforeend','<div class="warning">'+esc(e.message)+'</div>')}
+}
+function renderTextureCalibration(s){
+  const label=String(s.status||'insufficient').replaceAll('_',' ').toUpperCase();
+  const zone=String(s.predicted_zone||'—').replaceAll('_',' ').toUpperCase();
+  $('businessRecipeList').insertAdjacentHTML('beforeend',
+    '<div class="businessRecipeCard"><div class="businessRecipeHead"><div><h3>Empirical Texture Calibration</h3><small>Passed QC hardness-vs-temperature model</small></div><span class="badge '+(s.status==='calibrated'?'finalBadge':'')+'">'+esc(label)+'</span></div>'+
+    '<div class="stats"><div class="stat"><small>Confidence</small><strong>'+Number(s.confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>Samples</small><strong>'+Number(s.sample_count||0)+'</strong></div><div class="stat"><small>Temperatures</small><strong>'+Number(s.distinct_temperatures||0)+'</strong></div><div class="stat"><small>Target Temp</small><strong>'+esc(s.target_serving_temp_c??'—')+'°C</strong></div></div>'+
+    '<div class="businessMetrics"><span>Predicted Hardness <b>'+esc(s.predicted_hardness_1_10??'—')+'/10</b></span><span>Texture Zone <b>'+esc(zone)+'</b></span><span>Measured Range <b>'+esc(s.measured_temp_min_c??'—')+' to '+esc(s.measured_temp_max_c??'—')+'°C</b></span><span>RMSE <b>'+esc(s.rmse??'—')+'</b></span><span>Avg Overrun <b>'+esc(s.avg_overrun_pct??'—')+'%</b></span><span>Avg Melt 30m <b>'+esc(s.avg_melt_30min_pct??'—')+'%</b></span></div>'+
+    '<div class="steps">'+(s.comments||[]).map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div>'+
+    '<div class="source">Ye model sirf aap ke measured passed QC data par calibrate hota hai. Serving temperature range ke bahar prediction ko extrapolation samjhein.</div></div>'
   );
 }
 async function loadQcForRecipe(recipeId){
