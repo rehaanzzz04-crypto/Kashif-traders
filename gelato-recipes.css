@@ -143,3 +143,8 @@ button,input,select{font:inherit}.top{position:sticky;top:0;z-index:20;backgroun
 .lotPick{display:grid;grid-template-columns:auto minmax(0,1fr) 76px;gap:7px;align-items:center;padding:8px;border:1px solid #e2e8f0;border-radius:10px;background:#fff}
 .lotPick input[type="checkbox"]{width:16px;height:16px}.lotPick span b{display:block;font-size:10px}.lotPick span small{display:block;margin-top:2px;font-size:8px;color:var(--muted)}.lotPick>input[type="number"]{min-width:0}
 @media(max-width:560px){.lotPickGrid{grid-template-columns:1fr}.lotPick{grid-template-columns:auto minmax(0,1fr) 66px}}
+
+.weighGrid{display:grid;gap:8px;margin:10px 0}
+.weighRow{display:grid;grid-template-columns:minmax(150px,1.3fr) 100px minmax(180px,1.2fr) 80px minmax(150px,1fr) auto auto;gap:7px;align-items:center;padding:9px;border:1px solid #e2e8f0;border-radius:11px;background:#fff}
+.weighRow>div b{display:block;font-size:10px}.weighRow>div small{display:block;font-size:8px;color:var(--muted);margin-top:2px}.weighRow input,.weighRow select{min-width:0}
+@media(max-width:760px){.weighRow{grid-template-columns:1fr 1fr}.weighRow>div{grid-column:1/-1}.weighRow [data-lot],.weighRow [data-tol-source]{grid-column:1/-1}.weighRow button,.weighRow>span{width:100%}}
