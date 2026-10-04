@@ -32,6 +32,7 @@ const allowed = new Set([
   "gelato_stability",
   "gelato_texture",
   "gelato_lots",
+  "gelato_batches",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -1026,6 +1027,42 @@ async function ensureGelatoBusinessRecipes(sql){
     UNIQUE(qc_id,lot_id)
   )`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_qc_material_lots_qc_idx ON gelato_qc_material_lots(qc_id,lot_id)`;
+  await sql`CREATE TABLE IF NOT EXISTS gelato_production_batches(
+    id BIGSERIAL PRIMARY KEY,
+    recipe_id BIGINT NOT NULL REFERENCES gelato_business_recipes(id) ON DELETE RESTRICT,
+    recipe_version INTEGER NOT NULL,
+    batch_code TEXT NOT NULL UNIQUE,
+    formula_snapshot JSONB NOT NULL DEFAULT '[]'::jsonb,
+    target_total_g NUMERIC(14,3) NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'draft',
+    planned_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    operator_name TEXT,
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    notes TEXT,
+    created_by_id BIGINT,
+    created_by_name TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS gelato_production_batches_recipe_idx ON gelato_production_batches(recipe_id,created_at DESC,id DESC)`;
+  await sql`CREATE TABLE IF NOT EXISTS gelato_production_batch_items(
+    id BIGSERIAL PRIMARY KEY,
+    batch_id BIGINT NOT NULL REFERENCES gelato_production_batches(id) ON DELETE CASCADE,
+    ingredient_name TEXT NOT NULL,
+    target_g NUMERIC(14,3) NOT NULL,
+    actual_g NUMERIC(14,3),
+    deviation_pct NUMERIC(9,4),
+    tolerance_pct NUMERIC(9,4),
+    tolerance_source TEXT,
+    lot_id BIGINT REFERENCES gelato_material_lots(id) ON DELETE RESTRICT,
+    weigh_status TEXT NOT NULL DEFAULT 'pending',
+    weighed_by TEXT,
+    weighed_at TIMESTAMPTZ,
+    notes TEXT,
+    line_no INTEGER NOT NULL
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS gelato_production_batch_items_batch_idx ON gelato_production_batch_items(batch_id,line_no,id)`;
   await sql`CREATE TABLE IF NOT EXISTS gelato_recipe_bio(
     id BIGSERIAL PRIMARY KEY,
     recipe_id BIGINT NOT NULL REFERENCES gelato_business_recipes(id) ON DELETE CASCADE,
@@ -1379,6 +1416,99 @@ function lotTraceabilitySummary(qcRows,usageRows){
   if(missingDocs.length)comments.push(missingDocs.length+" lot(s) ke saath COA/TDS reference missing hai.");
   if(status==="verified")comments.push("Passed QC batches ke critical raw-material lots verified aur traceable hain.");
   return {status,confidence:Number(confidence.toFixed(1)),passed_qc_batches:passed.length,qc_batches_with_lots:qcWithLots,distinct_lots:distinctLots,unverified_lots:unverified.length,rejected_lots:rejected.length,expired_at_use:expired.length,missing_document_refs:missingDocs.length,comments};
+}
+
+function productionBatchSummary(batch,items){
+  const rows=items||[],target=rows.reduce((s,x)=>s+Number(x.target_g||0),0);
+  const weighed=rows.filter(x=>x.actual_g!==null&&x.actual_g!==undefined);
+  const actual=weighed.reduce((s,x)=>s+Number(x.actual_g||0),0);
+  const toleranceRows=rows.filter(x=>x.tolerance_pct!==null&&x.tolerance_pct!==undefined);
+  const outTol=toleranceRows.filter(x=>String(x.weigh_status)==="out_of_tolerance").length;
+  const lotRows=rows.filter(x=>x.lot_id);
+  const rejected=lotRows.filter(x=>String(x.lot_verification_status||"").toLowerCase()==="rejected").length;
+  const expired=lotRows.filter(x=>x.lot_best_before&&batch?.planned_date&&String(x.lot_best_before).slice(0,10)<String(batch.planned_date).slice(0,10)).length;
+  return {
+    line_count:rows.length,
+    weighed_lines:weighed.length,
+    weighing_complete_pct:Number((rows.length?weighed.length/rows.length*100:0).toFixed(1)),
+    target_total_g:Number(target.toFixed(3)),
+    actual_total_g:Number(actual.toFixed(3)),
+    total_deviation_g:Number((actual-target).toFixed(3)),
+    tolerance_controlled_lines:toleranceRows.length,
+    out_of_tolerance_lines:outTol,
+    lots_linked:lotRows.length,
+    rejected_lots:rejected,
+    expired_lots:expired,
+    ready_to_complete:Boolean(rows.length&&weighed.length===rows.length&&outTol===0&&rejected===0&&expired===0)
+  };
+}
+async function gelatoBatches(sql,req,user){
+  await ensureGelatoBusinessRecipes(sql);
+  const id=asId(req.query?.id),recipeId=asId(req.query?.recipe_id),b=bodyOf(req);
+  if(req.method==="GET"){
+    if(id){
+      const batch=(await sql`SELECT pb.*,r.recipe_name,r.business_name FROM gelato_production_batches pb JOIN gelato_business_recipes r ON r.id=pb.recipe_id WHERE pb.id=${id}`)[0];
+      if(!batch)return {status:404,data:{error:"Production batch not found"}};
+      const items=await sql`SELECT i.*,l.material_number,l.lot_number,l.best_before lot_best_before,l.verification_status lot_verification_status,l.coa_reference,l.tds_reference FROM gelato_production_batch_items i LEFT JOIN gelato_material_lots l ON l.id=i.lot_id WHERE i.batch_id=${id} ORDER BY i.line_no,i.id`;
+      return {status:200,data:{record:batch,items,summary:productionBatchSummary(batch,items)}};
+    }
+    if(!recipeId)return {status:400,data:{error:"Recipe id required hai"}};
+    const rows=await sql`SELECT * FROM gelato_production_batches WHERE recipe_id=${recipeId} ORDER BY created_at DESC,id DESC LIMIT 100`;
+    return {status:200,data:{records:rows}};
+  }
+  if(req.method==="POST"){
+    if(!recipeId)return {status:400,data:{error:"Recipe id required hai"}};
+    const recipe=(await sql`SELECT * FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
+    if(!recipe)return {status:404,data:{error:"Recipe not found"}};
+    const formula=cleanFormula(recipe.formula);
+    if(!formula.length)return {status:400,data:{error:"Recipe formula empty hai"}};
+    const code=cleanText(b.batch_code)||("GB-"+recipeId+"-"+Date.now().toString(36).toUpperCase());
+    const target=formula.reduce((s,x)=>s+x.g,0);
+    const batch=(await sql`INSERT INTO gelato_production_batches(recipe_id,recipe_version,batch_code,formula_snapshot,target_total_g,status,planned_date,operator_name,notes,created_by_id,created_by_name) VALUES(${recipeId},${Number(recipe.version||1)},${code},${JSON.stringify(formula)}::jsonb,${target},'weighing',COALESCE(${cleanText(b.planned_date)}::date,CURRENT_DATE),${cleanText(b.operator_name)},${cleanText(b.notes)},${user.id},${user.full_name||user.employee_code||"User"}) RETURNING *`)[0];
+    let line=0;
+    for(const x of formula){line++;await sql`INSERT INTO gelato_production_batch_items(batch_id,ingredient_name,target_g,line_no) VALUES(${batch.id},${x.name},${x.g},${line})`;}
+    const items=await sql`SELECT * FROM gelato_production_batch_items WHERE batch_id=${batch.id} ORDER BY line_no,id`;
+    return {status:201,data:{record:batch,items,summary:productionBatchSummary(batch,items)}};
+  }
+  if(req.method==="PATCH"){
+    if(!id)return {status:400,data:{error:"Valid production batch id required hai"}};
+    const batch=(await sql`SELECT * FROM gelato_production_batches WHERE id=${id}`)[0];
+    if(!batch)return {status:404,data:{error:"Production batch not found"}};
+    const action=cleanText(b.action)||"update";
+    if(action==="weigh_item"){
+      const itemId=asId(b.item_id);
+      if(!itemId)return {status:400,data:{error:"Batch item id required hai"}};
+      const item=(await sql`SELECT * FROM gelato_production_batch_items WHERE id=${itemId} AND batch_id=${id}`)[0];
+      if(!item)return {status:404,data:{error:"Batch ingredient line not found"}};
+      const actual=b.actual_g===null||b.actual_g===undefined||b.actual_g===""?null:Number(b.actual_g);
+      if(actual===null||!Number.isFinite(actual)||actual<0)return {status:400,data:{error:"Valid actual weight required hai"}};
+      const tol=b.tolerance_pct===null||b.tolerance_pct===undefined||b.tolerance_pct===""?null:Number(b.tolerance_pct);
+      const tolSource=cleanText(b.tolerance_source);
+      if(tol!==null&&(!Number.isFinite(tol)||tol<0))return {status:400,data:{error:"Tolerance invalid hai"}};
+      if(tol!==null&&!tolSource)return {status:400,data:{error:"Tolerance ke saath verified SOP/manufacturer source reference required hai"}};
+      const lotId=asId(b.lot_id);
+      if(lotId){
+        const lot=(await sql`SELECT * FROM gelato_material_lots WHERE id=${lotId}`)[0];
+        if(!lot)return {status:400,data:{error:"Selected material lot not found"}};
+        if(String(lot.verification_status||"").toLowerCase()==="rejected")return {status:400,data:{error:"Rejected lot select nahi ho sakta"}};
+        if(lot.best_before&&String(lot.best_before).slice(0,10)<String(batch.planned_date).slice(0,10))return {status:400,data:{error:"Selected lot planned batch date par expired hai"}};
+      }
+      const target=Number(item.target_g||0),dev=target?((actual-target)/target)*100:0;
+      const status=tol===null?"recorded":Math.abs(dev)<=tol?"pass":"out_of_tolerance";
+      const row=(await sql`UPDATE gelato_production_batch_items SET actual_g=${actual},deviation_pct=${dev},tolerance_pct=${tol},tolerance_source=${tolSource},lot_id=${lotId},weigh_status=${status},weighed_by=${user.full_name||user.employee_code||"User"},weighed_at=now(),notes=${cleanText(b.notes)} WHERE id=${itemId} RETURNING *`)[0];
+      await sql`UPDATE gelato_production_batches SET started_at=COALESCE(started_at,now()),status='weighing',updated_at=now() WHERE id=${id}`;
+      return {status:200,data:{record:row}};
+    }
+    if(action==="complete"){
+      const items=await sql`SELECT i.*,l.best_before lot_best_before,l.verification_status lot_verification_status FROM gelato_production_batch_items i LEFT JOIN gelato_material_lots l ON l.id=i.lot_id WHERE i.batch_id=${id} ORDER BY i.line_no,i.id`;
+      const summary=productionBatchSummary(batch,items);
+      if(!summary.ready_to_complete)return {status:409,data:{error:"Batch complete nahi ho sakta: missing weight, out-of-tolerance line, rejected ya expired lot check karein",summary}};
+      const row=(await sql`UPDATE gelato_production_batches SET status='completed',completed_at=now(),updated_at=now(),operator_name=COALESCE(${cleanText(b.operator_name)},operator_name),notes=COALESCE(${cleanText(b.notes)},notes) WHERE id=${id} RETURNING *`)[0];
+      return {status:200,data:{record:row,summary}};
+    }
+    return {status:405,data:{error:"Unsupported batch action"}};
+  }
+  return {status:405,data:{error:"Method not allowed"}};
 }
 async function gelatoLots(sql,req,user){
   await ensureGelatoBusinessRecipes(sql);
@@ -1968,6 +2098,10 @@ async function handler(req, res) {
     }
     if (resource === "gelato_lots") {
       const out = await gelatoLots(sql, req, user);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "gelato_batches") {
+      const out = await gelatoBatches(sql, req, user);
       return res.status(out.status).json(out.data);
     }
     await ensureEntryNumbers(sql);
