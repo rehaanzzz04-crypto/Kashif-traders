@@ -935,9 +935,9 @@ function evaluateResearchFit(formula,sourceFormula,context={}){
   };
 }
 async function recalcProductionConfidence(sql,recipeId){
-  const rows=await sql\`SELECT * FROM gelato_recipe_qc WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC\`;
+  const rows=await sql`SELECT * FROM gelato_recipe_qc WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
   if(!rows.length){
-    await sql\`UPDATE gelato_business_recipes SET production_confidence=0 WHERE id=\${recipeId}\`;
+    await sql`UPDATE gelato_business_recipes SET production_confidence=0 WHERE id=${recipeId}`;
     return 0;
   }
   const passed=rows.filter(x=>x.result==="pass").length;
@@ -949,7 +949,7 @@ async function recalcProductionConfidence(sql,recipeId){
   const storage=recent.day7_notes?20:(recent.day1_notes?10:0);
   const recentFails=rows.slice(0,3).filter(x=>x.result==="fail").length;
   const score=Math.max(0,Math.min(100,passScore+completeness+storage-(recentFails*10)));
-  await sql\`UPDATE gelato_business_recipes SET production_confidence=\${score},updated_at=now() WHERE id=\${recipeId}\`;
+  await sql`UPDATE gelato_business_recipes SET production_confidence=${score},updated_at=now() WHERE id=${recipeId}`;
   return Number(score.toFixed(2));
 }
 async function gelatoQc(sql,req,user){
@@ -957,36 +957,36 @@ async function gelatoQc(sql,req,user){
   const id=asId(req.query?.id),recipeId=asId(req.query?.recipe_id),b=bodyOf(req);
   if(req.method==="GET"){
     if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
-    const rows=await sql\`SELECT * FROM gelato_recipe_qc WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC LIMIT 100\`;
-    const recipe=(await sql\`SELECT id,recipe_name,status,production_confidence FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    const rows=await sql`SELECT * FROM gelato_recipe_qc WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC LIMIT 100`;
+    const recipe=(await sql`SELECT id,recipe_name,status,production_confidence FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
     return {status:200,data:{records:rows,recipe}};
   }
   if(req.method==="POST"){
     if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
-    const recipe=(await sql\`SELECT id FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    const recipe=(await sql`SELECT id FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
     if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
     const result=cleanText(b.result)||"trial";
     if(!["trial","pass","fail"].includes(result))return {status:400,data:{error:"QC result Trial, Pass ya Fail hona chahiye"}};
     const score=v=>v===null||v===undefined||v===""?null:Math.max(1,Math.min(10,Math.round(Number(v)||0)));
     const n=v=>v===null||v===undefined||v===""?null:Number(v);
-    const row=(await sql\`INSERT INTO gelato_recipe_qc(
+    const row=(await sql`INSERT INTO gelato_recipe_qc(
       recipe_id,batch_code,test_date,machine,operator_name,mix_temp_c,pasteurization_peak_c,ageing_hours,ph,brix,overrun_pct,draw_temp_c,melt_30min_pct,
       hardness_score,sweetness_score,iciness_score,body_score,aftertaste_score,day1_notes,day7_notes,result,created_by_id,created_by_name
     ) VALUES(
-      \${recipeId},\${cleanText(b.batch_code)},COALESCE(\${cleanText(b.test_date)}::date,CURRENT_DATE),\${cleanText(b.machine)},\${cleanText(b.operator_name)},
-      \${n(b.mix_temp_c)},\${n(b.pasteurization_peak_c)},\${n(b.ageing_hours)},\${n(b.ph)},\${n(b.brix)},\${n(b.overrun_pct)},\${n(b.draw_temp_c)},\${n(b.melt_30min_pct)},
-      \${score(b.hardness_score)},\${score(b.sweetness_score)},\${score(b.iciness_score)},\${score(b.body_score)},\${score(b.aftertaste_score)},
-      \${cleanText(b.day1_notes)},\${cleanText(b.day7_notes)},\${result},\${user.id},\${user.full_name||user.employee_code||"User"}
-    ) RETURNING *\`)[0];
+      ${recipeId},${cleanText(b.batch_code)},COALESCE(${cleanText(b.test_date)}::date,CURRENT_DATE),${cleanText(b.machine)},${cleanText(b.operator_name)},
+      ${n(b.mix_temp_c)},${n(b.pasteurization_peak_c)},${n(b.ageing_hours)},${n(b.ph)},${n(b.brix)},${n(b.overrun_pct)},${n(b.draw_temp_c)},${n(b.melt_30min_pct)},
+      ${score(b.hardness_score)},${score(b.sweetness_score)},${score(b.iciness_score)},${score(b.body_score)},${score(b.aftertaste_score)},
+      ${cleanText(b.day1_notes)},${cleanText(b.day7_notes)},${result},${user.id},${user.full_name||user.employee_code||"User"}
+    ) RETURNING *`)[0];
     const confidence=await recalcProductionConfidence(sql,recipeId);
     return {status:201,data:{record:row,production_confidence:confidence}};
   }
   if(req.method==="DELETE"){
     if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin QC record delete kar sakta hai"}};
     if(!id)return {status:400,data:{error:"Valid QC id required hai"}};
-    const old=(await sql\`SELECT recipe_id FROM gelato_recipe_qc WHERE id=\${id}\`)[0];
+    const old=(await sql`SELECT recipe_id FROM gelato_recipe_qc WHERE id=${id}`)[0];
     if(!old)return {status:404,data:{error:"QC record not found"}};
-    await sql\`DELETE FROM gelato_recipe_qc WHERE id=\${id}\`;
+    await sql`DELETE FROM gelato_recipe_qc WHERE id=${id}`;
     const confidence=await recalcProductionConfidence(sql,Number(old.recipe_id));
     return {status:200,data:{deleted:true,production_confidence:confidence}};
   }
