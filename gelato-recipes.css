@@ -131,3 +131,10 @@ button,input,select{font:inherit}.top{position:sticky;top:0;z-index:20;backgroun
 .costCandidate{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:8px 9px;border:1px solid #e3e8f2;border-radius:10px;margin-top:6px;background:#fff}
 .costCandidate.bestCost{border-color:#c4b5fd;background:#faf8ff}.costCandidate b{display:block;font-size:10px}.costCandidate small{display:block;font-size:8px;color:var(--muted);margin-top:2px}.costCandidate>span{font-size:10px;font-weight:850;text-align:right}.costCandidate em{font-style:normal;font-size:8px;font-weight:900;padding:4px 6px;border-radius:999px;background:#fff1f2;color:#be123c}.costCandidate em.ok{background:#ecfdf3;color:#047857}
 @media(max-width:560px){.costSummary{display:block}.costSummary span{display:block;text-align:left;margin-top:4px}.costCandidate{grid-template-columns:minmax(0,1fr) auto}.costCandidate em{grid-column:1/-1;width:max-content}}
+
+.releaseGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px}
+.releaseCheck{display:flex;gap:8px;align-items:center;padding:8px 9px;border-radius:10px;border:1px solid #e5e7eb;background:#fff}
+.releaseCheck>span{display:grid;place-items:center;width:22px;height:22px;border-radius:999px;font-size:11px;font-weight:900;background:#fff1f2;color:#be123c}
+.releaseCheck.pass>span{background:#ecfdf3;color:#047857}.releaseCheck b{display:block;font-size:10px}.releaseCheck small{display:block;margin-top:2px;font-size:8px;color:var(--muted)}
+.releaseCard .warning ul{margin:6px 0 0 18px;padding:0}
+@media(max-width:560px){.releaseGrid{grid-template-columns:1fr}.releaseCard .businessMetrics{grid-template-columns:1fr 1fr}}
