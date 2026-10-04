@@ -29,6 +29,7 @@ const allowed = new Set([
   "gelato_bio",
   "gelato_sensory",
   "gelato_release",
+  "gelato_stability",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -969,6 +970,31 @@ async function ensureGelatoBusinessRecipes(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_sensory_recipe_idx ON gelato_recipe_sensory(recipe_id,panel_date DESC,id DESC)`;
+  await sql`CREATE TABLE IF NOT EXISTS gelato_recipe_stability(
+    id BIGSERIAL PRIMARY KEY,
+    recipe_id BIGINT NOT NULL REFERENCES gelato_business_recipes(id) ON DELETE CASCADE,
+    batch_code TEXT,
+    checkpoint_day INTEGER NOT NULL DEFAULT 0,
+    test_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    storage_temp_c NUMERIC(7,2),
+    heat_shock_cycles INTEGER NOT NULL DEFAULT 0,
+    heat_shock_high_temp_c NUMERIC(7,2),
+    heat_shock_duration_min NUMERIC(10,2),
+    hardness_score INTEGER,
+    iciness_score INTEGER,
+    smoothness_score INTEGER,
+    flavor_score INTEGER,
+    body_score INTEGER,
+    overall_score INTEGER,
+    melt_30min_pct NUMERIC(8,2),
+    package_condition TEXT,
+    visible_ice_crystals TEXT,
+    notes TEXT,
+    created_by_id BIGINT,
+    created_by_name TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_stability_recipe_idx ON gelato_recipe_stability(recipe_id,checkpoint_day DESC,test_date DESC,id DESC)`;
 }
 function cleanFormula(v){
   const arr=Array.isArray(v)?v:[];
@@ -1318,6 +1344,90 @@ async function gelatoSensory(sql,req,user){
   return {status:405,data:{error:"Method not allowed"}};
 }
 
+
+function stabilitySummary(rows,recipe){
+  if(!rows.length)return {status:"not_started",confidence:0,target_days:Number(recipe?.research_target?.premium_r_and_d?.target_shelf_life_days)||null,max_day:0,checkpoints:0,comments:["Storage stability study abhi start nahi hui."]};
+  const sorted=[...rows].sort((a,b)=>Number(a.checkpoint_day||0)-Number(b.checkpoint_day||0));
+  const baseline=sorted.find(x=>Number(x.checkpoint_day||0)===0)||sorted[0];
+  const latest=sorted[sorted.length-1];
+  const n=v=>v===null||v===undefined||v===""?null:Number(v);
+  const drift=(k)=>{const a=n(baseline[k]),b=n(latest[k]);return a===null||b===null?null:b-a};
+  const hardnessDrift=drift("hardness_score"),icinessDrift=drift("iciness_score"),overallDrift=drift("overall_score");
+  const meltDrift=drift("melt_30min_pct");
+  const targetDays=Number(recipe?.research_target?.premium_r_and_d?.target_shelf_life_days)||null;
+  const maxDay=Math.max(...sorted.map(x=>Number(x.checkpoint_day||0)));
+  const distinctDays=new Set(sorted.map(x=>Number(x.checkpoint_day||0))).size;
+  let score=0;
+  if(distinctDays>=2)score+=25;
+  if(distinctDays>=3)score+=15;
+  if(targetDays&&maxDay>=targetDays)score+=25;
+  else if(maxDay>=30)score+=15;
+  if(hardnessDrift!==null&&Math.abs(hardnessDrift)<=2)score+=10;
+  if(icinessDrift!==null&&icinessDrift<=2)score+=10;
+  if(overallDrift!==null&&overallDrift>=-2)score+=10;
+  if(meltDrift!==null&&Math.abs(meltDrift)<=15)score+=5;
+  score=Math.max(0,Math.min(100,score));
+  let status="in_progress";
+  if(score>=85&&(targetDays?maxDay>=targetDays:maxDay>=30))status="stable";
+  if((icinessDrift!==null&&icinessDrift>=4)||(overallDrift!==null&&overallDrift<=-4))status="unstable";
+  const comments=[];
+  if(hardnessDrift!==null&&Math.abs(hardnessDrift)>2)comments.push("Hardness storage ke sath "+(hardnessDrift>0?"increase":"decrease")+" hui ("+hardnessDrift.toFixed(1)+" points).");
+  if(icinessDrift!==null&&icinessDrift>2)comments.push("Iciness growth significant hai ("+icinessDrift.toFixed(1)+" points); recrystallization/heat-shock risk review karein.");
+  if(overallDrift!==null&&overallDrift<-2)comments.push("Overall sensory quality "+Math.abs(overallDrift).toFixed(1)+" points decline hui.");
+  if(meltDrift!==null&&Math.abs(meltDrift)>15)comments.push("Melt behavior storage ke dauran materially change hua ("+meltDrift.toFixed(1)+" percentage-points).");
+  const shock=sorted.filter(x=>Number(x.heat_shock_cycles||0)>0);
+  if(shock.length)comments.push("Heat-shock checkpoints available: "+shock.length+"; normal frozen storage results se separately interpret karein.");
+  if(!comments.length)comments.push("Recorded checkpoints mein major physical stability drift trigger nahi hua.");
+  return {
+    status,confidence:Number(score.toFixed(1)),target_days:targetDays,max_day:maxDay,checkpoints:distinctDays,
+    baseline_day:Number(baseline.checkpoint_day||0),latest_day:Number(latest.checkpoint_day||0),
+    hardness_drift:hardnessDrift===null?null:Number(hardnessDrift.toFixed(2)),
+    iciness_drift:icinessDrift===null?null:Number(icinessDrift.toFixed(2)),
+    overall_drift:overallDrift===null?null:Number(overallDrift.toFixed(2)),
+    melt_drift_pct_points:meltDrift===null?null:Number(meltDrift.toFixed(2)),
+    comments
+  };
+}
+async function gelatoStability(sql,req,user){
+  await ensureGelatoBusinessRecipes(sql);
+  const id=asId(req.query?.id),recipeId=asId(req.query?.recipe_id),b=bodyOf(req);
+  if(req.method==="GET"){
+    if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
+    const recipe=(await sql\`SELECT id,research_target FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
+    const rows=await sql\`SELECT * FROM gelato_recipe_stability WHERE recipe_id=\${recipeId} ORDER BY checkpoint_day DESC,test_date DESC,id DESC LIMIT 300\`;
+    return {status:200,data:{records:rows,summary:stabilitySummary(rows,recipe)}};
+  }
+  if(req.method==="POST"){
+    if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
+    const recipe=(await sql\`SELECT id,research_target FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
+    const n=v=>v===null||v===undefined||v===""?null:Number(v);
+    const s=v=>v===null||v===undefined||v===""?null:Math.max(1,Math.min(10,Math.round(Number(v)||0)));
+    const row=(await sql\`INSERT INTO gelato_recipe_stability(
+      recipe_id,batch_code,checkpoint_day,test_date,storage_temp_c,heat_shock_cycles,heat_shock_high_temp_c,heat_shock_duration_min,
+      hardness_score,iciness_score,smoothness_score,flavor_score,body_score,overall_score,melt_30min_pct,package_condition,visible_ice_crystals,notes,
+      created_by_id,created_by_name
+    ) VALUES(
+      \${recipeId},\${cleanText(b.batch_code)},\${Math.max(0,Math.round(Number(b.checkpoint_day)||0))},COALESCE(\${cleanText(b.test_date)}::date,CURRENT_DATE),
+      \${n(b.storage_temp_c)},\${Math.max(0,Math.round(Number(b.heat_shock_cycles)||0))},\${n(b.heat_shock_high_temp_c)},\${n(b.heat_shock_duration_min)},
+      \${s(b.hardness_score)},\${s(b.iciness_score)},\${s(b.smoothness_score)},\${s(b.flavor_score)},\${s(b.body_score)},\${s(b.overall_score)},\${n(b.melt_30min_pct)},
+      \${cleanText(b.package_condition)},\${cleanText(b.visible_ice_crystals)},\${cleanText(b.notes)},\${user.id},\${user.full_name||user.employee_code||"User"}
+    ) RETURNING *\`)[0];
+    const rows=await sql\`SELECT * FROM gelato_recipe_stability WHERE recipe_id=\${recipeId} ORDER BY checkpoint_day DESC,test_date DESC,id DESC\`;
+    return {status:201,data:{record:row,summary:stabilitySummary(rows,recipe)}};
+  }
+  if(req.method==="DELETE"){
+    if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin stability record delete kar sakta hai"}};
+    if(!id)return {status:400,data:{error:"Valid stability record id required hai"}};
+    const old=(await sql\`DELETE FROM gelato_recipe_stability WHERE id=\${id} RETURNING recipe_id\`)[0];
+    if(!old)return {status:404,data:{error:"Stability record not found"}};
+    const recipe=(await sql\`SELECT id,research_target FROM gelato_business_recipes WHERE id=\${old.recipe_id}\`)[0];
+    const rows=await sql\`SELECT * FROM gelato_recipe_stability WHERE recipe_id=\${old.recipe_id} ORDER BY checkpoint_day DESC,test_date DESC,id DESC\`;
+    return {status:200,data:{deleted:true,summary:stabilitySummary(rows,recipe)}};
+  }
+  return {status:405,data:{error:"Method not allowed"}};
+}
 function machineCalibrationSummary(rows,recipe){
   const target=Number(recipe?.research_target?.premium_r_and_d?.target_overrun_pct);
   const usable=rows.filter(r=>r.result==="pass").map(r=>({
@@ -1368,7 +1478,8 @@ async function gelatoRelease(sql,req,user){
   const qc=await sql`SELECT * FROM gelato_recipe_qc WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
   const sensory=await sql`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=${recipeId} ORDER BY panel_date DESC,id DESC`;
   const bio=await sql`SELECT * FROM gelato_recipe_bio WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
-  const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio),machine=machineCalibrationSummary(qc,recipe);
+  const stability=await sql`SELECT * FROM gelato_recipe_stability WHERE recipe_id=${recipeId} ORDER BY checkpoint_day DESC,test_date DESC,id DESC`;
+  const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio),stabilitySum=stabilitySummary(stability,recipe),machine=machineCalibrationSummary(qc,recipe);
   const passed=qc.filter(x=>x.result==="pass").length;
   const processRows=qc.filter(x=>x.result==="pass"&&x.process_compliance_pct!==null&&x.process_compliance_pct!==undefined).slice(0,3);
   const processAvg=processRows.length?processRows.reduce((s,x)=>s+Number(x.process_compliance_pct||0),0)/processRows.length:null;
@@ -1381,6 +1492,7 @@ async function gelatoRelease(sql,req,user){
     {key:"calibration",label:"Measured Overrun Calibration",pass:machine.sample_count>=2&&(machine.overrun_sd_pct_points===null||machine.overrun_sd_pct_points<=8),value:machine.sample_count},
     {key:"process",label:"Process Compliance ≥ 85%",pass:processRows.length>=2&&Number(processAvg)>=85,value:processAvg===null?null:Number(processAvg.toFixed(1))},
     {key:"sensory",label:"Sensory Panel ≥ 3 & Avg ≥ 7/10",pass:Number(sensorySum.panel_count)>=3&&Number(sensorySum.overall_avg)>=7,value:sensorySum.overall_avg},
+    {key:"stability",label:"Physical Stability Study",pass:stabilitySum.status==="stable",value:stabilitySum.status},
     {key:"bio",label:"Biological Validation",pass:bioSum.status==="lab_validated",value:bioSum.status},
     {key:"shelf",label:"Validated Shelf Life Recorded",pass:Boolean(cleanText(recipe.validated_shelf_life)),value:recipe.validated_shelf_life||null}
   ];
@@ -1398,6 +1510,7 @@ async function gelatoRelease(sql,req,user){
     machine_calibration:machine,
     sensory:sensorySum,
     biological:bioSum,
+    stability:stabilitySum,
     passed_qc_batches:passed,
     note:"Release Readiness R&D/production checklist hai; regulatory or food-safety approval ka substitute nahi."
   }};
@@ -1550,6 +1663,10 @@ async function handler(req, res) {
     }
     if (resource === "gelato_release") {
       const out = await gelatoRelease(sql, req, user);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "gelato_stability") {
+      const out = await gelatoStability(sql, req, user);
       return res.status(out.status).json(out.data);
     }
     await ensureEntryNumbers(sql);
