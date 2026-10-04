@@ -1186,30 +1186,30 @@ async function gelatoSensory(sql,req,user){
   const id=asId(req.query?.id),recipeId=asId(req.query?.recipe_id),b=bodyOf(req);
   if(req.method==="GET"){
     if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
-    const rows=await sql\`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=\${recipeId} ORDER BY panel_date DESC,id DESC LIMIT 200\`;
+    const rows=await sql`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=${recipeId} ORDER BY panel_date DESC,id DESC LIMIT 200`;
     return {status:200,data:{records:rows,summary:sensorySummary(rows)}};
   }
   if(req.method==="POST"){
     if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
-    const recipe=(await sql\`SELECT id FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    const recipe=(await sql`SELECT id FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
     if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
     const s=v=>v===null||v===undefined||v===""?null:Math.max(1,Math.min(10,Math.round(Number(v)||0)));
-    const row=(await sql\`INSERT INTO gelato_recipe_sensory(
+    const row=(await sql`INSERT INTO gelato_recipe_sensory(
       recipe_id,qc_id,tester_name,panel_date,creaminess_score,smoothness_score,sweetness_score,flavor_score,body_score,melt_score,aftertaste_score,overall_score,comments,created_by_id,created_by_name
     ) VALUES(
-      \${recipeId},\${asId(b.qc_id)},\${cleanText(b.tester_name)},COALESCE(\${cleanText(b.panel_date)}::date,CURRENT_DATE),
-      \${s(b.creaminess_score)},\${s(b.smoothness_score)},\${s(b.sweetness_score)},\${s(b.flavor_score)},\${s(b.body_score)},\${s(b.melt_score)},\${s(b.aftertaste_score)},\${s(b.overall_score)},
-      \${cleanText(b.comments)},\${user.id},\${user.full_name||user.employee_code||"User"}
-    ) RETURNING *\`)[0];
-    const rows=await sql\`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=\${recipeId} ORDER BY panel_date DESC,id DESC\`;
+      ${recipeId},${asId(b.qc_id)},${cleanText(b.tester_name)},COALESCE(${cleanText(b.panel_date)}::date,CURRENT_DATE),
+      ${s(b.creaminess_score)},${s(b.smoothness_score)},${s(b.sweetness_score)},${s(b.flavor_score)},${s(b.body_score)},${s(b.melt_score)},${s(b.aftertaste_score)},${s(b.overall_score)},
+      ${cleanText(b.comments)},${user.id},${user.full_name||user.employee_code||"User"}
+    ) RETURNING *`)[0];
+    const rows=await sql`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=${recipeId} ORDER BY panel_date DESC,id DESC`;
     return {status:201,data:{record:row,summary:sensorySummary(rows)}};
   }
   if(req.method==="DELETE"){
     if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin sensory record delete kar sakta hai"}};
     if(!id)return {status:400,data:{error:"Valid sensory id required hai"}};
-    const old=(await sql\`DELETE FROM gelato_recipe_sensory WHERE id=\${id} RETURNING recipe_id\`)[0];
+    const old=(await sql`DELETE FROM gelato_recipe_sensory WHERE id=${id} RETURNING recipe_id`)[0];
     if(!old)return {status:404,data:{error:"Sensory record not found"}};
-    const rows=await sql\`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=\${old.recipe_id} ORDER BY panel_date DESC,id DESC\`;
+    const rows=await sql`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=${old.recipe_id} ORDER BY panel_date DESC,id DESC`;
     return {status:200,data:{deleted:true,summary:sensorySummary(rows)}};
   }
   return {status:405,data:{error:"Method not allowed"}};
