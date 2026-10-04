@@ -1159,6 +1159,13 @@ async function ensureGelatoBusinessRecipes(sql){
     sample_code TEXT,
     lab_name TEXT,
     report_reference TEXT,
+    test_method TEXT,
+    lab_accreditation TEXT,
+    sample_amount NUMERIC(12,3),
+    sample_unit TEXT,
+    standard_profile_id TEXT,
+    standard_profile_name TEXT,
+    standard_profile_version TEXT,
     test_date DATE NOT NULL DEFAULT CURRENT_DATE,
     storage_day INTEGER,
     storage_temp_c NUMERIC(7,2),
@@ -1168,6 +1175,7 @@ async function ensureGelatoBusinessRecipes(sql){
     total_plate_count NUMERIC,
     coliform_count NUMERIC,
     yeast_mold_count NUMERIC,
+    e_coli_status TEXT,
     listeria_status TEXT,
     salmonella_status TEXT,
     staph_status TEXT,
@@ -1178,6 +1186,14 @@ async function ensureGelatoBusinessRecipes(sql){
     created_by_name TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+  await sql`ALTER TABLE gelato_recipe_bio ADD COLUMN IF NOT EXISTS e_coli_status TEXT`;
+  await sql`ALTER TABLE gelato_recipe_bio ADD COLUMN IF NOT EXISTS test_method TEXT`;
+  await sql`ALTER TABLE gelato_recipe_bio ADD COLUMN IF NOT EXISTS lab_accreditation TEXT`;
+  await sql`ALTER TABLE gelato_recipe_bio ADD COLUMN IF NOT EXISTS sample_amount NUMERIC(12,3)`;
+  await sql`ALTER TABLE gelato_recipe_bio ADD COLUMN IF NOT EXISTS sample_unit TEXT`;
+  await sql`ALTER TABLE gelato_recipe_bio ADD COLUMN IF NOT EXISTS standard_profile_id TEXT`;
+  await sql`ALTER TABLE gelato_recipe_bio ADD COLUMN IF NOT EXISTS standard_profile_name TEXT`;
+  await sql`ALTER TABLE gelato_recipe_bio ADD COLUMN IF NOT EXISTS standard_profile_version TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_bio_recipe_idx ON gelato_recipe_bio(recipe_id,test_date DESC,id DESC)`;
   await sql`CREATE TABLE IF NOT EXISTS gelato_recipe_sensory(
     id BIGSERIAL PRIMARY KEY,
@@ -1402,74 +1418,139 @@ async function recalcProductionConfidence(sql,recipeId){
   return Number(score.toFixed(2));
 }
 
+
 function bioStatusValue(v){
   const s=String(v||"").trim().toLowerCase();
   if(["not detected","negative","nd","absent"].includes(s))return "not_detected";
   if(["detected","positive","present"].includes(s))return "detected";
   return s||null;
 }
-function bioValidationSummary(rows){
-  if(!rows.length)return {status:"incomplete",confidence:0,comments:["Biological validation data enter nahi ki gayi."]};
+function bioStandardEvaluate(latest,profile){
+  if(!profile)return {status:"no_standard",pass:false,criteria:[],comments:["Biological standard profile selected nahi hai."]};
+  if(profile.reference_only)return {status:"reference_only",pass:false,criteria:[],comments:["Selected profile reference-only hai; explicit limits auto-apply nahi honge."]};
+  const crit=profile.criteria||{},results=[],comments=[];
+  const num=(key,label)=>{
+    const rule=crit[key]||{},actual=latest[key]===null||latest[key]===undefined?null:Number(latest[key]);
+    if(!rule.required&&rule.max==null)return;
+    const pass=actual!==null&&Number.isFinite(actual)&&(rule.max==null||actual<=Number(rule.max));
+    results.push({key,label,required:rule.required===true,actual,max:rule.max??null,unit:rule.unit||null,pass});
+  };
+  const stat=(key,label)=>{
+    const rule=crit[key]||{};
+    if(!rule.required&&!rule.expected)return;
+    const actual=bioStatusValue(latest[key]),expected=rule.expected||"not_detected";
+    results.push({key,label,required:rule.required===true,actual,expected,pass:actual===expected});
+  };
+  num("total_plate_count","Total Plate Count");
+  num("coliform_count","Coliform");
+  num("yeast_mold_count","Yeast / Mold");
+  stat("e_coli_status","E. coli");
+  stat("salmonella_status","Salmonella");
+  stat("staph_status","Staphylococcus");
+  stat("listeria_status","Listeria");
+  const required=results.filter(x=>x.required),failedRequired=required.filter(x=>!x.pass);
+  const anyDetected=results.some(x=>["salmonella_status","staph_status","e_coli_status","listeria_status"].includes(x.key)&&x.actual==="detected");
+  let status="incomplete";
+  if(anyDetected||failedRequired.some(x=>x.actual!==null))status="hold";
+  else if(required.length&&failedRequired.length===0)status="meets_profile";
+  results.filter(x=>!x.pass).forEach(x=>{
+    if(x.max!=null&&x.actual!=null)comments.push(x.label+" "+x.actual+" "+(x.unit||"")+" — max "+x.max+" se zyada hai.");
+    else if(x.expected)comments.push(x.label+" result "+(x.actual||"missing")+" hai; expected "+x.expected+".");
+    else comments.push(x.label+" required result missing hai.");
+  });
+  if(status==="meets_profile")comments.push("Latest lab result selected standard profile ke explicit criteria meet karta hai.");
+  return {status,pass:status==="meets_profile",criteria:results,comments};
+}
+function bioValidationSummary(rows,profile=null){
+  if(!rows.length)return {status:"incomplete",confidence:0,standard_status:"incomplete",standard_profile:profile||null,criteria:[],comments:["Biological validation data enter nahi ki gayi."]};
   const latest=rows[0];
-  const pathogenFields=["listeria_status","salmonella_status","staph_status"];
+  const standardEval=bioStandardEvaluate(latest,profile);
+  const pathogenFields=["e_coli_status","salmonella_status","staph_status"];
+  const optionalListeria=profile?.criteria?.listeria_status?.required===true;
+  if(optionalListeria)pathogenFields.push("listeria_status");
   const pathogenDetected=pathogenFields.some(k=>bioStatusValue(latest[k])==="detected");
   const pathogenKnown=pathogenFields.filter(k=>bioStatusValue(latest[k])==="not_detected").length;
-  const countFields=["total_plate_count","coliform_count","yeast_mold_count"];
-  const countsFilled=countFields.filter(k=>latest[k]!==null&&latest[k]!==undefined).length;
+  const requiredCountKeys=Object.entries(profile?.criteria||{}).filter(([k,v])=>v?.required===true&&["total_plate_count","coliform_count","yeast_mold_count"].includes(k)).map(([k])=>k);
+  const countsFilled=requiredCountKeys.filter(k=>latest[k]!==null&&latest[k]!==undefined).length;
   const physFilled=["ph","water_activity","storage_temp_c"].filter(k=>latest[k]!==null&&latest[k]!==undefined).length;
   const hasStorageSeries=new Set(rows.map(x=>Number(x.storage_day)).filter(Number.isFinite)).size>=2;
   const hasPackaging=Boolean(cleanText(latest.packaging));
-  const completeness=((pathogenKnown/3)*35)+((countsFilled/3)*25)+((physFilled/3)*20)+(hasStorageSeries?15:0)+(hasPackaging?5:0);
+  const hasMethod=Boolean(cleanText(latest.test_method)),hasLab=Boolean(cleanText(latest.lab_name)),hasReport=Boolean(cleanText(latest.report_reference));
+  const basePath=pathogenFields.length?Math.min(35,(pathogenKnown/pathogenFields.length)*35):0;
+  const baseCounts=requiredCountKeys.length?Math.min(25,(countsFilled/requiredCountKeys.length)*25):15;
+  const completeness=basePath+baseCounts+((physFilled/3)*10)+(hasStorageSeries?10:0)+(hasPackaging?5:0)+(hasMethod?5:0)+(hasLab?5:0)+(hasReport?5:0);
   let status="incomplete";
-  const comments=[];
-  if(pathogenDetected){
+  const comments=[...(standardEval.comments||[])];
+  if(pathogenDetected||standardEval.status==="hold"){
     status="hold";
-    comments.push("Pathogen result Detected/Positive hai — product HOLD par rahega; release nahi kiya ja sakta.");
-  }else if(pathogenKnown===3&&countsFilled===3&&physFilled>=2&&hasStorageSeries){
-    status="lab_validated";
-    comments.push("Required biological validation fields complete hain aur pathogen results Not Detected hain.");
+    comments.unshift("Selected microbiological criteria fail / pathogen detected — product HOLD par rahega.");
+  }else if(standardEval.status==="meets_profile"&&hasMethod&&hasLab&&hasReport){
+    status="validation_complete";
+    comments.unshift("Selected standard profile ke criteria complete aur passed hain.");
+  }else if(standardEval.status==="reference_only"){
+    status="reference_only";
+    comments.unshift("Reference-only profile selected hai; legal/standard pass status generate nahi kiya gaya.");
   }else{
-    comments.push("Biological validation incomplete hai; missing lab/storage fields complete karein.");
+    comments.unshift("Biological validation incomplete hai; required lab/method/criteria fields complete karein.");
   }
-  if(!hasStorageSeries)comments.push("Shelf-life confidence ke liye kam az kam 2 storage checkpoints required hain.");
-  if(pathogenKnown<3&&!pathogenDetected)comments.push("Listeria, Salmonella aur Staphylococcus status complete karein.");
-  if(countsFilled<3)comments.push("TPC, Coliform aur Yeast/Mold counts complete karein.");
-  return {status,confidence:Number(Math.max(0,Math.min(100,completeness)).toFixed(1)),comments};
+  if(!hasStorageSeries)comments.push("Shelf-life confidence ke liye kam az kam 2 storage checkpoints useful hain.");
+  return {
+    status,
+    confidence:Number(Math.max(0,Math.min(100,completeness)).toFixed(1)),
+    standard_status:standardEval.status,
+    standard_profile:profile||null,
+    criteria:standardEval.criteria||[],
+    comments
+  };
 }
+
+
 async function gelatoBio(sql,req,user){
   await ensureGelatoBusinessRecipes(sql);
+  await ensureGelatoSettings(sql);
   const id=asId(req.query?.id),recipeId=asId(req.query?.recipe_id),b=bodyOf(req);
+  const settingsRow=(await sql`SELECT settings FROM gelato_ingredient_settings WHERE id=1`)[0];
+  const settings=normalizeGelatoSettings(settingsRow?.settings||{});
+  const profiles=settings.bio_standard_profiles||[];
+  const resolveProfile=(profileId)=>profiles.find(x=>x.id===profileId)||profiles.find(x=>x.id===settings.default_bio_standard_id)||null;
   if(req.method==="GET"){
     if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
     const rows=await sql`SELECT * FROM gelato_recipe_bio WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC LIMIT 200`;
-    return {status:200,data:{records:rows,summary:bioValidationSummary(rows)}};
+    const selectedId=cleanText(req.query?.standard_profile_id)||rows[0]?.standard_profile_id||settings.default_bio_standard_id;
+    const profile=resolveProfile(selectedId);
+    return {status:200,data:{records:rows,summary:bioValidationSummary(rows,profile),profiles,selected_profile_id:profile?.id||null}};
   }
   if(req.method==="POST"){
     if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
     const recipe=(await sql`SELECT id FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
     if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
     const n=v=>v===null||v===undefined||v===""?null:Number(v);
+    const profile=resolveProfile(cleanText(b.standard_profile_id));
+    if(!profile)return {status:400,data:{error:"Valid biological standard profile required hai"}};
     const row=(await sql`INSERT INTO gelato_recipe_bio(
-      recipe_id,sample_code,lab_name,report_reference,test_date,storage_day,storage_temp_c,packaging,ph,water_activity,
-      total_plate_count,coliform_count,yeast_mold_count,listeria_status,salmonella_status,staph_status,probiotic_cfu,culture_strain,notes,
+      recipe_id,sample_code,lab_name,report_reference,test_method,lab_accreditation,sample_amount,sample_unit,
+      standard_profile_id,standard_profile_name,standard_profile_version,test_date,storage_day,storage_temp_c,packaging,ph,water_activity,
+      total_plate_count,coliform_count,yeast_mold_count,e_coli_status,listeria_status,salmonella_status,staph_status,probiotic_cfu,culture_strain,notes,
       created_by_id,created_by_name
     ) VALUES(
-      ${recipeId},${cleanText(b.sample_code)},${cleanText(b.lab_name)},${cleanText(b.report_reference)},COALESCE(${cleanText(b.test_date)}::date,CURRENT_DATE),
+      ${recipeId},${cleanText(b.sample_code)},${cleanText(b.lab_name)},${cleanText(b.report_reference)},${cleanText(b.test_method)},${cleanText(b.lab_accreditation)},${n(b.sample_amount)},${cleanText(b.sample_unit)},
+      ${profile.id},${profile.name},${profile.version},COALESCE(${cleanText(b.test_date)}::date,CURRENT_DATE),
       ${n(b.storage_day)},${n(b.storage_temp_c)},${cleanText(b.packaging)},${n(b.ph)},${n(b.water_activity)},
-      ${n(b.total_plate_count)},${n(b.coliform_count)},${n(b.yeast_mold_count)},${cleanText(b.listeria_status)},${cleanText(b.salmonella_status)},${cleanText(b.staph_status)},
+      ${n(b.total_plate_count)},${n(b.coliform_count)},${n(b.yeast_mold_count)},${cleanText(b.e_coli_status)},${cleanText(b.listeria_status)},${cleanText(b.salmonella_status)},${cleanText(b.staph_status)},
       ${n(b.probiotic_cfu)},${cleanText(b.culture_strain)},${cleanText(b.notes)},${user.id},${user.full_name||user.employee_code||"User"}
     ) RETURNING *`)[0];
     const rows=await sql`SELECT * FROM gelato_recipe_bio WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
-    return {status:201,data:{record:row,summary:bioValidationSummary(rows)}};
+    return {status:201,data:{record:row,summary:bioValidationSummary(rows,profile),profiles,selected_profile_id:profile.id}};
   }
   if(req.method==="DELETE"){
     if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin biological record delete kar sakta hai"}};
     if(!id)return {status:400,data:{error:"Valid biological record id required hai"}};
-    const old=(await sql`SELECT recipe_id FROM gelato_recipe_bio WHERE id=${id}`)[0];
+    const old=(await sql`SELECT recipe_id,standard_profile_id FROM gelato_recipe_bio WHERE id=${id}`)[0];
     if(!old)return {status:404,data:{error:"Biological record not found"}};
     await sql`DELETE FROM gelato_recipe_bio WHERE id=${id}`;
     const rows=await sql`SELECT * FROM gelato_recipe_bio WHERE recipe_id=${old.recipe_id} ORDER BY test_date DESC,id DESC`;
-    return {status:200,data:{deleted:true,summary:bioValidationSummary(rows)}};
+    const profile=resolveProfile(old.standard_profile_id);
+    return {status:200,data:{deleted:true,summary:bioValidationSummary(rows,profile)}};
   }
   return {status:405,data:{error:"Method not allowed"}};
 }
@@ -2004,7 +2085,7 @@ async function gelatoRelease(sql,req,user){
     {key:"process",label:"Process Compliance ≥ 85%",pass:processRows.length>=2&&Number(processAvg)>=85,value:processAvg===null?null:Number(processAvg.toFixed(1))},
     {key:"sensory",label:"Sensory Panel ≥ 3 & Avg ≥ 7/10",pass:Number(sensorySum.panel_count)>=3&&Number(sensorySum.overall_avg)>=7,value:sensorySum.overall_avg},
     {key:"stability",label:"Physical Stability Study",pass:stabilitySum.status==="stable",value:stabilitySum.status},
-    {key:"bio",label:"Biological Validation",pass:bioSum.status==="lab_validated",value:bioSum.status},
+    {key:"bio",label:"Biological Validation",pass:bioSum.status==="validation_complete",value:bioSum.status},
     {key:"shelf",label:"Validated Shelf Life Recorded",pass:Boolean(cleanText(recipe.validated_shelf_life)),value:recipe.validated_shelf_life||null}
   ];
   const passedChecks=checks.filter(x=>x.pass).length;
