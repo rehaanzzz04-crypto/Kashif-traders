@@ -6,6 +6,13 @@ const SOURCE_TETRA='https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cre
 const SOURCE_ICE='https://www.ice.edu/blog/science-of-ice-cream';
 const SOURCE_SALTSTRAW='https://saltandstraw.com/blogs/news/we-teamed-up-with-thrillist-to-level-up-your-homemade-ice-cream';
 const SOURCE_INNOVA='https://www.innovaitalia.com/en/chocolate-ice-cream-recipe-2/';
+const SOURCE_CALLEBAUT_SAUCE='https://www.callebaut.com/en/callebaut-chocolate-academy/tutorials/chocolate-sauce';
+const SOURCE_CALLEBAUT_CARAMEL='https://www.callebaut.com/en/recipes/Caramel-Milkshake/4004';
+const SOURCE_CALLEBAUT_BROWNIE='https://www.callebaut.com/en/recipes/classic-chocolate-brownies/3552';
+const SOURCE_CALLEBAUT_BROWNIE2='https://www.callebaut.com/en/recipes/brownie/1233';
+const SOURCE_KING_HOTFUDGE='https://www.kingarthurbaking.com/recipes/hot-fudge-sauce-recipe';
+const SOURCE_KING_CARAMEL='https://www.kingarthurbaking.com/recipes/caramel-sauce-recipe';
+const SOURCE_KING_BUTTERSCOTCH='https://www.kingarthurbaking.com/recipes/butterscotch-sauce-recipe';
 
 const GELATO=[
   {id:'white-base',name:'White Base',cat:'Base',page:1,solids:[18,6,10.5,.6,64.9,35.1],items:[['Whole milk (3.5% fat)',667],['Cream (35% fat)',104],['Skim milk powder (1% fat)',28],['Sugar sucrose',137],['Dry glucose syrup 38DE',31.5],['Base 50 C.H.',32.5]]},
@@ -52,6 +59,22 @@ const TARGETS={
   ]
 };
 
+const SUNDAE_RECIPES=[
+  {id:'callebaut-choc-sauce',name:'Callebaut Belgian Chocolate Sauce',sourceClass:'training',sourceName:'Callebaut Chocolate Academy',sourceUrl:SOURCE_CALLEBAUT_SAUCE,baseMass:320,items:[['Whole milk',100],['Cream 35%',100],['Glucose syrup',20],['Dark chocolate',100]],method:['Heat milk, cream aur glucose syrup ko 50°C tak le jayen.','Dark chocolate add karke continuously stir karein jab tak sauce homogeneous ho.','Serving ke liye approximately 35°C target karein.']},
+  {id:'callebaut-caramel',name:'Callebaut Professional Caramel Sauce',sourceClass:'training',sourceName:'Callebaut',sourceUrl:SOURCE_CALLEBAUT_CARAMEL,baseMass:476,items:[['Heavy cream',180],['Granulated sugar',180],['Glucose syrup',90],['Butter',20],['Smoked Maldon salt',6]],method:['Heavy cream ko warm rakhein.','Sugar ka dry light caramel banayein.','Warm cream se carefully deglaze karein.','Butter aur salt add karke smooth karein, phir cool karein.']},
+  {id:'callebaut-dark-sauce',name:'Callebaut Dark Chocolate Sundae Sauce',sourceClass:'training',sourceName:'Callebaut',sourceUrl:'https://www.callebaut.com/en-GB/recipes/chocolate-brownie-ice-cream-sundae/5120?units=metric',baseMass:250,items:[['Dark chocolate 811',100],['Cream',150]],method:['Cream ko boil tak le jayen.','Hot cream chocolate par pour karein.','Smooth hone tak mix karein; cool karein aur service ke waqt reheat karein.']},
+  {id:'callebaut-cocoa-sauce',name:'Callebaut Cocoa Chocolate Sauce',sourceClass:'training',sourceName:'Callebaut',sourceUrl:'https://www.callebaut.com/en-GB/recipes/slowcial-dessert-box/1519',baseMass:999,items:[['Sugar',98],['Cocoa powder 22/24',60],['Water',437],['Glucose syrup',98],['Dark chocolate C811',306]],method:['Sugar aur cocoa powder ko dry mix karein.','Water aur glucose syrup ko boil karein.','Sugar-cocoa mix add karke short boil karein.','Hot mix chocolate par pour karke immersion blender se homogeneous karein; overnight chill karein.']},
+  {id:'king-hot-fudge',name:'King Arthur Hot Fudge Sauce',sourceClass:'institute',sourceName:'King Arthur Baking',sourceUrl:SOURCE_KING_HOTFUDGE,baseMass:405,items:[['Unsalted butter',57],['Unsweetened baking chocolate',43],['Half-and-half',113],['Granulated sugar',149],['Dutch-process cocoa',43]],method:['Butter aur chocolate ko medium-low heat par smooth melt karein.','Half-and-half whisk karein.','Sugar aur cocoa add karke whisk karein.','Boil tak le ja kar heat se remove karein; original formula ke mutabiq espresso, salt aur vanilla finish mein add karein.']},
+  {id:'king-caramel',name:'King Arthur Caramel Sauce',sourceClass:'institute',sourceName:'King Arthur Baking',sourceUrl:SOURCE_KING_CARAMEL,baseMass:424,items:[['Granulated sugar',198],['Water',28],['Unsalted butter',85],['Heavy cream',113]],method:['Sugar aur water ko heavy saucepan mein medium-high heat par caramelize karein; crystallization se bachne ke liye pan swirl karein.','Light-to-medium amber par heat se remove karein.','Butter gradually add karein, phir cream slowly add karke smooth karein.','Original formula ke mutabiq salt/cream of tartar/vanilla finishing mein use karein.']},
+  {id:'king-butterscotch',name:'King Arthur Butterscotch Sauce',sourceClass:'institute',sourceName:'King Arthur Baking',sourceUrl:SOURCE_KING_BUTTERSCOTCH,baseMass:1842,items:[['Light brown sugar',354],['Dark brown sugar',354],['Unsalted butter',227],['Heavy cream',907]],method:['Sugars aur butter ko medium heat par just melt hone tak cook karein.','Cream ko four additions mein add karein; har addition ke darmiyan simmer/reduce karein.','Sauce slightly sheet karne lage to heat se remove karein.','Original formula ke mutabiq vanilla aur salts finish mein add karein.']}
+];
+
+const BROWNIE_RECIPES=[
+  {id:'callebaut-classic',name:'Callebaut Classic Chocolate Brownie',sourceClass:'training',sourceName:'Callebaut',sourceUrl:SOURCE_CALLEBAUT_BROWNIE,baseMass:1201,items:[['Butter 82%',208],['Dark chocolate 811',208],['Sugar',162],['Dark brown sugar',162],['Cocoa powder',51],['All-purpose flour',115],['Potato starch',62],['Sea salt',2],['Whole eggs',231]],method:['Butter aur chocolate ko gently melt karke smooth karein.','Dry ingredients add karte hue whisk karein.','Eggs akhir mein add karein.','Molds mein pipe karein aur 160°C par approximately 12 minutes bake karein.','Cool/freeze briefly, unmold karein aur chilled reserve karein.']},
+  {id:'callebaut-pecan',name:'Callebaut Pecan Brownie',sourceClass:'training',sourceName:'Callebaut',sourceUrl:SOURCE_CALLEBAUT_BROWNIE2,baseMass:999,items:[['Dark chocolate 70-30-38',149],['Fresh butter',176],['Caster sugar',253],['Whole eggs',167],['Pastry flour',87],['Pecan nuts',167]],method:['Chocolate aur butter ko 45°C tak melt karein.','Sugar aur eggs ko gently whisk karke chocolate-butter mix mein combine karein.','Flour fold karein, phir pecans add karein.','Tray mein spread karke 180°C par 8-10 minutes bake karein; center moist rakhein.']},
+  {id:'callebaut-dense',name:'Callebaut Dense Dark Brownie',sourceClass:'training',sourceName:'Callebaut',sourceUrl:'https://www.callebaut.com/en-GB/recipes/brownie/1332',baseMass:862,items:[['Dark chocolate 70-30-38',95],['Butter',170],['Sugar',205],['Whole eggs',135],['Flour',85],['Pecan nuts',167]],method:['Chocolate aur butter ko 45°C tak melt karein.','Sugar aur eggs ko pale hone tak beat karein; chocolate mix fold karein.','Flour aur pecans fold karein.','At least 1 cm layer mein spread karke 180°C par 12-15 minutes bake karein.']},
+  {id:'king-fudge',name:'King Arthur Fudge Brownies',sourceClass:'institute',sourceName:'King Arthur Baking',sourceUrl:'https://www.kingarthurbaking.com/recipes/fudge-brownies-recipe',originalOnly:true,originalUnits:'4 large eggs; 106g cocoa; salt; baking powder; espresso optional; vanilla; 227g butter; 447g sugar; 180g flour; 340g chocolate chips',method:['Oven 350°F / 177°C preheat karein aur 9x13 pan prepare karein.','Eggs, cocoa aur dry seasonings ko combine karein.','Butter melt karke sugar ke saath 110-120°F tak warm karein.','Mixtures combine karke flour/chips fold karein aur 28-32 minutes bake karein.']}
+];
 const BASES={
   'White Base':GELATO.find(x=>x.id==='white-base'),
   'Yellow Base':GELATO.find(x=>x.id==='yellow-base'),
@@ -181,29 +204,55 @@ function ingredientTable(rows,total){
     '<tr class="totalRow"><td>Total Batch</td><td>'+fmt(total)+'</td><td>100.00%</td></tr></tbody></table></div>';
 }
 function sourceClassFor(r,kind){return r?.sourceClass||(kind==='gelato'?'training':'institute')}
-function populate(){
+function departmentList(){
+  const dep=$('department')?.value||'icecream';
+  if(dep==='sauces')return SUNDAE_RECIPES;
+  if(dep==='brownies')return BROWNIE_RECIPES;
   const kind=$('system').value;
-  $('baseModeWrap').classList.toggle('hidden',kind==='gelato'||kind==='sherbet');
-  let list=kind==='gelato'?GELATO:(TARGETS[kind]||[]);
-  if(($('sourceType')?.value||'all')==='creator' && kind==='hard') list=[...list,...TARGETS.creator];
+  return kind==='gelato'?GELATO:(TARGETS[kind]||[]);
+}
+function populate(){
+  const dep=$('department')?.value||'icecream',kind=$('system').value;
+  $('systemWrap')?.classList.toggle('hidden',dep!=='icecream');
+  $('baseModeWrap').classList.toggle('hidden',dep!=='icecream'||kind==='gelato'||kind==='sherbet');
+  let list=departmentList();
+  if(dep==='icecream' && ($('sourceType')?.value||'all')==='creator' && kind==='hard') list=[...list,...TARGETS.creator];
   const sourceFilter=$('sourceType')?.value||'all';
-  if(sourceFilter!=='all') list=list.filter(r=>sourceClassFor(r,kind)===sourceFilter);
+  if(sourceFilter!=='all')list=list.filter(r=>sourceClassFor(r,kind)===sourceFilter);
   $('recipe').innerHTML=list.map(r=>'<option value="'+r.id+'">'+esc(r.name)+'</option>').join('');
   if(!list.length){
-    $('result').innerHTML='<div class="recipeHead"><div><h2>No verified recipe in this section yet</h2><p>Source quality filter active hai. Creator/Business recipes sirf mass-balance validation ke baad enable hongi.</p></div><span class="badge">Quality Gate</span></div><div class="warning">Research/Institute ya Professional Training source select karein, ya All Verified Sources par wapas jayen.</div>';
+    $('result').innerHTML='<div class="recipeHead"><div><h2>No verified recipe in this section yet</h2><p>Source quality filter active hai.</p></div><span class="badge">Quality Gate</span></div>';
     return;
   }
   render();
 }
 function getRecipe(){
-  const kind=$('system').value;
-  const list=kind==='gelato'?GELATO:[...(TARGETS[kind]||[]),...(kind==='hard'?TARGETS.creator:[])];
+  const dep=$('department')?.value||'icecream',kind=$('system').value;
+  let list=departmentList();
+  if(dep==='icecream'&&kind==='hard')list=[...list,...TARGETS.creator];
   return list.find(r=>r.id===$('recipe').value);
 }
 function render(){
   const kind=$('system').value,r=getRecipe(),total=batchGrams();
   if(!r||!Number.isFinite(total)||total<=0){$('result').innerHTML='<div class="warning">Valid batch quantity enter karein.</div>';return}
   let items,stats,subtitle,src,raw=null;
+  const dep=$('department')?.value||'icecream';
+  if(dep!=='icecream'){
+    if(r.originalOnly){
+      current={kind:dep,r,total,items:[]};
+      $('result').innerHTML='<div class="recipeHead"><div><h2>'+esc(r.name)+'</h2><p>'+esc(dep==='sauces'?'Sundae Sauce':'Professional Brownie')+'</p></div><span class="badge">'+esc(r.sourceName)+'</span></div><div class="warning"><b>Original source batch:</b><br>'+esc(r.originalUnits)+'</div><div class="subpanel"><h3>Production Method</h3><div class="steps">'+r.method.map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div></div>'+sourceBlock('direct',r);
+      return;
+    }
+    const base=Number(r.baseMass||r.items.reduce((s,i)=>s+Number(i[1]||0),0));
+    items=r.items.map(i=>({name:i[0],g:Number(i[1])*total/base}));
+    current={kind:dep,r,total,items};
+    const depName=dep==='sauces'?'Sundae Syrup / Sauce':'Professional Brownie';
+    $('result').innerHTML='<div class="recipeHead"><div><h2>'+esc(r.name)+'</h2><p>'+esc(depName)+' • scalable professional formula</p></div><span class="badge">'+esc(r.sourceName)+'</span></div>'+
+      '<div class="stats"><div class="stat"><small>Batch</small><strong>'+fmt(total)+'</strong></div><div class="stat"><small>Source Batch</small><strong>'+fmt(base)+'</strong></div><div class="stat"><small>Ingredients</small><strong>'+items.length+'</strong></div><div class="stat"><small>Source Type</small><strong>'+esc(sourceClassFor(r,dep)==='training'?'Professional':'Institute')+'</strong></div></div>'+
+      ingredientTable(items,total)+
+      '<div class="split"><div class="subpanel"><h3>Production Method</h3><div class="steps">'+r.method.map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div></div><div>'+sourceBlock('direct',r)+'<div class="warning"><b>Scaling note:</b> Formula weight ratio se scale hoti hai. Baking recipes mein pan depth aur bake time batch size ke saath separately validate karein.</div></div></div>';
+    return;
+  }
   if(kind==='gelato'){
     items=scale(r.items,total);raw=expand(r.items,total);
     stats=gelatoStats(r.solids);subtitle='Official Carpigiani formula • source page '+r.page;
@@ -275,7 +324,7 @@ async function auth(){
 }
 
 $('backBtn').onclick=()=>location.href='/';
-$('sourceType').onchange=populate;$('system').onchange=populate;$('baseMode').onchange=render;$('recipe').onchange=render;$('batch').oninput=render;$('unit').onchange=render;$('generate').onclick=render;
+$('department').onchange=populate;$('sourceType').onchange=populate;$('system').onchange=populate;$('baseMode').onchange=render;$('recipe').onchange=render;$('batch').oninput=render;$('unit').onchange=render;$('generate').onclick=render;
 document.querySelectorAll('[data-kg]').forEach(b=>b.onclick=()=>{$('batch').value=b.dataset.kg;$('unit').value='kg';render()});
 $('save').onclick=saveBatch;$('print').onclick=()=>window.print();$('share').onclick=shareRecipe;
 $('clearHistory').onclick=()=>{if(confirm('Clear saved batch history?')){localStorage.removeItem('kt_icecream_batches_v2');historyRender()}};
