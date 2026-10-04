@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2563eb">
 <title>Gelato Recipe | Kashif Traders</title>
-<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-9">
-<script defer src="/offline-register.js?v=20261004-9"></script>
-<script defer src="/gelato-recipes.js?v=20261004-9"></script>
+<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-10">
+<script defer src="/offline-register.js?v=20261004-10"></script>
+<script defer src="/gelato-recipes.js?v=20261004-10"></script>
 </head>
 <body>
 <div id="authLoading" class="loading">Gelato Recipe Lab loading…</div>
@@ -143,6 +143,8 @@
       </label>
       <label>Target Overrun %<input id="wizardOverrun" type="number" min="10" max="150" step="1" value="75"></label>
       <label>Machine Profile<select id="wizardMachine"><option value="">No Machine Profile</option></select></label>
+      <label>Flavor / Inclusion<select id="wizardFlavor"><option value="">No Flavor Profile</option></select></label>
+      <label>Flavor Dose %<input id="wizardFlavorDose" type="number" min="0" max="60" step="0.1" value="0"></label>
       <label>Formula Name<input id="wizardName" value="Premium R&D Vanilla Base"></label>
     </div>
     <div id="wizardPreview" class="wizardPreview"></div>
@@ -180,6 +182,7 @@
     <section class="profileSection">
       <div class="profileSectionHead"><h3>Dry Milk / Fat Filled Powder</h3><button id="addDryMilkProfile" class="secondary" type="button">+ Add Profile</button></div>
       <div id="dryMilkProfiles"></div>
+      <div class="note">Fat-filled powder ke liye <b>True Dairy MSNF %</b> sirf current COA/lab value se enter karein. Protein + carbohydrate ko automatically MSNF nahi maana jayega.</div>
       <label class="profileDefault">Default Dry Milk<select id="defaultDryMilk"></select></label>
     </section>
 
@@ -193,6 +196,13 @@
       <div class="profileSectionHead"><h3>Machine Profiles</h3><button id="addMachineProfile" class="secondary" type="button">+ Add Machine</button></div>
       <div id="machineProfiles"></div>
       <label class="profileDefault">Default Machine<select id="defaultMachine"><option value="">None</option></select></label>
+    </section>
+
+    <section class="profileSection">
+      <div class="profileSectionHead"><h3>Flavor / Inclusion Profiles</h3><button id="addFlavorProfile" class="secondary" type="button">+ Add Flavor</button></div>
+      <div id="flavorProfiles"></div>
+      <label class="profileDefault">Default Flavor<select id="defaultFlavor"><option value="">None</option></select></label>
+      <div class="note">Fruit puree, chocolate, cocoa, nut paste, vanilla paste ya inclusion ka supplier/COA composition yahan save karein. Verified composition na ho to app research-grade balancing ko warning dega.</div>
     </section>
 
     <section class="profileSection" id="costSettings">
