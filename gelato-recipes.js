@@ -813,6 +813,7 @@ async function viewBusinessRecipe(id){
       '</tbody></table></div><div class="source"><b>Version history:</b> '+(versions||[]).map(v=>'V'+v.version+' • '+new Date(v.changed_at).toLocaleString()).join(' | ')+'</div></div>';
     $('backBusinessList').onclick=loadBusinessRecipes;
     loadQcForRecipe(id);
+    loadSensoryForRecipe(id);
     loadBioForRecipe(id);
   }catch(e){alert(e.message)}
 }
@@ -870,7 +871,7 @@ async function loadQcForRecipe(recipeId){
 }
 function renderQcPanel(recipeId,rows,recipe){
   const feedback=rdFeedbackAdvice(rows);
-  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.batch_code||('QC #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • '+esc(x.machine||'No machine')+'</small></div><span class="badge '+(x.result==='pass'?'finalBadge':'')+'">'+esc(x.result)+'</span></div><div class="businessMetrics"><span>Overrun <b>'+esc(x.overrun_pct??'—')+'%</b></span><span>Draw Temp <b>'+esc(x.draw_temp_c??'—')+'°C</b></span><span>Brix <b>'+esc(x.brix??'—')+'</b></span><span>pH <b>'+esc(x.ph??'—')+'</b></span></div></div>').join('');
+  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.batch_code||('QC #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • '+esc(x.machine||'No machine')+'</small></div><span class="badge '+(x.result==='pass'?'finalBadge':'')+'">'+esc(x.result)+'</span></div><div class="businessMetrics"><span>Overrun <b>'+esc(x.calculated_overrun_pct??x.overrun_pct??'—')+'%</b></span><span>Draw Temp <b>'+esc(x.draw_temp_c??'—')+'°C</b></span><span>Yield <b>'+esc(x.finished_yield_l??'—')+' L</b></span><span>Output <b>'+esc(x.batch_output_kg??'—')+' kg</b></span></div></div>').join('');
   $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><h3>Production QC</h3><div class="stats"><div class="stat"><small>Production Confidence</small><strong>'+Number(recipe.production_confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>QC Batches</small><strong>'+rows.length+'</strong></div></div><div id="qcList">'+(cards||'<div class="note">No QC tests yet.</div>')+'</div><div class="subpanel"><h3>R&D Feedback Rebalancing</h3><div class="steps">'+feedback.map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div><div class="source">Suggestions cause-oriented hain; formula automatically change nahi hoti. Next controlled trial ke baad Research Fit aur Production Confidence dobara compare karein.</div></div><button class="primary" id="addQcBtn" type="button">+ Add QC Test</button><button class="secondary profileBtn" id="goldenBtn" type="button">Mark Golden Production Recipe</button></div>');
   $('addQcBtn').onclick=()=>showQcForm(recipeId);
   $('goldenBtn').onclick=()=>markGolden(recipeId);
@@ -879,13 +880,14 @@ function showQcForm(recipeId){
   $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="profileModal" id="qcModal"><div class="profileBox"><div class="profileHead"><div><h2>Production QC Test</h2><p>Actual production measurements enter karein.</p></div><button id="qcClose" class="ghost">Close</button></div><div class="profileGrid">'+
     '<label>Batch Code<input id="qcBatch"></label><label>Test Date<input id="qcDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label>Machine<input id="qcMachine"></label><label>Operator<input id="qcOperator"></label>'+
     '<label>Mix Temp °C<input id="qcMixTemp" type="number" step="0.1"></label><label>Pasteurization Peak °C<input id="qcPasteur" type="number" step="0.1"></label><label>Ageing Hours<input id="qcAge" type="number" step="0.1"></label><label>pH<input id="qcPh" type="number" step="0.01"></label>'+
-    '<label>Brix<input id="qcBrix" type="number" step="0.1"></label><label>Overrun %<input id="qcOverrun" type="number" step="0.1"></label><label>Draw Temp °C<input id="qcDraw" type="number" step="0.1"></label><label>Melt 30min %<input id="qcMelt" type="number" step="0.1"></label>'+
+    '<label>Brix<input id="qcBrix" type="number" step="0.1"></label><label>Manual Overrun %<input id="qcOverrun" type="number" step="0.1"></label><label>Draw Temp °C<input id="qcDraw" type="number" step="0.1"></label><label>Melt 30min %<input id="qcMelt" type="number" step="0.1"></label>'+
+    '<label>Same-volume Mix Weight g<input id="qcMixSample" type="number" step="0.1"></label><label>Same-volume Frozen Weight g<input id="qcFrozenSample" type="number" step="0.1"></label><label>Sample Volume mL<input id="qcSampleVolume" type="number" step="1"></label><label>Finished Yield L<input id="qcYieldL" type="number" step="0.01"></label><label>Batch Output kg<input id="qcOutputKg" type="number" step="0.01"></label>'+
     '<label>Hardness 1-10<input id="qcHard" type="number" min="1" max="10"></label><label>Sweetness 1-10<input id="qcSweet" type="number" min="1" max="10"></label><label>Iciness 1-10<input id="qcIce" type="number" min="1" max="10"></label><label>Body 1-10<input id="qcBody" type="number" min="1" max="10"></label>'+
     '<label>Aftertaste 1-10<input id="qcAfter" type="number" min="1" max="10"></label><label>Result<select id="qcResult"><option value="trial">Trial</option><option value="pass">Pass</option><option value="fail">Fail</option></select></label><label class="wide">Day 1 Notes<input id="qcDay1"></label><label class="wide">Day 7 Notes<input id="qcDay7"></label>'+
     '</div><button class="primary" id="saveQc">Save QC Test</button></div></div>');
   $('qcClose').onclick=()=>$('qcModal').remove();
   $('saveQc').onclick=async()=>{
-    const body={batch_code:$('qcBatch').value,test_date:$('qcDate').value,machine:$('qcMachine').value,operator_name:$('qcOperator').value,mix_temp_c:$('qcMixTemp').value,pasteurization_peak_c:$('qcPasteur').value,ageing_hours:$('qcAge').value,ph:$('qcPh').value,brix:$('qcBrix').value,overrun_pct:$('qcOverrun').value,draw_temp_c:$('qcDraw').value,melt_30min_pct:$('qcMelt').value,hardness_score:$('qcHard').value,sweetness_score:$('qcSweet').value,iciness_score:$('qcIce').value,body_score:$('qcBody').value,aftertaste_score:$('qcAfter').value,day1_notes:$('qcDay1').value,day7_notes:$('qcDay7').value,result:$('qcResult').value};
+    const body={batch_code:$('qcBatch').value,test_date:$('qcDate').value,machine:$('qcMachine').value,operator_name:$('qcOperator').value,mix_temp_c:$('qcMixTemp').value,pasteurization_peak_c:$('qcPasteur').value,ageing_hours:$('qcAge').value,ph:$('qcPh').value,brix:$('qcBrix').value,overrun_pct:$('qcOverrun').value,draw_temp_c:$('qcDraw').value,melt_30min_pct:$('qcMelt').value,mix_sample_g:$('qcMixSample').value,frozen_sample_g:$('qcFrozenSample').value,sample_volume_ml:$('qcSampleVolume').value,finished_yield_l:$('qcYieldL').value,batch_output_kg:$('qcOutputKg').value,hardness_score:$('qcHard').value,sweetness_score:$('qcSweet').value,iciness_score:$('qcIce').value,body_score:$('qcBody').value,aftertaste_score:$('qcAfter').value,day1_notes:$('qcDay1').value,day7_notes:$('qcDay7').value,result:$('qcResult').value};
     const r=await fetch('/api/data?resource=gelato_qc&recipe_id='+recipeId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const j=await r.json().catch(()=>({}));
     if(!r.ok){alert(j.error||'QC save failed');return}
@@ -899,6 +901,38 @@ async function markGolden(recipeId){
   alert('Golden Production Recipe approved');viewBusinessRecipe(recipeId);
 }
 
+
+async function loadSensoryForRecipe(recipeId){
+  try{
+    const r=await fetch('/api/data?resource=gelato_sensory&recipe_id='+encodeURIComponent(recipeId),{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'Sensory panel load failed');
+    renderSensoryPanel(recipeId,j.records||[],j.summary||{});
+  }catch(e){$('businessRecipeList').insertAdjacentHTML('beforeend','<div class="warning">'+esc(e.message)+'</div>')}
+}
+function renderSensoryPanel(recipeId,rows,summary){
+  const avg=summary.attribute_avg||{};
+  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.tester_name||('Panel #'+x.id))+'</b><small>'+esc(String(x.panel_date||''))+'</small></div><span class="badge">'+esc(x.overall_score??'—')+'/10</span></div><div class="businessMetrics"><span>Creaminess <b>'+esc(x.creaminess_score??'—')+'</b></span><span>Smoothness <b>'+esc(x.smoothness_score??'—')+'</b></span><span>Flavor <b>'+esc(x.flavor_score??'—')+'</b></span><span>Melt <b>'+esc(x.melt_score??'—')+'</b></span></div></div>').join('');
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><h3>Sensory Panel</h3><div class="stats"><div class="stat"><small>Panelists</small><strong>'+Number(summary.panel_count||0)+'</strong></div><div class="stat"><small>Overall Avg</small><strong>'+(summary.overall_avg==null?'—':Number(summary.overall_avg).toFixed(1)+'/10')+'</strong></div><div class="stat"><small>Panel Confidence</small><strong>'+Number(summary.confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>Creaminess Avg</small><strong>'+(avg.creaminess_score==null?'—':Number(avg.creaminess_score).toFixed(1))+'</strong></div></div>'+
+  '<div class="steps">'+(summary.comments||[]).map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div>'+
+  '<div id="sensoryList">'+(cards||'<div class="note">No sensory panel results yet.</div>')+'</div><button class="primary" id="addSensoryBtn" type="button">+ Add Sensory Score</button></div>');
+  $('addSensoryBtn').onclick=()=>showSensoryForm(recipeId);
+}
+function showSensoryForm(recipeId){
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="profileModal" id="sensoryModal"><div class="profileBox"><div class="profileHead"><div><h2>Sensory Panel Score</h2><p>Har taster apna independent 1–10 score enter kare.</p></div><button id="sensoryClose" class="ghost">Close</button></div><div class="profileGrid">'+
+    '<label>Tester Name<input id="sensTester"></label><label>Date<input id="sensDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label>'+
+    '<label>Creaminess 1-10<input id="sensCream" type="number" min="1" max="10"></label><label>Smoothness 1-10<input id="sensSmooth" type="number" min="1" max="10"></label><label>Sweetness 1-10<input id="sensSweet" type="number" min="1" max="10"></label><label>Flavor 1-10<input id="sensFlavor" type="number" min="1" max="10"></label>'+
+    '<label>Body 1-10<input id="sensBody" type="number" min="1" max="10"></label><label>Melt 1-10<input id="sensMelt" type="number" min="1" max="10"></label><label>Aftertaste 1-10<input id="sensAfter" type="number" min="1" max="10"></label><label>Overall 1-10<input id="sensOverall" type="number" min="1" max="10"></label>'+
+    '<label class="wide">Comments<input id="sensComments"></label></div><button class="primary" id="saveSensory">Save Sensory Score</button></div></div>');
+  $('sensoryClose').onclick=()=>$('sensoryModal').remove();
+  $('saveSensory').onclick=async()=>{
+    const body={tester_name:$('sensTester').value,panel_date:$('sensDate').value,creaminess_score:$('sensCream').value,smoothness_score:$('sensSmooth').value,sweetness_score:$('sensSweet').value,flavor_score:$('sensFlavor').value,body_score:$('sensBody').value,melt_score:$('sensMelt').value,aftertaste_score:$('sensAfter').value,overall_score:$('sensOverall').value,comments:$('sensComments').value};
+    const r=await fetch('/api/data?resource=gelato_sensory&recipe_id='+recipeId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){alert(j.error||'Sensory score save failed');return}
+    $('sensoryModal').remove();alert('Sensory score saved • Panel average '+(j.summary?.overall_avg==null?'—':Number(j.summary.overall_avg).toFixed(1)+'/10'));viewBusinessRecipe(recipeId);
+  };
+}
 async function loadBioForRecipe(recipeId){
   try{
     const r=await fetch('/api/data?resource=gelato_bio&recipe_id='+encodeURIComponent(recipeId),{cache:'no-store'});
