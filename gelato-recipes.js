@@ -3,6 +3,9 @@
 const SOURCE_CARPIGIANI='https://www.gelatouniversity.com/binary_files/hpdedicate_materiali/07___ENG___Recipe_book_Basic_course_25_26_12561.pdf';
 const SOURCE_GUELPH='https://books.lib.uoguelph.ca/icecreamtechnologyebook/chapter/suggested-mixes-for-ice-cream/';
 const SOURCE_TETRA='https://dairyprocessinghandbook.tetrapak.com/chapter/ice-cream';
+const SOURCE_ICE='https://www.ice.edu/blog/science-of-ice-cream';
+const SOURCE_SALTSTRAW='https://saltandstraw.com/blogs/news/we-teamed-up-with-thrillist-to-level-up-your-homemade-ice-cream';
+const SOURCE_INNOVA='https://www.innovaitalia.com/en/chocolate-ice-cream-recipe-2/';
 
 const GELATO=[
   {id:'white-base',name:'White Base',cat:'Base',page:1,solids:[18,6,10.5,.6,64.9,35.1],items:[['Whole milk (3.5% fat)',667],['Cream (35% fat)',104],['Skim milk powder (1% fat)',28],['Sugar sucrose',137],['Dry glucose syrup 38DE',31.5],['Base 50 C.H.',32.5]]},
@@ -23,17 +26,29 @@ const GELATO=[
 
 const TARGETS={
   hard:[
-    {id:'guelph-hard-10',name:'Research Hard Mix 1 - 10% Fat',tier:'Standard',overrun:'100-120%',sourceClass:'institute',fat:10,msnf:11,sucrose:10,glucose:5,stabilizer:.35,emulsifier:.15},
-    {id:'guelph-hard-11',name:'Research Hard Mix 2 - 11% Fat',tier:'Standard',overrun:'100-120%',sourceClass:'institute',fat:11,msnf:11,sucrose:10,glucose:5,stabilizer:.35,emulsifier:.15},
-    {id:'guelph-hard-12',name:'Research Hard Mix 3 - 12% Fat',tier:'Premium',overrun:'60-90%',sourceClass:'institute',fat:12,msnf:10.5,sucrose:12,glucose:4,stabilizer:.30,emulsifier:.15},
-    {id:'guelph-hard-13',name:'Research Hard Mix 4 - 13% Fat',tier:'Premium',overrun:'60-90%',sourceClass:'institute',fat:13,msnf:10.5,sucrose:14,glucose:3,stabilizer:.30,emulsifier:.14},
-    {id:'guelph-hard-14',name:'Research Hard Mix 5 - 14% Fat',tier:'Premium',overrun:'60-90%',sourceClass:'institute',fat:14,msnf:10,sucrose:14,glucose:3,stabilizer:.25,emulsifier:.13},
-    {id:'guelph-hard-15',name:'Research Hard Mix 6 - 15% Fat',tier:'Super Premium',overrun:'25-50%',sourceClass:'institute',fat:15,msnf:10,sucrose:15,glucose:0,stabilizer:.20,emulsifier:.12},
-    {id:'guelph-hard-16',name:'Research Hard Mix 7 - 16% Fat',tier:'Super Premium',overrun:'25-50%',sourceClass:'institute',fat:16,msnf:9.5,sucrose:15,glucose:0,stabilizer:.15,emulsifier:.10}
+    {id:'guelph-hard-10',name:'Research Hard Mix 1 - 10% Fat',tier:'Standard',overrun:'100-120%',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:10,msnf:11,sucrose:10,glucose:5,stabilizer:.35,emulsifier:.15},
+    {id:'guelph-hard-11',name:'Research Hard Mix 2 - 11% Fat',tier:'Standard',overrun:'100-120%',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:11,msnf:11,sucrose:10,glucose:5,stabilizer:.35,emulsifier:.15},
+    {id:'guelph-hard-12',name:'Research Hard Mix 3 - 12% Fat',tier:'Premium',overrun:'60-90%',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:12,msnf:10.5,sucrose:12,glucose:4,stabilizer:.30,emulsifier:.15},
+    {id:'guelph-hard-13',name:'Research Hard Mix 4 - 13% Fat',tier:'Premium',overrun:'60-90%',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:13,msnf:10.5,sucrose:14,glucose:3,stabilizer:.30,emulsifier:.14},
+    {id:'guelph-hard-14',name:'Research Hard Mix 5 - 14% Fat',tier:'Premium',overrun:'60-90%',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:14,msnf:10,sucrose:14,glucose:3,stabilizer:.25,emulsifier:.13},
+    {id:'guelph-hard-15',name:'Research Hard Mix 6 - 15% Fat',tier:'Super Premium',overrun:'25-50%',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:15,msnf:10,sucrose:15,glucose:0,stabilizer:.20,emulsifier:.12},
+    {id:'guelph-hard-16',name:'Research Hard Mix 7 - 16% Fat',tier:'Super Premium',overrun:'25-50%',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:16,msnf:9.5,sucrose:15,glucose:0,stabilizer:.15,emulsifier:.10},
+    {id:'ice-vanilla',name:'ICE Professional Vanilla',tier:'Institute Recipe',sourceClass:'institute',sourceName:'Institute of Culinary Education',sourceUrl:SOURCE_ICE,baseMass:1800,items:[['Whole milk',970],['Nonfat dry milk',97],['Sugar sucrose',200],['Glucose powder',85],['Sugar sucrose (2)',80],['Ice cream stabilizer blend',8],['Pasteurized egg yolks',60],['Heavy cream',360]]},
+    {id:'innova-chocolate',name:'Innova Professional Chocolate - 5 kg',tier:'Manufacturer Recipe',sourceClass:'training',sourceName:'Innova Italia',sourceUrl:SOURCE_INNOVA,baseMass:4912,items:[['Fresh whole milk',2600],['Fresh cream 35%',800],['Granulated sugar',600],['Dextrose',200],['Skimmed milk powder',150],['Cocoa powder 22/24',150],['Dark chocolate 70%',400],['Neutral stabilizer',10],['Fine salt',2]]}
   ],
   soft:[
-    {id:'guelph-soft-1',name:'Research Soft Serve Mix 1',tier:'Soft Frozen',overrun:'Machine dependent',sourceClass:'institute',fat:10,msnf:12.5,sucrose:13,glucose:0,stabilizer:.35,emulsifier:.15},
-    {id:'guelph-soft-2',name:'Research Soft Serve Mix 2 - CSS',tier:'Soft Frozen',overrun:'Machine dependent',sourceClass:'institute',fat:10,msnf:12,sucrose:10,glucose:4,stabilizer:.15,emulsifier:.15}
+    {id:'guelph-soft-1',name:'Research Soft Serve Mix 1',tier:'Soft Frozen',overrun:'Machine dependent',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:10,msnf:12.5,sucrose:13,glucose:0,stabilizer:.35,emulsifier:.15},
+    {id:'guelph-soft-2',name:'Research Soft Serve Mix 2 - CSS',tier:'Soft Frozen',overrun:'Machine dependent',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:10,msnf:12,sucrose:10,glucose:4,stabilizer:.15,emulsifier:.15}
+  ],
+  'frozen-yogurt':[
+    {id:'guelph-fy',name:'Research Frozen Yogurt Base',tier:'Frozen Yogurt',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:2,msnf:14,sucrose:15,glucose:0,stabilizer:.35,emulsifier:0,yogurt:true}
+  ],
+  sherbet:[
+    {id:'guelph-sherbet-1',name:'Research Sherbet Mix 1',tier:'Sherbet',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:.5,msnf:2,sucrose:24,glucose:9,stabilizer:.4,emulsifier:0,citric:.7,water:63.5,sherbet:true},
+    {id:'guelph-sherbet-2',name:'Research Sherbet Mix 2',tier:'Sherbet',sourceClass:'institute',sourceName:'University of Guelph',sourceUrl:SOURCE_GUELPH,fat:1.5,msnf:3.5,sucrose:24,glucose:6,stabilizer:.3,emulsifier:0,citric:.7,water:64,sherbet:true}
+  ],
+  creator:[
+    {id:'salt-straw-base',name:'Salt & Straw Official Ice Cream Base',tier:'Creator / Business',sourceClass:'creator',sourceName:'Salt & Straw',sourceUrl:SOURCE_SALTSTRAW,creatorVolume:true,originalUnits:'½ cup sugar; 2 Tbsp dry milk powder; ¼ tsp xanthan gum; 2 Tbsp light corn syrup; 1⅓ cups whole milk; 1⅓ cups heavy cream'}
   ]
 };
 
@@ -62,8 +77,13 @@ function solve3(A,b){
 }
 
 function componentRecipe(t,mode){
-  const sugar=t.sucrose*10, glucose=t.glucose*10, stab=t.stabilizer*10, emul=t.emulsifier*10;
-  const dairy=1000-sugar-glucose-stab-emul, fat=t.fat*10, msnf=t.msnf*10;
+  if(t.items){
+    const base=Number(t.baseMass||t.items.reduce((s,i)=>s+Number(i[1]||0),0))||1000;
+    return t.items.map(i=>[i[0],Number(i[1])*1000/base]);
+  }
+  const sugar=t.sucrose*10, glucose=t.glucose*10, stab=t.stabilizer*10, emul=t.emulsifier*10, citric=Number(t.citric||0)*10;
+  const fixedWater=Number(t.water||0)*10;
+  const dairy=1000-sugar-glucose-stab-emul-citric-fixedWater, fat=t.fat*10, msnf=t.msnf*10;
   let x,names;
   if(mode==='fresh'){
     x=solve3([[1,1,1],[.035,.35,.01],[.085,.055,.96]],[dairy,fat,msnf]);
@@ -77,6 +97,8 @@ function componentRecipe(t,mode){
   if(glucose)items.push(['Glucose/corn syrup solids',glucose]);
   if(stab)items.push(['Stabilizer (supplier dosage check)',stab]);
   if(emul)items.push(['Emulsifier (supplier dosage check)',emul]);
+  if(citric)items.push(['Citric acid 50% solution - add before freezing',citric]);
+  if(fixedWater)items.unshift(['Water',fixedWater]);
   return items;
 }
 
@@ -89,11 +111,26 @@ function expand(items,total){
   scale(items,total).forEach(x=>add(x.name,x.g,0));
   return Object.entries(out).map(([name,g])=>({name,g}));
 }
-function sourceBlock(kind,page){
-  if(kind==='gelato')return '<div class="source"><b>Formula source:</b> Carpigiani Gelato University, Basic Gelato Course Recipe Book'+(page?' • page '+page:'')+'.<br><a target="_blank" rel="noopener" href="'+SOURCE_CARPIGIANI+'">Open official Carpigiani PDF</a></div>';
-  return '<div class="source"><b>Formulation references:</b> University of Guelph Ice Cream Technology e-Book + Tetra Pak Dairy Processing Handbook. Ingredient weights are calculated from component targets and the selected fresh/dry milk system.<br><a target="_blank" rel="noopener" href="'+SOURCE_GUELPH+'">University of Guelph formulation reference</a> • <a target="_blank" rel="noopener" href="'+SOURCE_TETRA+'">Tetra Pak processing reference</a></div>';
+function sourceBlock(kind,r){
+  if(kind==='gelato')return '<div class="source"><b>Source:</b> Carpigiani Gelato University, Basic Gelato Course Recipe Book'+(r?.page?' • page '+r.page:'')+'.<br><a target="_blank" rel="noopener" href="'+SOURCE_CARPIGIANI+'">Open official source</a></div>';
+  if(r?.sourceName)return '<div class="source"><b>Source:</b> '+esc(r.sourceName)+' • '+esc(r.tier||'Professional Recipe')+'.<br><a target="_blank" rel="noopener" href="'+esc(r.sourceUrl||SOURCE_GUELPH)+'">Open original source</a></div>';
+  return '<div class="source"><b>Source:</b> University of Guelph Ice Cream Technology e-Book + Tetra Pak Dairy Processing Handbook.<br><a target="_blank" rel="noopener" href="'+SOURCE_GUELPH+'">University of Guelph</a> • <a target="_blank" rel="noopener" href="'+SOURCE_TETRA+'">Tetra Pak</a></div>';
 }
-function methods(kind,cat){
+function methods(kind,cat,r){
+  if(kind==='frozen-yogurt')return[
+    'Research target ke mutabiq dairy mix prepare karein; sugar aur stabilizer exact weight se disperse karein.',
+    'Total mix ka approximately 20% yogurt portion ke liye skim milk + skim milk powder se cultured phase banaya ja sakta hai.',
+    'Cultured portion ko high-temperature yogurt process ke mutabiq pasteurize karein, 40-43°C range par culture inoculate karein, desired acidity tak ferment karein, phir rapidly chill karein.',
+    'Sweet dairy mix ko ice-cream process ke mutabiq pasteurize/homogenize/cool karein aur chilled cultured yogurt portion ke saath blend karein.',
+    'Completed mix ko age karein, flavor add karein aur batch/continuous freezer mein freeze karein.'
+  ];
+  if(kind==='sherbet')return[
+    'Water, sugars, milk ingredients aur stabilizer/emulsifier ko exact weights se blend karein.',
+    'Approved pasteurization process follow karein aur rapidly chill karein.',
+    'Mix ko age karein; citric acid solution freezing se just pehle add karein.',
+    'Fruit use karna ho to research guidance ke mutabiq approximately 25% fruit addition se start karein aur final solids/acidity rebalance karein.',
+    'Batch freezer mein freeze karein aur hardening/storage cold chain maintain karein.'
+  ];
   if(kind==='gelato'){
     if(cat==='Sorbet')return[
       'Water, sugars aur stabilizing base ko exact weight se prepare karein.',
@@ -146,8 +183,9 @@ function ingredientTable(rows,total){
 function sourceClassFor(r,kind){return r?.sourceClass||(kind==='gelato'?'training':'institute')}
 function populate(){
   const kind=$('system').value;
-  $('baseModeWrap').classList.toggle('hidden',kind==='gelato');
-  let list=kind==='gelato'?GELATO:TARGETS[kind];
+  $('baseModeWrap').classList.toggle('hidden',kind==='gelato'||kind==='sherbet');
+  let list=kind==='gelato'?GELATO:(TARGETS[kind]||[]);
+  if(($('sourceType')?.value||'all')==='creator' && kind==='hard') list=[...list,...TARGETS.creator];
   const sourceFilter=$('sourceType')?.value||'all';
   if(sourceFilter!=='all') list=list.filter(r=>sourceClassFor(r,kind)===sourceFilter);
   $('recipe').innerHTML=list.map(r=>'<option value="'+r.id+'">'+esc(r.name)+'</option>').join('');
@@ -159,7 +197,8 @@ function populate(){
 }
 function getRecipe(){
   const kind=$('system').value;
-  return (kind==='gelato'?GELATO:TARGETS[kind]).find(r=>r.id===$('recipe').value);
+  const list=kind==='gelato'?GELATO:[...(TARGETS[kind]||[]),...(kind==='hard'?TARGETS.creator:[])];
+  return list.find(r=>r.id===$('recipe').value);
 }
 function render(){
   const kind=$('system').value,r=getRecipe(),total=batchGrams();
@@ -168,23 +207,30 @@ function render(){
   if(kind==='gelato'){
     items=scale(r.items,total);raw=expand(r.items,total);
     stats=gelatoStats(r.solids);subtitle='Official Carpigiani formula • source page '+r.page;
-    src=sourceBlock('gelato',r.page);
+    src=sourceBlock('gelato',r);
   }else{
-    const base=$('baseMode').value;items=scale(componentRecipe(r,base),total);stats=targetStats(r);
-    subtitle=(kind==='hard'?'Hard ice cream':'Soft serve')+' • '+(r.tier||'Research Formula')+' • '+(base==='fresh'?'Fresh Milk Base':'Dry Milk Base')+(r.overrun?' • target overrun '+r.overrun:'');
-    src=sourceBlock(kind);
+    const base=$('baseMode').value;
+    if(r.creatorVolume){
+      current={kind,r,total,items:[]};
+      $('result').innerHTML='<div class="recipeHead"><div><h2>'+esc(r.name)+'</h2><p>Professional Creator / Business Recipe</p></div><span class="badge">Creator / Business</span></div><div class="warning"><b>Original verified source uses volume measures.</b><br>'+esc(r.originalUnits)+'<br><br>Is formula ko arbitrary kg scaling ke liye tabhi enable kiya jayega jab ingredients ek controlled test batch mein grams mein weighed aur mass-balanced ho jayen. Original source link neeche diya gaya hai.</div>'+sourceBlock(kind,r);
+      return;
+    }
+    items=scale(componentRecipe(r,base),total);stats=targetStats(r);
+    const typeName=kind==='hard'?'Hard ice cream':kind==='soft'?'Soft serve':kind==='frozen-yogurt'?'Frozen yogurt':'Sherbet / Sorbet';
+    subtitle=typeName+' • '+(r.tier||'Research Formula')+' • '+(base==='fresh'?'Fresh Milk Base':'Dry Milk Base')+(r.overrun?' • target overrun '+r.overrun:'');
+    src=sourceBlock(kind,r);
   }
   current={kind,r,total,items};
   const statHtml=stats.map(x=>'<div class="stat"><small>'+esc(x[0])+'</small><strong>'+esc(x[1])+'</strong></div>').join('');
-  const method=methods(kind,r.cat);
+  const method=methods(kind,r.cat,r);
   const hasPrepared=kind==='gelato'&&r.items.some(x=>BASES[x[0]]);
   $('result').innerHTML=
-    '<div class="recipeHead"><div><h2>'+esc(r.name)+'</h2><p>'+esc(subtitle)+'</p></div><span class="badge">'+esc(kind==='gelato'?(r.cat||'Gelato'):(kind==='hard'?'Hard Ice Cream':'Soft Serve'))+'</span></div>'+
+    '<div class="recipeHead"><div><h2>'+esc(r.name)+'</h2><p>'+esc(subtitle)+'</p></div><span class="badge">'+esc(kind==='gelato'?(r.cat||'Gelato'):kind==='hard'?'Hard Ice Cream':kind==='soft'?'Soft Serve':kind==='frozen-yogurt'?'Frozen Yogurt':'Sherbet / Sorbet')+'</span></div>'+
     '<div class="stats">'+
       '<div class="stat"><small>Batch</small><strong>'+fmt(total)+'</strong></div>'+
       '<div class="stat"><small>Base System</small><strong>'+esc(kind==='gelato'?'Carpigiani':($('baseMode').value==='fresh'?'Fresh Milk':'Dry Milk'))+'</strong></div>'+
       '<div class="stat"><small>Ingredients</small><strong>'+items.length+'</strong></div>'+
-      '<div class="stat"><small>Recipe Type</small><strong>'+esc(kind==='gelato'?'Gelato':kind==='hard'?'Hard':'Soft')+'</strong></div>'+
+      '<div class="stat"><small>Recipe Type</small><strong>'+esc(kind==='gelato'?'Gelato':kind==='hard'?'Hard':kind==='soft'?'Soft':kind==='frozen-yogurt'?'Frozen Yogurt':'Sherbet')+'</strong></div>'+
     '</div>'+
     (hasPrepared?'<div class="tabs"><button class="tab active" data-view="book">Book Formula</button><button class="tab" data-view="raw">Expanded Raw Ingredients</button></div>':'')+
     '<div id="formulaTable">'+ingredientTable(items,total)+'</div>'+
