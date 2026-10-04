@@ -30,6 +30,7 @@ const allowed = new Set([
   "gelato_sensory",
   "gelato_release",
   "gelato_stability",
+  "gelato_texture",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -990,6 +991,7 @@ async function ensureGelatoBusinessRecipes(sql){
   await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS storage_temp_c NUMERIC(7,2)`;
   await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS process_compliance_pct NUMERIC(5,2)`;
   await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS process_deviations JSONB NOT NULL DEFAULT '[]'::jsonb`;
+  await sql`ALTER TABLE gelato_recipe_qc ADD COLUMN IF NOT EXISTS hardness_test_temp_c NUMERIC(7,2)`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_qc_recipe_idx ON gelato_recipe_qc(recipe_id,test_date DESC,id DESC)`;
   await sql`CREATE TABLE IF NOT EXISTS gelato_recipe_bio(
     id BIGSERIAL PRIMARY KEY,
@@ -1333,7 +1335,7 @@ async function gelatoQc(sql,req,user){
       recipe_id,batch_code,test_date,machine,operator_name,mix_temp_c,pasteurization_peak_c,ageing_hours,ph,brix,overrun_pct,draw_temp_c,melt_30min_pct,
       mix_sample_g,frozen_sample_g,sample_volume_ml,calculated_overrun_pct,finished_yield_l,batch_output_kg,
       pasteurization_hold_sec,cooling_end_temp_c,cooling_time_min,homogenization_pressure_bar,ageing_temp_c,hardening_temp_c,hardening_time_min,storage_temp_c,process_compliance_pct,process_deviations,
-      hardness_score,sweetness_score,iciness_score,body_score,aftertaste_score,day1_notes,day7_notes,result,created_by_id,created_by_name
+      hardness_score,hardness_test_temp_c,sweetness_score,iciness_score,body_score,aftertaste_score,day1_notes,day7_notes,result,created_by_id,created_by_name
     ) VALUES(
       ${recipeId},${cleanText(b.batch_code)},COALESCE(${cleanText(b.test_date)}::date,CURRENT_DATE),${cleanText(b.machine)},${cleanText(b.operator_name)},
       ${n(b.mix_temp_c)},${n(b.pasteurization_peak_c)},${n(b.ageing_hours)},${n(b.ph)},${n(b.brix)},${n(b.overrun_pct)},${n(b.draw_temp_c)},${n(b.melt_30min_pct)},
@@ -1341,7 +1343,7 @@ async function gelatoQc(sql,req,user){
       ${(()=>{const m=Number(b.mix_sample_g),f=Number(b.frozen_sample_g);return Number.isFinite(m)&&Number.isFinite(f)&&f>0?((m-f)/f)*100:null})()},
       ${n(b.finished_yield_l)},${n(b.batch_output_kg)},
       ${n(b.pasteurization_hold_sec)},${n(b.cooling_end_temp_c)},${n(b.cooling_time_min)},${n(b.homogenization_pressure_bar)},${n(b.ageing_temp_c)},${n(b.hardening_temp_c)},${n(b.hardening_time_min)},${n(b.storage_temp_c)},${processEval.score},${JSON.stringify(processEval.deviations)}::jsonb,
-      ${score(b.hardness_score)},${score(b.sweetness_score)},${score(b.iciness_score)},${score(b.body_score)},${score(b.aftertaste_score)},
+      ${score(b.hardness_score)},${n(b.hardness_test_temp_c)},${score(b.sweetness_score)},${score(b.iciness_score)},${score(b.body_score)},${score(b.aftertaste_score)},
       ${cleanText(b.day1_notes)},${cleanText(b.day7_notes)},${result},${user.id},${user.full_name||user.employee_code||"User"}
     ) RETURNING *`)[0];
     const confidence=await recalcProductionConfidence(sql,recipeId);
@@ -1495,6 +1497,91 @@ async function gelatoStability(sql,req,user){
   }
   return {status:405,data:{error:"Method not allowed"}};
 }
+
+function simpleLinearFit(points){
+  const n=points.length;
+  if(n<2)return null;
+  const mx=points.reduce((s,p)=>s+p.x,0)/n,my=points.reduce((s,p)=>s+p.y,0)/n;
+  const den=points.reduce((s,p)=>s+((p.x-mx)**2),0);
+  if(den<1e-9)return null;
+  const slope=points.reduce((s,p)=>s+((p.x-mx)*(p.y-my)),0)/den;
+  const intercept=my-(slope*mx);
+  const rmse=Math.sqrt(points.reduce((s,p)=>s+((p.y-(intercept+slope*p.x))**2),0)/n);
+  return {slope,intercept,rmse};
+}
+function textureCalibrationSummary(rows,recipe){
+  const premium=recipe?.research_target?.premium_r_and_d||{};
+  const targetTemp=Number(premium.serving_temp_c);
+  const preferredMachine=cleanText(premium.machine_name);
+  const passed=rows.filter(r=>r.result==="pass");
+  const usable=passed.filter(r=>Number.isFinite(Number(r.hardness_score))&&Number.isFinite(Number(r.hardness_test_temp_c)));
+  const sameMachine=preferredMachine?usable.filter(r=>String(r.machine||"").trim().toLowerCase()===String(preferredMachine).trim().toLowerCase()):[];
+  const selected=sameMachine.length>=3?sameMachine:usable;
+  const points=selected.map(r=>({x:Number(r.hardness_test_temp_c),y:Number(r.hardness_score),id:r.id,batch:r.batch_code||null}));
+  const temps=[...new Set(points.map(p=>p.x))];
+  const fit=temps.length>=2?simpleLinearFit(points):null;
+  const minTemp=points.length?Math.min(...points.map(p=>p.x)):null,maxTemp=points.length?Math.max(...points.map(p=>p.x)):null;
+  const span=minTemp===null?0:maxTemp-minTemp;
+  const avg=a=>a.length?a.reduce((s,x)=>s+x,0)/a.length:null;
+  const melt=selected.map(r=>Number(r.melt_30min_pct)).filter(Number.isFinite);
+  const over=selected.map(r=>Number(r.calculated_overrun_pct??r.overrun_pct)).filter(Number.isFinite);
+  const draw=selected.map(r=>Number(r.draw_temp_c)).filter(Number.isFinite);
+  let predicted=null,zone=null,confidence=0,status="insufficient",extrapolated=false;
+  if(points.length>=3&&temps.length>=2&&fit){
+    status=points.length>=5&&temps.length>=3?"calibrated":"emerging";
+    if(Number.isFinite(targetTemp)){
+      predicted=fit.intercept+(fit.slope*targetTemp);
+      predicted=Math.max(1,Math.min(10,predicted));
+      extrapolated=targetTemp<(minTemp-2)||targetTemp>(maxTemp+2);
+      zone=predicted<3.5?"soft":predicted<6.5?"scoopable":predicted<8.5?"firm":"very_hard";
+    }
+    const sampleScore=Math.min(45,(points.length/6)*45);
+    const spanScore=Math.min(25,(Math.max(0,span)/8)*25);
+    const residualScore=Math.max(0,30*(1-(fit.rmse/3)));
+    confidence=sampleScore+spanScore+residualScore-(sameMachine.length>=3?0:preferredMachine?10:0)-(extrapolated?15:0);
+    confidence=Math.max(0,Math.min(100,confidence));
+  }else if(points.length>=2)status="emerging";
+  const comments=[];
+  if(points.length<3)comments.push("Texture calibration ke liye kam az kam 3 passed QC measurements with hardness test temperature required hain.");
+  if(points.length>=3&&temps.length<2)comments.push("Hardness measurements ek hi temperature par hain; temperature-response curve fit nahi ho sakti.");
+  if(preferredMachine&&sameMachine.length<3&&usable.length>=3)comments.push("Selected machine ke 3 calibration samples nahi mile; temporary cross-machine data use ho raha hai.");
+  if(fit&&fit.slope>=0)comments.push("Observed hardness-temperature slope expected direction mein nahi hai; measurement method / sample equilibration standardize karein.");
+  if(fit&&fit.rmse>1.5)comments.push("Hardness observations ka scatter high hai (RMSE "+fit.rmse.toFixed(2)+"); panel method, serving temperature aur sample conditioning standardize karein.");
+  if(extrapolated)comments.push("Target serving temperature measured range se bahar hai; prediction extrapolated hai aur low-confidence samjhein.");
+  if(predicted!==null&&predicted>=8.5)comments.push("Target serving temperature par observed model very hard texture predict kar raha hai; controlled softer trial consider karein.");
+  if(predicted!==null&&predicted<3.5)comments.push("Target serving temperature par observed model soft texture predict kar raha hai; controlled firmer trial consider karein.");
+  if(status==="calibrated"&&!comments.length)comments.push("Recipe-specific hardness curve repeatable data se calibrated hai; naye QC batches ke saath model automatically update hoga.");
+  return {
+    status,
+    confidence:Number(confidence.toFixed(1)),
+    sample_count:points.length,
+    distinct_temperatures:temps.length,
+    preferred_machine:preferredMachine||null,
+    machine_scope:sameMachine.length>=3?"selected_machine":"all_recipe_batches",
+    target_serving_temp_c:Number.isFinite(targetTemp)?targetTemp:null,
+    measured_temp_min_c:minTemp,
+    measured_temp_max_c:maxTemp,
+    predicted_hardness_1_10:predicted===null?null:Number(predicted.toFixed(2)),
+    predicted_zone:zone,
+    slope_per_c:fit?Number(fit.slope.toFixed(4)):null,
+    rmse:fit?Number(fit.rmse.toFixed(3)):null,
+    avg_melt_30min_pct:melt.length?Number(avg(melt).toFixed(2)):null,
+    avg_overrun_pct:over.length?Number(avg(over).toFixed(2)):null,
+    avg_draw_temp_c:draw.length?Number(avg(draw).toFixed(2)):null,
+    extrapolated,
+    comments
+  };
+}
+async function gelatoTexture(sql,req,user){
+  await ensureGelatoBusinessRecipes(sql);
+  if(req.method!=="GET")return {status:405,data:{error:"Method not allowed"}};
+  const recipeId=asId(req.query?.recipe_id);
+  if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
+  const recipe=(await sql\`SELECT id,recipe_name,research_target FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+  if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
+  const rows=await sql\`SELECT * FROM gelato_recipe_qc WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC LIMIT 200\`;
+  return {status:200,data:{summary:textureCalibrationSummary(rows,recipe)}};
+}
 function machineCalibrationSummary(rows,recipe){
   const target=Number(recipe?.research_target?.premium_r_and_d?.target_overrun_pct);
   const usable=rows.filter(r=>r.result==="pass").map(r=>({
@@ -1546,7 +1633,7 @@ async function gelatoRelease(sql,req,user){
   const sensory=await sql`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=${recipeId} ORDER BY panel_date DESC,id DESC`;
   const bio=await sql`SELECT * FROM gelato_recipe_bio WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
   const stability=await sql`SELECT * FROM gelato_recipe_stability WHERE recipe_id=${recipeId} ORDER BY checkpoint_day DESC,test_date DESC,id DESC`;
-  const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio),stabilitySum=stabilitySummary(stability,recipe),machine=machineCalibrationSummary(qc,recipe);
+  const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio),stabilitySum=stabilitySummary(stability,recipe),textureSum=textureCalibrationSummary(qc,recipe),machine=machineCalibrationSummary(qc,recipe);
   const passed=qc.filter(x=>x.result==="pass").length;
   const processRows=qc.filter(x=>x.result==="pass"&&x.process_compliance_pct!==null&&x.process_compliance_pct!==undefined).slice(0,3);
   const processAvg=processRows.length?processRows.reduce((s,x)=>s+Number(x.process_compliance_pct||0),0)/processRows.length:null;
@@ -1557,6 +1644,7 @@ async function gelatoRelease(sql,req,user){
     {key:"production",label:"Production Confidence ≥ 70%",pass:Number(recipe.production_confidence)>=70,value:Number(recipe.production_confidence||0)},
     {key:"qc",label:"Passed QC Batches ≥ 2",pass:passed>=2,value:passed},
     {key:"calibration",label:"Measured Overrun Calibration",pass:machine.sample_count>=2&&(machine.overrun_sd_pct_points===null||machine.overrun_sd_pct_points<=8),value:machine.sample_count},
+    {key:"texture",label:"Empirical Texture Calibration",pass:textureSum.status==="calibrated"&&Number(textureSum.confidence)>=60,value:textureSum.status+" • "+textureSum.confidence+"%"},
     {key:"process",label:"Process Compliance ≥ 85%",pass:processRows.length>=2&&Number(processAvg)>=85,value:processAvg===null?null:Number(processAvg.toFixed(1))},
     {key:"sensory",label:"Sensory Panel ≥ 3 & Avg ≥ 7/10",pass:Number(sensorySum.panel_count)>=3&&Number(sensorySum.overall_avg)>=7,value:sensorySum.overall_avg},
     {key:"stability",label:"Physical Stability Study",pass:stabilitySum.status==="stable",value:stabilitySum.status},
@@ -1575,6 +1663,7 @@ async function gelatoRelease(sql,req,user){
     checks,
     blockers,
     machine_calibration:machine,
+    texture_calibration:textureSum,
     sensory:sensorySum,
     biological:bioSum,
     stability:stabilitySum,
@@ -1734,6 +1823,10 @@ async function handler(req, res) {
     }
     if (resource === "gelato_stability") {
       const out = await gelatoStability(sql, req, user);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "gelato_texture") {
+      const out = await gelatoTexture(sql, req, user);
       return res.status(out.status).json(out.data);
     }
     await ensureEntryNumbers(sql);
