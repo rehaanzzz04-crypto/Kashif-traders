@@ -711,8 +711,10 @@ async function ensureGelatoSettings(sql){
       cream:{name:"Cream",fat_pct:35,msnf_pct:5.5,protein_pct:2.1,lactose_pct:3.0,ash_pct:0.5,moisture_pct:59.4},
       dry_milk_profiles:[{id:"melco-26",name:"Melco Vegetable Fat Filled Powder",fat_pct:26,protein_pct:16,carbs_pct:50,lactose_pct:null,moisture_pct:4,ash_pct:null,other_pct:4,added_sugar_pct:null,total_solids_pct:96,note:"Bag label profile; lactose/added sugar split requires current COA."}],
       cremodan_profiles:[],
+      machine_profiles:[],
       default_dry_milk_id:"melco-26",
-      default_cremodan_id:null
+      default_cremodan_id:null,
+      default_machine_id:null
     };
     await sql`INSERT INTO gelato_ingredient_settings(id,settings) VALUES(1,${JSON.stringify(defaults)}::jsonb)`;
   }
@@ -741,13 +743,28 @@ function normalizeGelatoSettings(b={}){
     product_type:cleanText(p?.product_type)||"General",
     note:cleanText(p?.note)
   }));
+  const machines=(Array.isArray(b.machine_profiles)?b.machine_profiles:[]).slice(0,20).map((p,i)=>({
+    id:cleanText(p?.id)||("machine-"+i+"-"+Date.now()),
+    name:cleanText(p?.name)||("Batch Freezer "+(i+1)),
+    type:cleanText(p?.type)||"Batch Freezer",
+    min_batch_kg:Math.max(0,Number(p?.min_batch_kg)||0),
+    max_batch_kg:Math.max(0,Number(p?.max_batch_kg)||0),
+    overrun_min_pct:Math.max(0,Math.min(200,Number(p?.overrun_min_pct)||0)),
+    overrun_max_pct:Math.max(0,Math.min(200,Number(p?.overrun_max_pct)||0)),
+    draw_temp_c:p?.draw_temp_c===null||p?.draw_temp_c===""?null:Number(p?.draw_temp_c),
+    ageing_min_hours:Math.max(0,Number(p?.ageing_min_hours)||0),
+    hardening_temp_c:p?.hardening_temp_c===null||p?.hardening_temp_c===""?null:Number(p?.hardening_temp_c),
+    notes:cleanText(p?.notes)
+  }));
   return {
     whole_milk:{name:"Whole Milk",fat_pct:gelatoPct(b?.whole_milk?.fat_pct||3.5),msnf_pct:gelatoPct(b?.whole_milk?.msnf_pct||8.5),protein_pct:gelatoPct(b?.whole_milk?.protein_pct||3.2),lactose_pct:gelatoPct(b?.whole_milk?.lactose_pct||4.8),ash_pct:gelatoPct(b?.whole_milk?.ash_pct||0.7),moisture_pct:gelatoPct(b?.whole_milk?.moisture_pct||87.8)},
     cream:{name:"Cream",fat_pct:gelatoPct(b?.cream?.fat_pct||35),msnf_pct:gelatoPct(b?.cream?.msnf_pct||5.5),protein_pct:gelatoPct(b?.cream?.protein_pct||2.1),lactose_pct:gelatoPct(b?.cream?.lactose_pct||3.0),ash_pct:gelatoPct(b?.cream?.ash_pct||0.5),moisture_pct:gelatoPct(b?.cream?.moisture_pct||59.4)},
     dry_milk_profiles:dry.length?dry:[{id:"melco-26",name:"Melco Vegetable Fat Filled Powder",fat_pct:26,protein_pct:16,carbs_pct:50,lactose_pct:null,moisture_pct:4,ash_pct:null,other_pct:4,added_sugar_pct:null,total_solids_pct:96,note:"Bag label profile; lactose/added sugar split requires current COA."}],
     cremodan_profiles:cremodan,
+    machine_profiles:machines,
     default_dry_milk_id:cleanText(b.default_dry_milk_id)||(dry[0]?.id||"melco-26"),
-    default_cremodan_id:cleanText(b.default_cremodan_id)
+    default_cremodan_id:cleanText(b.default_cremodan_id),
+    default_machine_id:cleanText(b.default_machine_id)
   };
 }
 async function gelatoSettings(sql,req,user){
