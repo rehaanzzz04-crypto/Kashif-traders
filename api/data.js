@@ -1261,11 +1261,11 @@ async function gelatoRelease(sql,req,user){
   const recipeId=asId(req.query?.recipe_id);
   if(req.method!=="GET")return {status:405,data:{error:"Method not allowed"}};
   if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
-  const recipe=(await sql\`SELECT * FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+  const recipe=(await sql`SELECT * FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
   if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
-  const qc=await sql\`SELECT * FROM gelato_recipe_qc WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC\`;
-  const sensory=await sql\`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=\${recipeId} ORDER BY panel_date DESC,id DESC\`;
-  const bio=await sql\`SELECT * FROM gelato_recipe_bio WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC\`;
+  const qc=await sql`SELECT * FROM gelato_recipe_qc WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
+  const sensory=await sql`SELECT * FROM gelato_recipe_sensory WHERE recipe_id=${recipeId} ORDER BY panel_date DESC,id DESC`;
+  const bio=await sql`SELECT * FROM gelato_recipe_bio WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC`;
   const sensorySum=sensorySummary(sensory),bioSum=bioValidationSummary(bio),machine=machineCalibrationSummary(qc,recipe);
   const passed=qc.filter(x=>x.result==="pass").length;
   const coverage=Number(recipe?.research_metrics?.data_coverage_pct);
