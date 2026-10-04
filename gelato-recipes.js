@@ -254,8 +254,8 @@ function ingredientComposition(name){
   const powder=activeDryMilkProfile(),flavor=flavorByName(name);
   const milk=ingredientSettings.whole_milk||{};
   const cream=ingredientSettings.cream||{};
-  if(n.includes('whole milk')||n===String(milk.name||'').toLowerCase())return {fat:Number(milk.fat_pct||0),protein:Number(milk.protein_pct||0),lactose:Number(milk.lactose_pct||0),ash:Number(milk.ash_pct||0),moisture:Number(milk.moisture_pct||0),sucrose:0,dextrose:0,glucose:0,fructose:0,known:true};
-  if(n.includes('cream')||n===String(cream.name||'').toLowerCase())return {fat:Number(cream.fat_pct||0),protein:Number(cream.protein_pct||0),lactose:Number(cream.lactose_pct||0),ash:Number(cream.ash_pct||0),moisture:Number(cream.moisture_pct||0),sucrose:0,dextrose:0,glucose:0,fructose:0,known:true};
+  if(n.includes('whole milk')||n===String(milk.name||'').toLowerCase())return {fat:Number(milk.fat_pct||0),protein:Number(milk.protein_pct||0),lactose:Number(milk.lactose_pct||0),ash:Number(milk.ash_pct||0),moisture:Number(milk.moisture_pct||0),sucrose:0,dextrose:0,glucose:0,fructose:0,dairyMsnf:Number(milk.msnf_pct||0),known:true};
+  if(n.includes('cream')||n===String(cream.name||'').toLowerCase())return {fat:Number(cream.fat_pct||0),protein:Number(cream.protein_pct||0),lactose:Number(cream.lactose_pct||0),ash:Number(cream.ash_pct||0),moisture:Number(cream.moisture_pct||0),sucrose:0,dextrose:0,glucose:0,fructose:0,dairyMsnf:Number(cream.msnf_pct||0),known:true};
   if(powder&&(n.includes('milk powder')||n.includes('fat filled')||n===String(powder.name||'').toLowerCase()))return {fat:Number(powder.fat_pct||0),protein:Number(powder.protein_pct||0),lactose:powder.lactose_pct==null?0:Number(powder.lactose_pct||0),ash:powder.ash_pct==null?0:Number(powder.ash_pct||0),moisture:Number(powder.moisture_pct||0),sucrose:powder.added_sugar_pct==null?0:Number(powder.added_sugar_pct||0),dextrose:0,glucose:0,fructose:0,dairyMsnf:powder.true_msnf_pct==null?0:Number(powder.true_msnf_pct||0),known:powder.lactose_pct!=null&&powder.added_sugar_pct!=null&&powder.true_msnf_pct!=null};
   if(flavor)return {fat:Number(flavor.fat_pct||0),protein:Number(flavor.protein_pct||0),lactose:0,ash:Number(flavor.ash_pct||0),moisture:Number(flavor.moisture_pct||0),sucrose:Number(flavor.sucrose_pct||0),dextrose:Number(flavor.dextrose_pct||0),glucose:Number(flavor.glucose_pct||0),fructose:Number(flavor.fructose_pct||0),dairyMsnf:Number(flavor.dairy_msnf_pct||0),known:flavor.composition_verified===true};
   if(n.includes('sugar sucrose')||n==='sugar'||n.includes('granulated sugar')||n.includes('caster sugar'))return {fat:0,protein:0,lactose:0,ash:0,moisture:0,sucrose:100,dextrose:0,glucose:0,fructose:0,known:true};
@@ -334,7 +334,7 @@ function recipeCost(items){
 function qualityLockCheck(items,total,master,referenceItems){
   const a=compositionAnalysis(items,total),ref=compositionAnalysis(referenceItems||items,total);
   const lock=ingredientSettings.quality_lock||{};
-  const actualMsnf=a.protein+a.lactose+a.ash,refMsnf=ref.protein+ref.lactose+ref.ash;
+  const actualMsnf=a.dairyMsnf>0?a.dairyMsnf:(a.protein+a.lactose+a.ash),refMsnf=ref.dairyMsnf>0?ref.dairyMsnf:(ref.protein+ref.lactose+ref.ash);
   const targetFat=Number(master.fat),targetMsnf=Number(master.msnf);
   const expectedSolids=ref.totalSolids;
   const checks=[
