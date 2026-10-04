@@ -755,8 +755,18 @@ function normalizeGelatoSettings(b={}){
     id:cleanText(p?.id)||("cremodan-"+i+"-"+Date.now()),
     grade:cleanText(p?.grade)||("CREMODAN "+(i+1)),
     dosage_g_per_kg:Math.max(0,Math.min(30,Number(p?.dosage_g_per_kg)||0)),
+    dosage_min_g_per_kg:p?.dosage_min_g_per_kg===null||p?.dosage_min_g_per_kg===""?null:Math.max(0,Math.min(30,Number(p?.dosage_min_g_per_kg))),
+    dosage_max_g_per_kg:p?.dosage_max_g_per_kg===null||p?.dosage_max_g_per_kg===""?null:Math.max(0,Math.min(30,Number(p?.dosage_max_g_per_kg))),
     includes_emulsifier:p?.includes_emulsifier!==false,
     product_type:cleanText(p?.product_type)||"General",
+    fat_min_pct:p?.fat_min_pct===null||p?.fat_min_pct===""?null:gelatoPct(p?.fat_min_pct),
+    fat_max_pct:p?.fat_max_pct===null||p?.fat_max_pct===""?null:gelatoPct(p?.fat_max_pct),
+    solids_min_pct:p?.solids_min_pct===null||p?.solids_min_pct===""?null:gelatoPct(p?.solids_min_pct),
+    solids_max_pct:p?.solids_max_pct===null||p?.solids_max_pct===""?null:gelatoPct(p?.solids_max_pct),
+    cold_process_compatible:p?.cold_process_compatible===true,
+    verified:p?.verified===true,
+    source_name:cleanText(p?.source_name),
+    source_url:cleanText(p?.source_url),
     price_per_kg:Math.max(0,Number(p?.price_per_kg)||0),
     note:cleanText(p?.note)
   }));
