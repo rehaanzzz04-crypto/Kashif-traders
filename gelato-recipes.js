@@ -228,6 +228,54 @@ function gelatoStats(s){
   if(!s)return[];
   return [['Sugars',s[0]+'%'],['Fat',s[1]+'%'],['M.S.N.F.',s[2]+'%'],['Other solids',s[3]+'%'],['Water',s[4]+'%'],['Total solids',s[5]+'%']];
 }
+
+function ingredientComposition(name){
+  const n=String(name||'').toLowerCase();
+  const powder=activeDryMilkProfile();
+  const milk=ingredientSettings.whole_milk||{};
+  const cream=ingredientSettings.cream||{};
+  if(n.includes('whole milk')||n===String(milk.name||'').toLowerCase())return {fat:Number(milk.fat_pct||0),protein:Number(milk.protein_pct||0),lactose:Number(milk.lactose_pct||0),ash:Number(milk.ash_pct||0),moisture:Number(milk.moisture_pct||0),sucrose:0,dextrose:0,glucose:0,known:true};
+  if(n.includes('cream')||n===String(cream.name||'').toLowerCase())return {fat:Number(cream.fat_pct||0),protein:Number(cream.protein_pct||0),lactose:Number(cream.lactose_pct||0),ash:Number(cream.ash_pct||0),moisture:Number(cream.moisture_pct||0),sucrose:0,dextrose:0,glucose:0,known:true};
+  if(powder&&(n.includes('milk powder')||n.includes('fat filled')||n===String(powder.name||'').toLowerCase()))return {fat:Number(powder.fat_pct||0),protein:Number(powder.protein_pct||0),lactose:powder.lactose_pct==null?0:Number(powder.lactose_pct||0),ash:powder.ash_pct==null?0:Number(powder.ash_pct||0),moisture:Number(powder.moisture_pct||0),sucrose:powder.added_sugar_pct==null?0:Number(powder.added_sugar_pct||0),dextrose:0,glucose:0,known:powder.lactose_pct!=null&&powder.added_sugar_pct!=null};
+  if(n.includes('sugar sucrose')||n==='sugar'||n.includes('granulated sugar')||n.includes('caster sugar'))return {fat:0,protein:0,lactose:0,ash:0,moisture:0,sucrose:100,dextrose:0,glucose:0,known:true};
+  if(n.includes('dextrose'))return {fat:0,protein:0,lactose:0,ash:0,moisture:0,sucrose:0,dextrose:100,glucose:0,known:true};
+  if(n.includes('glucose'))return {fat:0,protein:0,lactose:0,ash:0,moisture:0,sucrose:0,dextrose:0,glucose:100,known:true};
+  if(n.includes('water'))return {fat:0,protein:0,lactose:0,ash:0,moisture:100,sucrose:0,dextrose:0,glucose:0,known:true};
+  if(n.includes('butter'))return {fat:82,protein:1,moisture:16,sucrose:0,dextrose:0,glucose:0,lactose:.7,ash:.3,known:true};
+  if(n.includes('egg yolk'))return {fat:26.5,protein:15.9,moisture:52,sucrose:0,dextrose:0,glucose:0,lactose:0,ash:1.7,known:true};
+  if(n.includes('cocoa'))return {fat:22,protein:20,moisture:4,sucrose:0,dextrose:0,glucose:0,lactose:0,ash:6,known:false};
+  if(n.includes('dark chocolate'))return {fat:40,protein:7,moisture:1,sucrose:30,dextrose:0,glucose:0,lactose:0,ash:2,known:false};
+  return {fat:0,protein:0,lactose:0,ash:0,moisture:0,sucrose:0,dextrose:0,glucose:0,known:false};
+}
+function compositionAnalysis(items,total){
+  const acc={fat:0,protein:0,lactose:0,ash:0,moisture:0,sucrose:0,dextrose:0,glucose:0,covered:0};
+  items.forEach(i=>{
+    const c=ingredientComposition(i.name),f=Number(i.g||0)/total;
+    ['fat','protein','lactose','ash','moisture','sucrose','dextrose','glucose'].forEach(k=>acc[k]+=f*Number(c[k]||0));
+    if(c.known)acc.covered+=Number(i.g||0);
+  });
+  const knownSolids=100-acc.moisture;
+  const pod=acc.sucrose*1+acc.dextrose*.74+acc.glucose*.5+acc.lactose*.16;
+  const pac=acc.sucrose*1+acc.dextrose*1.9+acc.glucose*.8+acc.lactose*1;
+  const coverage=Math.max(0,Math.min(100,(acc.covered/total)*100));
+  const warnings=[];
+  if(coverage<90)warnings.push('Ingredient composition data incomplete hai; analysis estimate hai.');
+  if(acc.lactose>10)warnings.push('Lactose load high hai; sandy texture / lactose crystallization risk barh sakta hai.');
+  if(knownSolids<32)warnings.push('Total solids low side par hain; body weak ya icy ho sakti hai.');
+  if(knownSolids>46)warnings.push('Total solids high hain; body heavy ya freezing difficult ho sakti hai.');
+  return {
+    fat:acc.fat,protein:acc.protein,lactose:acc.lactose,totalSolids:knownSolids,water:acc.moisture,
+    sucrose:acc.sucrose,dextrose:acc.dextrose,glucose:acc.glucose,pod,pac,coverage,warnings
+  };
+}
+function compositionHtml(a){
+  return '<div class="subpanel"><h3>Advanced Composition</h3><div class="balance">'+
+    [['Fat',a.fat],['Protein',a.protein],['Lactose',a.lactose],['Total Solids',a.totalSolids],['Water',a.water],['Data Coverage',a.coverage]].map(x=>'<div><small>'+x[0]+'</small><strong>'+Number(x[1]).toFixed(1)+'%</strong></div>').join('')+
+    '</div><div class="balance" style="margin-top:8px">'+
+    [['Sweetness Index',a.pod],['Freezing Index',a.pac],['Sucrose',a.sucrose],['Dextrose',a.dextrose],['Glucose solids',a.glucose],['Known solids',a.totalSolids]].map(x=>'<div><small>'+x[0]+'</small><strong>'+Number(x[1]).toFixed(1)+'</strong></div>').join('')+
+    '</div>'+(a.warnings.length?'<div class="warning">'+a.warnings.map(x=>'• '+esc(x)).join('<br>')+'</div>':'')+
+    '<div class="source">Sweetness/Freezing indexes are comparative formulation indexes, not a laboratory freezing-point measurement. Ingredient COA coverage improves accuracy.</div></div>';
+}
 function ingredientTable(rows,total){
   return '<div class="tablewrap"><table><thead><tr><th>Ingredient</th><th>Required Weight</th><th>% Batch</th></tr></thead><tbody>'+
     rows.map(x=>'<tr><td>'+esc(x.name)+'</td><td class="qty">'+fmt(x.g)+'</td><td class="pct">'+((x.g/total)*100).toFixed(2)+'%</td></tr>').join('')+
@@ -279,7 +327,7 @@ function render(){
     const depName=dep==='sauces'?'Sundae Syrup / Sauce':'Professional Brownie';
     $('result').innerHTML='<div class="recipeHead"><div><h2>'+esc(r.name)+'</h2><p>'+esc(depName)+' • scalable professional formula</p></div><span class="badge">'+esc(r.sourceName)+'</span></div>'+
       '<div class="stats"><div class="stat"><small>Batch</small><strong>'+fmt(total)+'</strong></div><div class="stat"><small>Source Batch</small><strong>'+fmt(base)+'</strong></div><div class="stat"><small>Ingredients</small><strong>'+items.length+'</strong></div><div class="stat"><small>Source Type</small><strong>'+esc(sourceClassFor(r,dep)==='training'?'Professional':'Institute')+'</strong></div></div>'+
-      ingredientTable(items,total)+
+      ingredientTable(items,total)+compositionHtml(compositionAnalysis(items,total))+
       '<div class="split"><div class="subpanel"><h3>Production Method</h3><div class="steps">'+r.method.map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div></div><div>'+sourceBlock('direct',r)+'<div class="warning"><b>Scaling note:</b> Formula weight ratio se scale hoti hai. Baking recipes mein pan depth aur bake time batch size ke saath separately validate karein.</div></div></div>';
     return;
   }
@@ -312,7 +360,7 @@ function render(){
       '<div class="stat"><small>Recipe Type</small><strong>'+esc(kind==='gelato'?'Gelato':kind==='hard'?'Hard':kind==='soft'?'Soft':kind==='frozen-yogurt'?'Frozen Yogurt':'Sherbet')+'</strong></div>'+
     '</div>'+
     (hasPrepared?'<div class="tabs"><button class="tab active" data-view="book">Book Formula</button><button class="tab" data-view="raw">Expanded Raw Ingredients</button></div>':'')+
-    '<div id="formulaTable">'+ingredientTable(items,total)+'</div>'+
+    '<div id="formulaTable">'+ingredientTable(items,total)+'</div>'+compositionHtml(compositionAnalysis(items,total))+
     '<div class="split"><div class="subpanel"><h3>Production Method</h3><div class="steps">'+method.map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div></div>'+
     '<div><div class="subpanel"><h3>Technical Balance</h3><div class="balance">'+statHtml+'</div></div>'+src+
     (kind==='gelato'?'':'<div class="warning"><b>Ingredient specification:</b> Calculation assumes whole milk 3.5% fat / 8.5% MSNF, cream 35% fat / ~5.5% MSNF, and skim milk powder 1% fat / ~96% MSNF. Actual supplier analysis vary karta hai; production release se pehle apne ingredient COA ke mutabiq values verify karein.</div>')+
@@ -427,7 +475,7 @@ function researchScoreHtml(r){
   const score=r?.perfection_score===null||r?.perfection_score===undefined?'—':Number(r.perfection_score).toFixed(1)+'%';
   const shelf=r?.validated_shelf_life||'Not validated';
   const comments=Array.isArray(r?.research_comments)?r.research_comments:[];
-  return '<div class="researchReview"><div class="stats"><div class="stat"><small>Research Fit / Perfection</small><strong>'+esc(score)+'</strong></div><div class="stat"><small>Status</small><strong>'+esc((r?.status||'trial').toUpperCase())+'</strong></div><div class="stat"><small>Version</small><strong>V'+esc(r?.version||1)+'</strong></div><div class="stat"><small>Validated Shelf Life</small><strong>'+esc(shelf)+'</strong></div></div>'+
+  return '<div class="researchReview"><div class="stats"><div class="stat"><small>Research Fit / Perfection</small><strong>'+esc(score)+'</strong></div><div class="stat"><small>Status</small><strong>'+esc((r?.status||'trial').toUpperCase())+'</strong></div><div class="stat"><small>Version</small><strong>V'+esc(r?.version||1)+'</strong></div><div class="stat"><small>Validated Shelf Life</small><strong>'+esc(shelf)+'</strong></div><div class="stat"><small>Production Confidence</small><strong>'+esc(r?.production_confidence==null?'0%':Number(r.production_confidence).toFixed(1)+'%')+'</strong></div></div>'+
     '<div class="subpanel"><h3>Research Comments</h3><div class="steps">'+comments.map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div></div>'+
     '<div class="source"><b>Shelf-life guidance:</b> '+esc(r?.shelf_life_guidance||'Finished product validation required.')+(r?.storage_conditions?'<br><b>Storage:</b> '+esc(r.storage_conditions):'')+'</div></div>';
 }
@@ -485,6 +533,7 @@ async function viewBusinessRecipe(id){
       (record.formula||[]).map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+fmt(Number(x.g||0))+'</td><td>'+(((Number(x.g||0)/(record.formula||[]).reduce((s,y)=>s+Number(y.g||0),0))*100)||0).toFixed(2)+'%</td></tr>').join('')+
       '</tbody></table></div><div class="source"><b>Version history:</b> '+(versions||[]).map(v=>'V'+v.version+' • '+new Date(v.changed_at).toLocaleString()).join(' | ')+'</div></div>';
     $('backBusinessList').onclick=loadBusinessRecipes;
+    loadQcForRecipe(id);
   }catch(e){alert(e.message)}
 }
 async function editBusinessRecipe(id){
@@ -512,6 +561,44 @@ async function editBusinessRecipe(id){
     $('saveBusinessEdit').onclick=()=>save(false).catch(e=>alert(e.message));
     $('saveBusinessFinal').onclick=()=>save(true).catch(e=>alert(e.message));
   }catch(e){alert(e.message)}
+}
+
+async function loadQcForRecipe(recipeId){
+  try{
+    const r=await fetch('/api/data?resource=gelato_qc&recipe_id='+encodeURIComponent(recipeId),{cache:'no-store'});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(j.error||'QC load failed');
+    renderQcPanel(recipeId,j.records||[],j.recipe||{});
+  }catch(e){$('businessRecipeList').insertAdjacentHTML('beforeend','<div class="warning">'+esc(e.message)+'</div>')}
+}
+function renderQcPanel(recipeId,rows,recipe){
+  const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.batch_code||('QC #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • '+esc(x.machine||'No machine')+'</small></div><span class="badge '+(x.result==='pass'?'finalBadge':'')+'">'+esc(x.result)+'</span></div><div class="businessMetrics"><span>Overrun <b>'+esc(x.overrun_pct??'—')+'%</b></span><span>Draw Temp <b>'+esc(x.draw_temp_c??'—')+'°C</b></span><span>Brix <b>'+esc(x.brix??'—')+'</b></span><span>pH <b>'+esc(x.ph??'—')+'</b></span></div></div>').join('');
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><h3>Production QC</h3><div class="stats"><div class="stat"><small>Production Confidence</small><strong>'+Number(recipe.production_confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>QC Batches</small><strong>'+rows.length+'</strong></div></div><div id="qcList">'+(cards||'<div class="note">No QC tests yet.</div>')+'</div><button class="primary" id="addQcBtn" type="button">+ Add QC Test</button><button class="secondary profileBtn" id="goldenBtn" type="button">Mark Golden Production Recipe</button></div>');
+  $('addQcBtn').onclick=()=>showQcForm(recipeId);
+  $('goldenBtn').onclick=()=>markGolden(recipeId);
+}
+function showQcForm(recipeId){
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="profileModal" id="qcModal"><div class="profileBox"><div class="profileHead"><div><h2>Production QC Test</h2><p>Actual production measurements enter karein.</p></div><button id="qcClose" class="ghost">Close</button></div><div class="profileGrid">'+
+    '<label>Batch Code<input id="qcBatch"></label><label>Test Date<input id="qcDate" type="date" value="'+new Date().toISOString().slice(0,10)+'"></label><label>Machine<input id="qcMachine"></label><label>Operator<input id="qcOperator"></label>'+
+    '<label>Mix Temp °C<input id="qcMixTemp" type="number" step="0.1"></label><label>Pasteurization Peak °C<input id="qcPasteur" type="number" step="0.1"></label><label>Ageing Hours<input id="qcAge" type="number" step="0.1"></label><label>pH<input id="qcPh" type="number" step="0.01"></label>'+
+    '<label>Brix<input id="qcBrix" type="number" step="0.1"></label><label>Overrun %<input id="qcOverrun" type="number" step="0.1"></label><label>Draw Temp °C<input id="qcDraw" type="number" step="0.1"></label><label>Melt 30min %<input id="qcMelt" type="number" step="0.1"></label>'+
+    '<label>Hardness 1-10<input id="qcHard" type="number" min="1" max="10"></label><label>Sweetness 1-10<input id="qcSweet" type="number" min="1" max="10"></label><label>Iciness 1-10<input id="qcIce" type="number" min="1" max="10"></label><label>Body 1-10<input id="qcBody" type="number" min="1" max="10"></label>'+
+    '<label>Aftertaste 1-10<input id="qcAfter" type="number" min="1" max="10"></label><label>Result<select id="qcResult"><option value="trial">Trial</option><option value="pass">Pass</option><option value="fail">Fail</option></select></label><label class="wide">Day 1 Notes<input id="qcDay1"></label><label class="wide">Day 7 Notes<input id="qcDay7"></label>'+
+    '</div><button class="primary" id="saveQc">Save QC Test</button></div></div>');
+  $('qcClose').onclick=()=>$('qcModal').remove();
+  $('saveQc').onclick=async()=>{
+    const body={batch_code:$('qcBatch').value,test_date:$('qcDate').value,machine:$('qcMachine').value,operator_name:$('qcOperator').value,mix_temp_c:$('qcMixTemp').value,pasteurization_peak_c:$('qcPasteur').value,ageing_hours:$('qcAge').value,ph:$('qcPh').value,brix:$('qcBrix').value,overrun_pct:$('qcOverrun').value,draw_temp_c:$('qcDraw').value,melt_30min_pct:$('qcMelt').value,hardness_score:$('qcHard').value,sweetness_score:$('qcSweet').value,iciness_score:$('qcIce').value,body_score:$('qcBody').value,aftertaste_score:$('qcAfter').value,day1_notes:$('qcDay1').value,day7_notes:$('qcDay7').value,result:$('qcResult').value};
+    const r=await fetch('/api/data?resource=gelato_qc&recipe_id='+recipeId,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){alert(j.error||'QC save failed');return}
+    $('qcModal').remove();alert('QC saved • Production Confidence '+Number(j.production_confidence||0).toFixed(1)+'%');viewBusinessRecipe(recipeId);
+  };
+}
+async function markGolden(recipeId){
+  const r=await fetch('/api/data?resource=gelato_recipes&id='+recipeId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'golden'})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){alert(j.error||'Golden recipe requirements not met');return}
+  alert('Golden Production Recipe approved');viewBusinessRecipe(recipeId);
 }
 async function auth(){
   const key='kt_offline_user_v1';let ok=false;
