@@ -750,6 +750,23 @@ async function editBusinessRecipe(id){
   }catch(e){alert(e.message)}
 }
 
+
+function rdFeedbackAdvice(rows){
+  if(!rows?.length)return ['QC batch save karne ke baad R&D feedback yahan generate hoga.'];
+  const q=rows[0],a=[];
+  const hard=Number(q.hardness_score),sweet=Number(q.sweetness_score),ice=Number(q.iciness_score),body=Number(q.body_score),melt=Number(q.melt_30min_pct),over=Number(q.overrun_pct),draw=Number(q.draw_temp_c);
+  if(Number.isFinite(hard)&&hard>=8)a.push('Too hard: pehle serving/draw temperature aur sugar freezing power check karein; controlled Variant B trial karein, stabilizer ko blind increase na karein.');
+  if(Number.isFinite(hard)&&hard<=3)a.push('Too soft: total solids, overrun aur freezing power review karein; controlled Variant C trial useful ho sakta hai.');
+  if(Number.isFinite(sweet)&&sweet>=8)a.push('Too sweet: total sugar kam karne se pehle low-sweetness/high-freezing-power substitution consider karein taa-ke hardness suddenly na barhe.');
+  if(Number.isFinite(sweet)&&sweet<=3)a.push('Sweetness low: sucrose increase se PAC/freezing behavior bhi badlega; target serving temperature ke against rebalance karein.');
+  if(Number.isFinite(ice)&&ice>=7)a.push('Iciness high: total solids, freezing rate, hardening speed, heat shock aur storage stability inspect karein; sirf gum/stabilizer increase ko first fix na banayein.');
+  if(Number.isFinite(body)&&body<=4)a.push('Weak body: MSNF/protein/total-solids contribution aur overrun review karein; ingredient COA accuracy confirm karein.');
+  if(Number.isFinite(melt)&&melt>=45)a.push('Fast melt: fat/protein emulsification, stabilizer system, overrun aur hardening process jointly review karein.');
+  if(Number.isFinite(over)&&over>100)a.push('High overrun recorded: premium density/body target dilute ho sakta hai; machine air incorporation setting compare karein.');
+  if(Number.isFinite(draw)&&draw>-4)a.push('Draw temperature relatively warm record hui; freezer endpoint/machine load validate karein.');
+  if(!a.length)a.push('Latest QC mein koi major sensory/process warning trigger nahi hui. Next batch repeatability aur storage-day results continue karein.');
+  return a;
+}
 async function loadQcForRecipe(recipeId){
   try{
     const r=await fetch('/api/data?resource=gelato_qc&recipe_id='+encodeURIComponent(recipeId),{cache:'no-store'});
@@ -759,8 +776,9 @@ async function loadQcForRecipe(recipeId){
   }catch(e){$('businessRecipeList').insertAdjacentHTML('beforeend','<div class="warning">'+esc(e.message)+'</div>')}
 }
 function renderQcPanel(recipeId,rows,recipe){
+  const feedback=rdFeedbackAdvice(rows);
   const cards=rows.map(x=>'<div class="qcCard"><div class="businessRecipeHead"><div><b>'+esc(x.batch_code||('QC #'+x.id))+'</b><small>'+esc(String(x.test_date||''))+' • '+esc(x.machine||'No machine')+'</small></div><span class="badge '+(x.result==='pass'?'finalBadge':'')+'">'+esc(x.result)+'</span></div><div class="businessMetrics"><span>Overrun <b>'+esc(x.overrun_pct??'—')+'%</b></span><span>Draw Temp <b>'+esc(x.draw_temp_c??'—')+'°C</b></span><span>Brix <b>'+esc(x.brix??'—')+'</b></span><span>pH <b>'+esc(x.ph??'—')+'</b></span></div></div>').join('');
-  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><h3>Production QC</h3><div class="stats"><div class="stat"><small>Production Confidence</small><strong>'+Number(recipe.production_confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>QC Batches</small><strong>'+rows.length+'</strong></div></div><div id="qcList">'+(cards||'<div class="note">No QC tests yet.</div>')+'</div><button class="primary" id="addQcBtn" type="button">+ Add QC Test</button><button class="secondary profileBtn" id="goldenBtn" type="button">Mark Golden Production Recipe</button></div>');
+  $('businessRecipeList').insertAdjacentHTML('beforeend','<div class="businessRecipeCard"><h3>Production QC</h3><div class="stats"><div class="stat"><small>Production Confidence</small><strong>'+Number(recipe.production_confidence||0).toFixed(1)+'%</strong></div><div class="stat"><small>QC Batches</small><strong>'+rows.length+'</strong></div></div><div id="qcList">'+(cards||'<div class="note">No QC tests yet.</div>')+'</div><div class="subpanel"><h3>R&D Feedback Rebalancing</h3><div class="steps">'+feedback.map((t,i)=>'<div class="step"><b>'+(i+1)+'</b><p>'+esc(t)+'</p></div>').join('')+'</div><div class="source">Suggestions cause-oriented hain; formula automatically change nahi hoti. Next controlled trial ke baad Research Fit aur Production Confidence dobara compare karein.</div></div><button class="primary" id="addQcBtn" type="button">+ Add QC Test</button><button class="secondary profileBtn" id="goldenBtn" type="button">Mark Golden Production Recipe</button></div>');
   $('addQcBtn').onclick=()=>showQcForm(recipeId);
   $('goldenBtn').onclick=()=>markGolden(recipeId);
 }
