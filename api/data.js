@@ -25,6 +25,7 @@ const allowed = new Set([
   "gulshan_ecommerce",
   "gelato_settings",
   "gelato_recipes",
+  "gelato_qc",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -705,9 +706,9 @@ async function ensureGelatoSettings(sql){
   const rows=await sql`SELECT id FROM gelato_ingredient_settings WHERE id=1`;
   if(!rows[0]){
     const defaults={
-      whole_milk:{name:"Whole Milk",fat_pct:3.5,msnf_pct:8.5},
-      cream:{name:"Cream",fat_pct:35,msnf_pct:5.5},
-      dry_milk_profiles:[{id:"melco-26",name:"Melco Vegetable Fat Filled Powder",fat_pct:26,protein_pct:16,carbs_pct:50,moisture_pct:4,other_pct:4,added_sugar_pct:null,note:"Bag label profile"}],
+      whole_milk:{name:"Whole Milk",fat_pct:3.5,msnf_pct:8.5,protein_pct:3.2,lactose_pct:4.8,ash_pct:0.7,moisture_pct:87.8},
+      cream:{name:"Cream",fat_pct:35,msnf_pct:5.5,protein_pct:2.1,lactose_pct:3.0,ash_pct:0.5,moisture_pct:59.4},
+      dry_milk_profiles:[{id:"melco-26",name:"Melco Vegetable Fat Filled Powder",fat_pct:26,protein_pct:16,carbs_pct:50,lactose_pct:null,moisture_pct:4,ash_pct:null,other_pct:4,added_sugar_pct:null,total_solids_pct:96,note:"Bag label profile; lactose/added sugar split requires current COA."}],
       cremodan_profiles:[],
       default_dry_milk_id:"melco-26",
       default_cremodan_id:null
@@ -723,9 +724,12 @@ function normalizeGelatoSettings(b={}){
     fat_pct:gelatoPct(p?.fat_pct),
     protein_pct:gelatoPct(p?.protein_pct),
     carbs_pct:gelatoPct(p?.carbs_pct),
+    lactose_pct:p?.lactose_pct===null||p?.lactose_pct===""?null:gelatoPct(p?.lactose_pct),
     moisture_pct:gelatoPct(p?.moisture_pct),
+    ash_pct:p?.ash_pct===null||p?.ash_pct===""?null:gelatoPct(p?.ash_pct),
     other_pct:gelatoPct(p?.other_pct),
     added_sugar_pct:p?.added_sugar_pct===null||p?.added_sugar_pct===""?null:gelatoPct(p?.added_sugar_pct),
+    total_solids_pct:p?.total_solids_pct===null||p?.total_solids_pct===""?null:gelatoPct(p?.total_solids_pct),
     note:cleanText(p?.note)
   }));
   const cremodan=(Array.isArray(b.cremodan_profiles)?b.cremodan_profiles:[]).slice(0,20).map((p,i)=>({
@@ -737,9 +741,9 @@ function normalizeGelatoSettings(b={}){
     note:cleanText(p?.note)
   }));
   return {
-    whole_milk:{name:"Whole Milk",fat_pct:gelatoPct(b?.whole_milk?.fat_pct||3.5),msnf_pct:gelatoPct(b?.whole_milk?.msnf_pct||8.5)},
-    cream:{name:"Cream",fat_pct:gelatoPct(b?.cream?.fat_pct||35),msnf_pct:gelatoPct(b?.cream?.msnf_pct||5.5)},
-    dry_milk_profiles:dry.length?dry:[{id:"melco-26",name:"Melco Vegetable Fat Filled Powder",fat_pct:26,protein_pct:16,carbs_pct:50,moisture_pct:4,other_pct:4,added_sugar_pct:null,note:"Bag label profile"}],
+    whole_milk:{name:"Whole Milk",fat_pct:gelatoPct(b?.whole_milk?.fat_pct||3.5),msnf_pct:gelatoPct(b?.whole_milk?.msnf_pct||8.5),protein_pct:gelatoPct(b?.whole_milk?.protein_pct||3.2),lactose_pct:gelatoPct(b?.whole_milk?.lactose_pct||4.8),ash_pct:gelatoPct(b?.whole_milk?.ash_pct||0.7),moisture_pct:gelatoPct(b?.whole_milk?.moisture_pct||87.8)},
+    cream:{name:"Cream",fat_pct:gelatoPct(b?.cream?.fat_pct||35),msnf_pct:gelatoPct(b?.cream?.msnf_pct||5.5),protein_pct:gelatoPct(b?.cream?.protein_pct||2.1),lactose_pct:gelatoPct(b?.cream?.lactose_pct||3.0),ash_pct:gelatoPct(b?.cream?.ash_pct||0.5),moisture_pct:gelatoPct(b?.cream?.moisture_pct||59.4)},
+    dry_milk_profiles:dry.length?dry:[{id:"melco-26",name:"Melco Vegetable Fat Filled Powder",fat_pct:26,protein_pct:16,carbs_pct:50,lactose_pct:null,moisture_pct:4,ash_pct:null,other_pct:4,added_sugar_pct:null,total_solids_pct:96,note:"Bag label profile; lactose/added sugar split requires current COA."}],
     cremodan_profiles:cremodan,
     default_dry_milk_id:cleanText(b.default_dry_milk_id)||(dry[0]?.id||"melco-26"),
     default_cremodan_id:cleanText(b.default_cremodan_id)
@@ -793,6 +797,8 @@ async function ensureGelatoBusinessRecipes(sql){
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+  await sql`ALTER TABLE gelato_business_recipes ADD COLUMN IF NOT EXISTS production_confidence NUMERIC(5,2)`;
+  await sql`ALTER TABLE gelato_business_recipes ADD COLUMN IF NOT EXISTS golden_at TIMESTAMPTZ`;
   await sql`CREATE INDEX IF NOT EXISTS gelato_business_recipes_business_idx ON gelato_business_recipes(business_name,status,updated_at DESC)`;
   await sql`CREATE TABLE IF NOT EXISTS gelato_business_recipe_versions(
     id BIGSERIAL PRIMARY KEY,
@@ -802,6 +808,34 @@ async function ensureGelatoBusinessRecipes(sql){
     changed_by TEXT,
     changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`;
+  await sql`CREATE TABLE IF NOT EXISTS gelato_recipe_qc(
+    id BIGSERIAL PRIMARY KEY,
+    recipe_id BIGINT NOT NULL REFERENCES gelato_business_recipes(id) ON DELETE CASCADE,
+    batch_code TEXT,
+    test_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    machine TEXT,
+    operator_name TEXT,
+    mix_temp_c NUMERIC(7,2),
+    pasteurization_peak_c NUMERIC(7,2),
+    ageing_hours NUMERIC(8,2),
+    ph NUMERIC(6,3),
+    brix NUMERIC(7,2),
+    overrun_pct NUMERIC(8,2),
+    draw_temp_c NUMERIC(7,2),
+    melt_30min_pct NUMERIC(8,2),
+    hardness_score INTEGER,
+    sweetness_score INTEGER,
+    iciness_score INTEGER,
+    body_score INTEGER,
+    aftertaste_score INTEGER,
+    day1_notes TEXT,
+    day7_notes TEXT,
+    result TEXT NOT NULL DEFAULT 'trial',
+    created_by_id BIGINT,
+    created_by_name TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS gelato_recipe_qc_recipe_idx ON gelato_recipe_qc(recipe_id,test_date DESC,id DESC)`;
 }
 function cleanFormula(v){
   const arr=Array.isArray(v)?v:[];
@@ -857,6 +891,65 @@ function evaluateResearchFit(formula,sourceFormula,context={}){
     comments
   };
 }
+
+async function recalcProductionConfidence(sql,recipeId){
+  const rows=await sql\`SELECT * FROM gelato_recipe_qc WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC\`;
+  if(!rows.length){
+    await sql\`UPDATE gelato_business_recipes SET production_confidence=0 WHERE id=\${recipeId}\`;
+    return 0;
+  }
+  const passed=rows.filter(x=>x.result==="pass").length;
+  const recent=rows[0];
+  const fields=["ph","brix","overrun_pct","draw_temp_c","melt_30min_pct","hardness_score","sweetness_score","iciness_score","body_score","aftertaste_score"];
+  const filled=fields.filter(k=>recent[k]!==null&&recent[k]!==undefined&&recent[k]!=="").length;
+  const passScore=passed>=3?50:passed===2?40:passed===1?25:0;
+  const completeness=(filled/fields.length)*30;
+  const storage=recent.day7_notes?20:(recent.day1_notes?10:0);
+  const recentFails=rows.slice(0,3).filter(x=>x.result==="fail").length;
+  const score=Math.max(0,Math.min(100,passScore+completeness+storage-(recentFails*10)));
+  await sql\`UPDATE gelato_business_recipes SET production_confidence=\${score},updated_at=now() WHERE id=\${recipeId}\`;
+  return Number(score.toFixed(2));
+}
+async function gelatoQc(sql,req,user){
+  await ensureGelatoBusinessRecipes(sql);
+  const id=asId(req.query?.id),recipeId=asId(req.query?.recipe_id),b=bodyOf(req);
+  if(req.method==="GET"){
+    if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
+    const rows=await sql\`SELECT * FROM gelato_recipe_qc WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC LIMIT 100\`;
+    const recipe=(await sql\`SELECT id,recipe_name,status,production_confidence FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    return {status:200,data:{records:rows,recipe}};
+  }
+  if(req.method==="POST"){
+    if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
+    const recipe=(await sql\`SELECT id FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
+    const result=cleanText(b.result)||"trial";
+    if(!["trial","pass","fail"].includes(result))return {status:400,data:{error:"QC result Trial, Pass ya Fail hona chahiye"}};
+    const score=v=>v===null||v===undefined||v===""?null:Math.max(1,Math.min(10,Math.round(Number(v)||0)));
+    const n=v=>v===null||v===undefined||v===""?null:Number(v);
+    const row=(await sql\`INSERT INTO gelato_recipe_qc(
+      recipe_id,batch_code,test_date,machine,operator_name,mix_temp_c,pasteurization_peak_c,ageing_hours,ph,brix,overrun_pct,draw_temp_c,melt_30min_pct,
+      hardness_score,sweetness_score,iciness_score,body_score,aftertaste_score,day1_notes,day7_notes,result,created_by_id,created_by_name
+    ) VALUES(
+      \${recipeId},\${cleanText(b.batch_code)},COALESCE(\${cleanText(b.test_date)}::date,CURRENT_DATE),\${cleanText(b.machine)},\${cleanText(b.operator_name)},
+      \${n(b.mix_temp_c)},\${n(b.pasteurization_peak_c)},\${n(b.ageing_hours)},\${n(b.ph)},\${n(b.brix)},\${n(b.overrun_pct)},\${n(b.draw_temp_c)},\${n(b.melt_30min_pct)},
+      \${score(b.hardness_score)},\${score(b.sweetness_score)},\${score(b.iciness_score)},\${score(b.body_score)},\${score(b.aftertaste_score)},
+      \${cleanText(b.day1_notes)},\${cleanText(b.day7_notes)},\${result},\${user.id},\${user.full_name||user.employee_code||"User"}
+    ) RETURNING *\`)[0];
+    const confidence=await recalcProductionConfidence(sql,recipeId);
+    return {status:201,data:{record:row,production_confidence:confidence}};
+  }
+  if(req.method==="DELETE"){
+    if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin QC record delete kar sakta hai"}};
+    if(!id)return {status:400,data:{error:"Valid QC id required hai"}};
+    const old=(await sql\`SELECT recipe_id FROM gelato_recipe_qc WHERE id=\${id}\`)[0];
+    if(!old)return {status:404,data:{error:"QC record not found"}};
+    await sql\`DELETE FROM gelato_recipe_qc WHERE id=\${id}\`;
+    const confidence=await recalcProductionConfidence(sql,Number(old.recipe_id));
+    return {status:200,data:{deleted:true,production_confidence:confidence}};
+  }
+  return {status:405,data:{error:"Method not allowed"}};
+}
 async function gelatoBusinessRecipes(sql,req,user){
   await ensureGelatoBusinessRecipes(sql);
   const id=asId(req.query?.id),b=bodyOf(req);
@@ -909,8 +1002,14 @@ async function gelatoBusinessRecipes(sql,req,user){
     const department=cleanText(b.department)||old.department;
     const evaluation=evaluateResearchFit(formula,sourceFormula,{department,ingredient_settings:ingredientSettings||{}});
     const action=cleanText(b.action);
-    const nextStatus=action==="finalize"?"final":(cleanText(b.status)||old.status);
-    if(!["trial","final"].includes(nextStatus))return {status:400,data:{error:"Invalid recipe status"}};
+    let nextStatus=action==="finalize"?"final":(cleanText(b.status)||old.status);
+    if(action==="golden"){
+      const qc=await sql`SELECT COUNT(*) FILTER (WHERE result='pass')::int pass_count FROM gelato_recipe_qc WHERE recipe_id=${id}`;
+      const confidence=await recalcProductionConfidence(sql,id);
+      if(Number(qc[0]?.pass_count||0)<2||confidence<70)return {status:409,data:{error:"Golden Recipe ke liye kam az kam 2 passed QC batches aur 70% Production Confidence required hai"}};
+      nextStatus="golden";
+    }
+    if(!["trial","final","golden"].includes(nextStatus))return {status:400,data:{error:"Invalid recipe status"}};
     const tested=cleanText(b.production_tested_at)||old.production_tested_at;
     if(nextStatus==="final"&&!tested)return {status:400,data:{error:"Final recipe ke liye production test date required hai"}};
     const rows=await sql`UPDATE gelato_business_recipes SET
@@ -931,7 +1030,8 @@ async function gelatoBusinessRecipes(sql,req,user){
       trial_notes=CASE WHEN ${b.trial_notes!==undefined} THEN ${cleanText(b.trial_notes)} ELSE trial_notes END,
       production_tested_at=COALESCE(${tested}::date,production_tested_at),
       status=${nextStatus},
-      passed_at=CASE WHEN ${nextStatus}='final' AND passed_at IS NULL THEN now() ELSE passed_at END,
+      passed_at=CASE WHEN ${nextStatus} IN ('final','golden') AND passed_at IS NULL THEN now() ELSE passed_at END,
+      golden_at=CASE WHEN ${nextStatus}='golden' AND golden_at IS NULL THEN now() ELSE golden_at END,
       version=version+1,
       updated_at=now()
       WHERE id=${id} RETURNING *`;
@@ -980,6 +1080,10 @@ async function handler(req, res) {
     }
     if (resource === "gelato_recipes") {
       const out = await gelatoBusinessRecipes(sql, req, user);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "gelato_qc") {
+      const out = await gelatoQc(sql, req, user);
       return res.status(out.status).json(out.data);
     }
     await ensureEntryNumbers(sql);
