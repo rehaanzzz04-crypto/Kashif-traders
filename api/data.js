@@ -23,6 +23,7 @@ const allowed = new Set([
   "customer_portal",
   "ecommerce",
   "gulshan_ecommerce",
+  "gelato_settings",
 ]);
 const resourceView = {
   suppliers: "suppliers",
@@ -692,6 +693,72 @@ async function customerPortal(sql,req,res,staffUser=null){
   return res.status(405).json({error:"Method not allowed"});
 }
 
+
+async function ensureGelatoSettings(sql){
+  await sql`CREATE TABLE IF NOT EXISTS gelato_ingredient_settings(
+    id SMALLINT PRIMARY KEY DEFAULT 1 CHECK(id=1),
+    settings JSONB NOT NULL,
+    updated_by TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  )`;
+  const rows=await sql`SELECT id FROM gelato_ingredient_settings WHERE id=1`;
+  if(!rows[0]){
+    const defaults={
+      whole_milk:{name:"Whole Milk",fat_pct:3.5,msnf_pct:8.5},
+      cream:{name:"Cream",fat_pct:35,msnf_pct:5.5},
+      dry_milk_profiles:[{id:"melco-26",name:"Melco Vegetable Fat Filled Powder",fat_pct:26,protein_pct:16,carbs_pct:50,moisture_pct:4,other_pct:4,added_sugar_pct:null,note:"Bag label profile"}],
+      cremodan_profiles:[],
+      default_dry_milk_id:"melco-26",
+      default_cremodan_id:null
+    };
+    await sql`INSERT INTO gelato_ingredient_settings(id,settings) VALUES(1,${JSON.stringify(defaults)}::jsonb)`;
+  }
+}
+function gelatoPct(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(100,n)):0}
+function normalizeGelatoSettings(b={}){
+  const dry=(Array.isArray(b.dry_milk_profiles)?b.dry_milk_profiles:[]).slice(0,20).map((p,i)=>({
+    id:cleanText(p?.id)||("powder-"+i+"-"+Date.now()),
+    name:cleanText(p?.name)||("Dry Milk Profile "+(i+1)),
+    fat_pct:gelatoPct(p?.fat_pct),
+    protein_pct:gelatoPct(p?.protein_pct),
+    carbs_pct:gelatoPct(p?.carbs_pct),
+    moisture_pct:gelatoPct(p?.moisture_pct),
+    other_pct:gelatoPct(p?.other_pct),
+    added_sugar_pct:p?.added_sugar_pct===null||p?.added_sugar_pct===""?null:gelatoPct(p?.added_sugar_pct),
+    note:cleanText(p?.note)
+  }));
+  const cremodan=(Array.isArray(b.cremodan_profiles)?b.cremodan_profiles:[]).slice(0,20).map((p,i)=>({
+    id:cleanText(p?.id)||("cremodan-"+i+"-"+Date.now()),
+    grade:cleanText(p?.grade)||("CREMODAN "+(i+1)),
+    dosage_g_per_kg:Math.max(0,Math.min(30,Number(p?.dosage_g_per_kg)||0)),
+    includes_emulsifier:p?.includes_emulsifier!==false,
+    product_type:cleanText(p?.product_type)||"General",
+    note:cleanText(p?.note)
+  }));
+  return {
+    whole_milk:{name:"Whole Milk",fat_pct:gelatoPct(b?.whole_milk?.fat_pct||3.5),msnf_pct:gelatoPct(b?.whole_milk?.msnf_pct||8.5)},
+    cream:{name:"Cream",fat_pct:gelatoPct(b?.cream?.fat_pct||35),msnf_pct:gelatoPct(b?.cream?.msnf_pct||5.5)},
+    dry_milk_profiles:dry.length?dry:[{id:"melco-26",name:"Melco Vegetable Fat Filled Powder",fat_pct:26,protein_pct:16,carbs_pct:50,moisture_pct:4,other_pct:4,added_sugar_pct:null,note:"Bag label profile"}],
+    cremodan_profiles:cremodan,
+    default_dry_milk_id:cleanText(b.default_dry_milk_id)||(dry[0]?.id||"melco-26"),
+    default_cremodan_id:cleanText(b.default_cremodan_id)
+  };
+}
+async function gelatoSettings(sql,req,user){
+  await ensureGelatoSettings(sql);
+  if(req.method==="GET"){
+    const row=(await sql`SELECT settings,updated_by,updated_at FROM gelato_ingredient_settings WHERE id=1`)[0];
+    return {status:200,data:{settings:row?.settings||{},updated_by:row?.updated_by||null,updated_at:row?.updated_at||null}};
+  }
+  if(req.method==="PUT"||req.method==="PATCH"){
+    if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin ingredient profiles update kar sakta hai"}};
+    const settings=normalizeGelatoSettings(bodyOf(req)),by=user.full_name||user.employee_code||"Admin";
+    const row=(await sql`UPDATE gelato_ingredient_settings SET settings=${JSON.stringify(settings)}::jsonb,updated_by=${by},updated_at=now() WHERE id=1 RETURNING settings,updated_by,updated_at`)[0];
+    return {status:200,data:row};
+  }
+  return {status:405,data:{error:"Method not allowed"}};
+}
+
 async function handler(req, res) {
   const resource = String(req.query?.resource || "").trim();
   if (!allowed.has(resource))
@@ -724,6 +791,10 @@ async function handler(req, res) {
     }
     if (resource === "sale_products") {
       const out = await saleProducts(sql, req);
+      return res.status(out.status).json(out.data);
+    }
+    if (resource === "gelato_settings") {
+      const out = await gelatoSettings(sql, req, user);
       return res.status(out.status).json(out.data);
     }
     await ensureEntryNumbers(sql);
