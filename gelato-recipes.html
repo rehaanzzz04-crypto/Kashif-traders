@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2563eb">
 <title>Gelato Recipe | Kashif Traders</title>
-<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-7">
-<script defer src="/offline-register.js?v=20261004-7"></script>
-<script defer src="/gelato-recipes.js?v=20261004-7"></script>
+<link rel="stylesheet" href="/gelato-recipes.css?v=20261004-8">
+<script defer src="/offline-register.js?v=20261004-8"></script>
+<script defer src="/gelato-recipes.js?v=20261004-8"></script>
 </head>
 <body>
 <div id="authLoading" class="loading">Gelato Recipe Lab loading…</div>
@@ -142,6 +142,7 @@
         <select id="wizardTexture"><option value="softer">Softer / Easy Scoop</option><option value="balanced" selected>Balanced</option><option value="firmer">Firmer</option></select>
       </label>
       <label>Target Overrun %<input id="wizardOverrun" type="number" min="10" max="150" step="1" value="75"></label>
+      <label>Machine Profile<select id="wizardMachine"><option value="">No Machine Profile</option></select></label>
       <label>Formula Name<input id="wizardName" value="Premium R&D Vanilla Base"></label>
     </div>
     <div id="wizardPreview" class="wizardPreview"></div>
@@ -186,6 +187,12 @@
       <div class="profileSectionHead"><h3>CREMODAN Profiles</h3><button id="addCremodanProfile" class="secondary" type="button">+ Add CREMODAN</button></div>
       <div id="cremodanProfiles"></div>
       <label class="profileDefault">Default CREMODAN<select id="defaultCremodan"><option value="">None</option></select></label>
+    </section>
+
+    <section class="profileSection">
+      <div class="profileSectionHead"><h3>Machine Profiles</h3><button id="addMachineProfile" class="secondary" type="button">+ Add Machine</button></div>
+      <div id="machineProfiles"></div>
+      <label class="profileDefault">Default Machine<select id="defaultMachine"><option value="">None</option></select></label>
     </section>
 
     <div class="profileSaveRow"><span id="profileStatus"></span><button id="saveProfiles" class="primary" type="button">Save Ingredient Profiles</button></div>
