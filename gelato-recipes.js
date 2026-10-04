@@ -139,10 +139,13 @@ function ingredientTable(rows,total){
     rows.map(x=>'<tr><td>'+esc(x.name)+'</td><td class="qty">'+fmt(x.g)+'</td><td class="pct">'+((x.g/total)*100).toFixed(2)+'%</td></tr>').join('')+
     '<tr class="totalRow"><td>Total Batch</td><td>'+fmt(total)+'</td><td>100.00%</td></tr></tbody></table></div>';
 }
+function sourceClassFor(kind){return kind==='gelato'?'training':'institute'}
 function populate(){
   const kind=$('system').value;
   $('baseModeWrap').classList.toggle('hidden',kind==='gelato');
   let list=kind==='gelato'?GELATO:TARGETS[kind];
+  const sourceFilter=$('sourceType')?.value||'all';
+  if(sourceFilter!=='all') list=list.filter(()=>sourceClassFor(kind)===sourceFilter);
   $('recipe').innerHTML=list.map(r=>'<option value="'+r.id+'">'+esc(r.name)+'</option>').join('');
   render();
 }
@@ -218,7 +221,7 @@ async function auth(){
 }
 
 $('backBtn').onclick=()=>location.href='/';
-$('system').onchange=populate;$('baseMode').onchange=render;$('recipe').onchange=render;$('batch').oninput=render;$('unit').onchange=render;$('generate').onclick=render;
+$('sourceType').onchange=populate;$('system').onchange=populate;$('baseMode').onchange=render;$('recipe').onchange=render;$('batch').oninput=render;$('unit').onchange=render;$('generate').onclick=render;
 document.querySelectorAll('[data-kg]').forEach(b=>b.onclick=()=>{$('batch').value=b.dataset.kg;$('unit').value='kg';render()});
 $('save').onclick=saveBatch;$('print').onclick=()=>window.print();$('share').onclick=shareRecipe;
 $('clearHistory').onclick=()=>{if(confirm('Clear saved batch history?')){localStorage.removeItem('kt_icecream_batches_v2');historyRender()}};
