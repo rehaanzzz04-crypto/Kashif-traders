@@ -1577,9 +1577,9 @@ async function gelatoTexture(sql,req,user){
   if(req.method!=="GET")return {status:405,data:{error:"Method not allowed"}};
   const recipeId=asId(req.query?.recipe_id);
   if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
-  const recipe=(await sql\`SELECT id,recipe_name,research_target FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+  const recipe=(await sql`SELECT id,recipe_name,research_target FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
   if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
-  const rows=await sql\`SELECT * FROM gelato_recipe_qc WHERE recipe_id=\${recipeId} ORDER BY test_date DESC,id DESC LIMIT 200\`;
+  const rows=await sql`SELECT * FROM gelato_recipe_qc WHERE recipe_id=${recipeId} ORDER BY test_date DESC,id DESC LIMIT 200`;
   return {status:200,data:{summary:textureCalibrationSummary(rows,recipe)}};
 }
 function machineCalibrationSummary(rows,recipe){
