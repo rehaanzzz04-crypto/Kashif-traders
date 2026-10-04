@@ -1393,37 +1393,37 @@ async function gelatoStability(sql,req,user){
   const id=asId(req.query?.id),recipeId=asId(req.query?.recipe_id),b=bodyOf(req);
   if(req.method==="GET"){
     if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
-    const recipe=(await sql\`SELECT id,research_target FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    const recipe=(await sql`SELECT id,research_target FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
     if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
-    const rows=await sql\`SELECT * FROM gelato_recipe_stability WHERE recipe_id=\${recipeId} ORDER BY checkpoint_day DESC,test_date DESC,id DESC LIMIT 300\`;
+    const rows=await sql`SELECT * FROM gelato_recipe_stability WHERE recipe_id=${recipeId} ORDER BY checkpoint_day DESC,test_date DESC,id DESC LIMIT 300`;
     return {status:200,data:{records:rows,summary:stabilitySummary(rows,recipe)}};
   }
   if(req.method==="POST"){
     if(!recipeId)return {status:400,data:{error:"Business recipe id required hai"}};
-    const recipe=(await sql\`SELECT id,research_target FROM gelato_business_recipes WHERE id=\${recipeId}\`)[0];
+    const recipe=(await sql`SELECT id,research_target FROM gelato_business_recipes WHERE id=${recipeId}`)[0];
     if(!recipe)return {status:404,data:{error:"Business recipe not found"}};
     const n=v=>v===null||v===undefined||v===""?null:Number(v);
     const s=v=>v===null||v===undefined||v===""?null:Math.max(1,Math.min(10,Math.round(Number(v)||0)));
-    const row=(await sql\`INSERT INTO gelato_recipe_stability(
+    const row=(await sql`INSERT INTO gelato_recipe_stability(
       recipe_id,batch_code,checkpoint_day,test_date,storage_temp_c,heat_shock_cycles,heat_shock_high_temp_c,heat_shock_duration_min,
       hardness_score,iciness_score,smoothness_score,flavor_score,body_score,overall_score,melt_30min_pct,package_condition,visible_ice_crystals,notes,
       created_by_id,created_by_name
     ) VALUES(
-      \${recipeId},\${cleanText(b.batch_code)},\${Math.max(0,Math.round(Number(b.checkpoint_day)||0))},COALESCE(\${cleanText(b.test_date)}::date,CURRENT_DATE),
-      \${n(b.storage_temp_c)},\${Math.max(0,Math.round(Number(b.heat_shock_cycles)||0))},\${n(b.heat_shock_high_temp_c)},\${n(b.heat_shock_duration_min)},
-      \${s(b.hardness_score)},\${s(b.iciness_score)},\${s(b.smoothness_score)},\${s(b.flavor_score)},\${s(b.body_score)},\${s(b.overall_score)},\${n(b.melt_30min_pct)},
-      \${cleanText(b.package_condition)},\${cleanText(b.visible_ice_crystals)},\${cleanText(b.notes)},\${user.id},\${user.full_name||user.employee_code||"User"}
-    ) RETURNING *\`)[0];
-    const rows=await sql\`SELECT * FROM gelato_recipe_stability WHERE recipe_id=\${recipeId} ORDER BY checkpoint_day DESC,test_date DESC,id DESC\`;
+      ${recipeId},${cleanText(b.batch_code)},${Math.max(0,Math.round(Number(b.checkpoint_day)||0))},COALESCE(${cleanText(b.test_date)}::date,CURRENT_DATE),
+      ${n(b.storage_temp_c)},${Math.max(0,Math.round(Number(b.heat_shock_cycles)||0))},${n(b.heat_shock_high_temp_c)},${n(b.heat_shock_duration_min)},
+      ${s(b.hardness_score)},${s(b.iciness_score)},${s(b.smoothness_score)},${s(b.flavor_score)},${s(b.body_score)},${s(b.overall_score)},${n(b.melt_30min_pct)},
+      ${cleanText(b.package_condition)},${cleanText(b.visible_ice_crystals)},${cleanText(b.notes)},${user.id},${user.full_name||user.employee_code||"User"}
+    ) RETURNING *`)[0];
+    const rows=await sql`SELECT * FROM gelato_recipe_stability WHERE recipe_id=${recipeId} ORDER BY checkpoint_day DESC,test_date DESC,id DESC`;
     return {status:201,data:{record:row,summary:stabilitySummary(rows,recipe)}};
   }
   if(req.method==="DELETE"){
     if(String(user.designation||"").toLowerCase()!=="admin")return {status:403,data:{error:"Sirf Admin stability record delete kar sakta hai"}};
     if(!id)return {status:400,data:{error:"Valid stability record id required hai"}};
-    const old=(await sql\`DELETE FROM gelato_recipe_stability WHERE id=\${id} RETURNING recipe_id\`)[0];
+    const old=(await sql`DELETE FROM gelato_recipe_stability WHERE id=${id} RETURNING recipe_id`)[0];
     if(!old)return {status:404,data:{error:"Stability record not found"}};
-    const recipe=(await sql\`SELECT id,research_target FROM gelato_business_recipes WHERE id=\${old.recipe_id}\`)[0];
-    const rows=await sql\`SELECT * FROM gelato_recipe_stability WHERE recipe_id=\${old.recipe_id} ORDER BY checkpoint_day DESC,test_date DESC,id DESC\`;
+    const recipe=(await sql`SELECT id,research_target FROM gelato_business_recipes WHERE id=${old.recipe_id}`)[0];
+    const rows=await sql`SELECT * FROM gelato_recipe_stability WHERE recipe_id=${old.recipe_id} ORDER BY checkpoint_day DESC,test_date DESC,id DESC`;
     return {status:200,data:{deleted:true,summary:stabilitySummary(rows,recipe)}};
   }
   return {status:405,data:{error:"Method not allowed"}};
