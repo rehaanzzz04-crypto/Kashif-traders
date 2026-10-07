@@ -18,7 +18,8 @@ Start-ScheduledTask -TaskName $taskName
 $ip = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.PrefixOrigin -ne "WellKnown" } | Select-Object -First 1 -ExpandProperty IPAddress
 Write-Host ""
 Write-Host "Setup complete. Mobile/Cashier par yeh address open karein:"
-Write-Host ("http://" + $ip + ":8787") -ForegroundColor Green
+Write-Host ("Detected LAN: http://" + $ip + ":8787") -ForegroundColor Green
+Write-Host "Shop reserved address: http://192.168.0.102:8787" -ForegroundColor Green
 Write-Host "Laptop aur mobile same Wi-Fi par hone chahiye."
 Read-Host "Enter press karein"
 
