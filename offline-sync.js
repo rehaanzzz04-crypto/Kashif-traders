@@ -105,7 +105,7 @@
         if(id<0)u.searchParams.set('id',await resolveValue(id,item.owner,"id"));url=u.pathname+u.search;
         item={...item,wire:{body,url}};await put('operations',item);
       }
-    } catch(e) {await put('operations',{...item,error:e.message});return null;}
+    } catch(e) {await put('operations',{...item,state:'review',error:e.message});return null;}
     let res;
     try {res=await nativeFetch(url,{method:item.method,signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json','X-KT-Offline-ID':item.key,'X-KT-Offline-Owner':item.owner},body:item.method==='DELETE'?undefined:JSON.stringify(body)});}
     catch {await put('operations',{...item,error:'Connection nahi mila; entry phone par mehfooz hai.'});return null;}
@@ -125,8 +125,11 @@
       const r=await nativeFetch('/api/auth?action=me',{cache:'no-store'});if(!r.ok)return;
       const auth=await r.json();if(String(auth.user?.id)!==owner())return;
       for(const item of await items()) {
-        if(item.state==='review')break;
-        const result=await transmit(item);if(!result||!result.ok)break;
+        // One failed/review item must not block unrelated requests behind it.
+        if(item.state==='review')continue;
+        const result=await transmit(item);
+        if(!result)continue;
+        if(!result.ok)continue;
       }
     } catch(e) {console.warn('Offline sync paused',e);} finally {running=false;await badge();}
   }
@@ -156,7 +159,10 @@
       }
       return await cached(url)||response({error:'Yeh data phone par save nahi hai. Online khol kar Offline Data Tayyar karein.'},503);
     }
-    if(mutations.has(method)&&supported(u)&&owner()) {
+    // Salary approval/reject/pay PATCH actions are admin decisions and must hit the server immediately.
+    // Only employee salary POST requests are allowed into the offline queue.
+    const salaryAdminAction=u.pathname==='/api/salaries'&&method!=='POST';
+    if(mutations.has(method)&&supported(u)&&owner()&&!salaryAdminAction) {
       let raw=init.body;
       if(raw===undefined&&input instanceof Request)raw=await input.clone().text();
       let body={};try{if(raw)body=JSON.parse(raw);}catch{return response({error:'Is attachment ko save karne ke liye internet chahiye.'},503);}
