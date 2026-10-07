@@ -9,7 +9,7 @@ const ROOT = path.resolve(HERE, "..");
 const DATA_DIR = process.env.KT_LOCAL_DATA_DIR || path.join(HERE, "data");
 const STORE_FILE = path.join(DATA_DIR, "local-billing.json");
 const PORT = Number(process.env.KT_LOCAL_PORT || 8787);
-const CLOUD_ORIGIN = String(process.env.KT_CLOUD_ORIGIN || "https://kashif-traders-git-work-ocr-item-92cef3-milkestone-enterprises.vercel.app").replace(/\/$/, "");
+const CLOUD_ORIGIN = String(process.env.KT_CLOUD_ORIGIN || "https://kashif-traders.vercel.app").replace(/\/$/, "");
 const HOST = process.env.KT_LOCAL_HOST || "0.0.0.0";
 const emptyStore = () => ({ version: 1, nextLocalId: -1, bills: [], sessions: {}, getCache: {}, lastCloudSync: null });
 let store = emptyStore(), writeChain = Promise.resolve(), syncing = false;
