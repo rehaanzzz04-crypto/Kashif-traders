@@ -58,7 +58,9 @@ async function handler(req,res){
     }
     const st=action==='approve'?'approved':'rejected';
     const rows=await sql`UPDATE salary_requests SET status=${st},reviewed_by_employee_id=${user.id},reviewed_by_code=${user.employee_code},reviewed_by_name=${user.full_name},reviewed_at=now(),review_note=${cleanText(b.note)} WHERE id=${rid} AND status='pending' RETURNING *`;
-    const record=(await attachEntryNumbers(sql,'salary_requests',rows,{assignMissing:st==='approved'}))[0]||null;
+    if(!rows[0])return res.status(409).json({error:'Request already reviewed'});
+    if(st==='rejected')return res.status(200).json({record:{...rows[0],entry_number:null}});
+    const record=(await attachEntryNumbers(sql,'salary_requests',rows,{assignMissing:true}))[0]||rows[0];
     return res.status(200).json({record});
    }
    if(action==='pay'){
