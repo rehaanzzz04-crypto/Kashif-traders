@@ -20,7 +20,25 @@ test('thermal PDF expands with content and keeps totals/footer within the page',
  const data={invoice:'CS-1',date:'08-Oct-2026',customer:'A long customer name that wraps into additional lines',createdBy:'Ali',paidBy:'Cashier',payment:'Cash',items:Array.from({length:count},()=>({name:'Full Cream Milk Powder Bakery Pack',qty:2,unit:'kg',rate:1500,amount:3000})),subtotal:count*3000,total:count*3000,discount:0,received:0,due:count*3000,status:'Credit'};
  const pdf=await vm.runInNewContext(pdfCode+';pdfBlob()',{Blob,receiptData:()=>data,qtyText:String,thermalMoney:String}).text();
  const height=Number(pdf.match(/MediaBox \[0 0 226.77 ([\d.]+)/)[1]);assert.ok(height>previous);previous=height;
- assert.match(pdf,/\(Thank you\.\)/);assert.match(pdf,/\(CS-1\)/);
+ assert.match(pdf,/\(Thank you\.\)/);assert.match(pdf,/\(CS-1\)/);assert.match(pdf,/\(Total Items\)/);assert.ok(pdf.includes("("+count+") Tj"));
  for(const m of pdf.matchAll(/([\d.]+) ([\d.]+) Td /g)){assert.ok(Number(m[1])>=0&&Number(m[1])<226.77);assert.ok(Number(m[2])>=10&&Number(m[2])<height);}
+ }
+});
+
+test('payment keeps the saved receipt selected across refresh, including an empty Pending list',async()=>{
+ for(const pending of [[],[{id:2,status:'pending'}]]) {
+  const nodes={};const $=id=>nodes[id] ||= {textContent:'',scrollIntoView(){},focus(){}};
+  const saved={id:1,status:'paid',invoice_number:'CS-1',items:[{name:'Milk',qty:1,rate:200}]};
+  const context=vm.createContext({$,active:{id:1,status:'pending'},busy:false,editing:false,receiptReadyId:null,bills:[],status:'pending',encodeURIComponent,
+   fetch:async(url,options)=>({ok:true,status:200,json:async()=>options.method==='PATCH'?{record:saved}:{records:pending}}),
+   closePayment(){},setActions(){},renderList(){},selectBill(row){context.active=row;context.receiptReadyId=null;},clearDetail(){context.active=null;}
+  });
+  const patch=source.slice(source.indexOf('  async function patchBill('),source.indexOf('  async function confirmPayment('));
+  const load=source.slice(source.indexOf('  async function load('),source.indexOf('  fetch("/api/auth'));
+  vm.runInContext(patch+load,context);
+  await vm.runInContext('patchBill({status:"paid"},"Saved")',context);
+  assert.equal(context.active.id,1);assert.equal(context.active.status,'paid');assert.equal(context.busy,false);
+  await vm.runInContext('load()',context);assert.equal(context.active.id,1);
+  assert.match(nodes.cashierStatus.textContent,/receipt print/);
  }
 });

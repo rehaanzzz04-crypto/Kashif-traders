@@ -16,6 +16,7 @@
   const hasCustomerAccount = x => Number(x?.customer_id || 0) > 0;
 
   let bills = [], active = null, editing = false, status = "pending", busy = false, settlement = "full", isAdmin = false, inlinePaymentMethod = "Cash";
+  let receiptReadyId = null;
   $("cashierBack").onclick = () => location.href = "/";
 
   function visibleBills() {
@@ -48,6 +49,7 @@
   }
 
   function clearDetail() {
+    receiptReadyId = null;
     active = null;
     editing = false;
     $("cashierBillNo").textContent = "Select a bill";
@@ -81,6 +83,7 @@
   function selectBill(x) {
     if (!x) return clearDetail();
     active = x;
+    receiptReadyId = null;
     editing = false;
     renderList();
     $("cashierBillNo").textContent = x.invoice_number;
@@ -303,8 +306,20 @@
       if (!response.ok) throw Error(j.error || "Invoice update failed");
       $("cashierStatus").textContent = j.pending_sync ? "Entry phone par save hai. Payment ki server tasdeeq sync ke baad hogi." : successMessage || "Invoice updated.";
       closePayment();
-      active = null;
-      await load();
+      const saved = !j.pending_sync && j.record && ["paid","partial","credit"].includes(j.record.status) ? j.record : null;
+      if (saved) {
+        selectBill(saved);
+        receiptReadyId = saved.id;
+      } else {
+        active = null;
+        receiptReadyId = null;
+      }
+      await load(true);
+      if (saved) {
+        $("cashierStatus").textContent = (successMessage || "Payment save ho gayi.") + " Ab isi bill ki receipt print karein.";
+        $("cashierPrint").scrollIntoView({behavior:"smooth",block:"nearest"});
+        $("cashierPrint").focus({preventScroll:true});
+      }
     } catch (e) {
       $("cashierStatus").textContent = e.message;
     } finally {
@@ -398,6 +413,7 @@
   };
 
   document.querySelectorAll(".cashier-tabs [data-status]").forEach(button => button.onclick = () => {
+    receiptReadyId = null;
     status = button.dataset.status;
     document.querySelectorAll(".cashier-tabs button").forEach(x => x.classList.toggle("active", x === button));
     active = null;
@@ -500,6 +516,7 @@
       const size=Math.min(10,105/(value.length*.6));
       text(label,margin,9,bold); text(value,W-margin,size,bold,"right"); y += 14;
     };
+    sum("Total Items",String(items.length));
     sum("Subtotal",thermalMoney(d.subtotal));
     if(d.discount) sum("Discount",thermalMoney(d.discount));
     sum("Total PKR",thermalMoney(d.total));sum("Received",thermalMoney(d.received));
@@ -541,8 +558,8 @@
   $("cashierPrint").onclick = printReceipt;
   $("cashierShare").onclick = shareReceipt;
 
-  async function load() {
-    if (editing) return;
+  async function load(force = false) {
+    if (editing || (busy && !force)) return;
     try {
       const response = await fetch("/api/data?resource=cash_sales&status=" + encodeURIComponent(status),{cache:"no-store"});
       if (response.status === 401) { location.replace("/login.html"); return; }
@@ -551,8 +568,8 @@
       bills = j.records || [];
       renderList();
       if (!active && bills[0]) selectBill(bills[0]);
-      else if (!bills.length) clearDetail();
-      $("cashierStatus").textContent = bills.length ? "Bills updated." : "Is tab mein koi bill nahi.";
+      else if (!bills.length && active?.id !== receiptReadyId) clearDetail();
+      $("cashierStatus").textContent = active && active.id === receiptReadyId ? "Payment save ho gayi. Isi bill ki receipt print karein, ya agla bill select karein." : bills.length ? "Bills updated." : "Is tab mein koi bill nahi.";
     } catch (e) {
       $("cashierStatus").textContent = e.message;
     }
