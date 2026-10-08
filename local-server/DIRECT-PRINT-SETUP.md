@@ -7,3 +7,7 @@ A live BlackCopper 80mm Series(1) printer test sent excessive blank paper after 
 The working-branch Cashier now shows **AUTO PRINT PAUSED** and the Print Receipt button opens the PDF viewer rather than triggering kiosk auto-print. Printed bill geometry remains unchanged. The latest Desktop launcher no longer uses `--kiosk-printing`. On an already-downloaded launcher, open the normal Cashier in Edge/Chrome; you do not need the shortcut until a tested printing bridge exists.
 
 A proper one-click printing implementation will need Windows-side controlled RAW ESC/POS (if BlackCopper supports it) or a driver-specific print bridge that sends only receipt-length bytes and a cut instruction. The browser page alone cannot guarantee correct physical feed length on this driver. Do not enable silent mode until tested with one very short bill and an emergency Cancel action.
+
+## One PDF page, one receipt (2026-10-09)
+
+Cashier invoices now produce **one unbroken PDF page**, irrespective of product count (within the PDF page-size limit). A 28-item bill is roughly 536mm high. This fixes repeated physical page-breaks in preview, **not** BlackCopper's fixed-size driver behavior. The working browser's silent print remains disabled. For long bills, the standard 210mm selection will crop/reflow, while the 3276mm driver form previously caused excessive blank feed. Do **not** print long invoices until printer-specific continuous-feed or tested ESC/POS support is available. Short bills can use the successfully tested 72.1 x 210mm manual configuration.

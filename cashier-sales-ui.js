@@ -481,7 +481,9 @@
       $("cashierStatus").textContent = "Receipt kholne ke liye pop-ups allow karein.";
       return;
     }
-    $("cashierStatus").textContent = "Receipt PDF ready. BlackCopper printer mein 72.1 x 210mm aur Actual size 100% rakhein. Lambi receipts 210mm pages mein hain.";
+    $("cashierStatus").textContent = lastReceiptHeightPts <= 595.28
+      ? "Receipt PDF ready (one page). BlackCopper: 72.1 x 210mm, Actual Size 100%."
+      : "ONE CONTINUOUS PDF ready (" + Math.ceil(lastReceiptHeightPts * 25.4 / 72) + "mm). Printer ALERT: 210mm form par poora print nahi hoga; 3276mm form ne pehle blank paper diya tha. Bina safe printer-specific test ke physical print na karein.";
     // Keep the PDF alive while its viewer is open, including later printing/download.
     const timer = setInterval(() => {
       if (w.closed) { clearInterval(timer); URL.revokeObjectURL(url); }
@@ -502,27 +504,20 @@
     return out.length ? out : [""];
   }
 
+  let lastReceiptHeightPts = 0;
   function pdfBlob() {
     const d = receiptData(); if (!d) return new Blob([],{type:"application/pdf"});
     const safe = s => String(s).replace(/([\\()])/g,"\\$1").replace(/[^\x20-\x7E]/g,"?");
     const W = 204.09, margin = 8, printableRight = 174, items = d.items; // Keep text inside the printer's narrower safe area
-    const pages = [[]]; // No page can exceed the BlackCopper 210mm safe form.
-    let page = 0, y = 16;
+    const commands = []; // One continuous PDF page without 210mm pagination.
+    let y = 16;
     // Courier has fixed character widths, so alignment and wrapping are exact.
     const text = (value,x,size=10,bold=false,align="left") => {
       const valueText = safe(value), width = String(value).replace(/[^\x20-\x7E]/g,"?").length * size * .6;
       let px = align === "center" ? (margin+printableRight-width)/2 : align === "right" ? x-width : x;
-      pages[page].push({kind:"text",value:valueText,x:px,y,size,bold});
+      commands.push({kind:"text",value:valueText,x:px,y,size,bold});
     };
-    const rule = () => pages[page].push({kind:"rule",y});
-    // 210mm PDF page boundaries are kept for the BlackCopper driver,
-    // but the printed roll reads as one invoice with one heading.
-    const nextPage = () => {
-      page += 1;
-      pages.push([]);
-      y = 12;
-    };
-    const ensureRoom = needed => { if (y + needed > 564) nextPage(); };
+    const rule = () => commands.push({kind:"rule",y});
     const pair = (label,value) => {
       const lines = wrapThermal(value,18);
       text(label,margin,8.5,true);
@@ -534,13 +529,7 @@
     y += 2; rule(); y += 12;
     text("Qty",margin,9.5,true); text("Rate",108,9.5,true,"right"); text("Amount",printableRight,9.5,true,"right"); y += 8; rule(); y += 12;
     items.forEach(p => {
-      const lines = wrapThermal(p.name,26);
-      if (lines.length * 12 + 22 < 520) ensureRoom(lines.length * 12 + 22);
-      for (const line of lines) {
-        if (y + 34 > 564) nextPage();
-        text(line,margin,10,true); y += 12;
-      }
-      ensureRoom(22);
+      for (const line of wrapThermal(p.name,26)) { text(line,margin,10,true); y += 12; }
       // Numeric values have their own row and columns, away from product names.
       const values=[qtyText(p.qty)+" "+p.unit,thermalMoney(p.rate),thermalMoney(p.amount)];
       const size=Math.min(9.8,49/(values[0].length*.6),45/(values[1].length*.6),58/(values[2].length*.6));
@@ -551,36 +540,32 @@
       const size=Math.min(9.8,80/(value.length*.6));
       text(label,margin,9,bold); text(value,printableRight,size,bold,"right"); y += 14;
     };
-    ensureRoom(14 * (5 + (d.discount ? 1 : 0) + (d.due > 0 ? 2 : 0)) + 40);
     sum("Total Items",String(items.length));
     sum("Subtotal",thermalMoney(d.subtotal));
     if(d.discount) sum("Discount",thermalMoney(d.discount));
     sum("Total PKR",thermalMoney(d.total));sum("Received",thermalMoney(d.received));
     if (d.due > 0) {sum("Due",thermalMoney(d.due));sum("Status",d.status);}
     rule();y+=14;text("Thank you.",0,9,true,"center");
-    // Each PDF page is at most 72.1 x 210mm, even for very long bills.
-    const pageHeights = pages.map((_,i) => i === page ? Math.ceil(y+8) : 595.28);
-    const kids = pages.map((_,i) => (5+2*i)+" 0 R").join(" ");
-    const objects = [
+    const H = Math.ceil(y+8);
+    lastReceiptHeightPts=H;
+    // One continuous single-page PDF; physical roll printing requires driver calibration.
+    const stream=commands.map(c=>c.kind==="rule"
+      ? "0.5 w "+margin+" "+(H-c.y)+" m "+printableRight+" "+(H-c.y)+" l S"
+      : "BT /"+(c.bold?"F2":"F1")+" "+c.size.toFixed(2)+" Tf "+c.x.toFixed(2)+" "+(H-c.y).toFixed(2)+" Td ("+c.value+") Tj ET").join("\n");
+    const objects=[
       "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
-      "2 0 obj << /Type /Pages /Kids ["+kids+"] /Count "+pages.length+" >> endobj",
-      "3 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier >> endobj",
-      "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >> endobj"
+      "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
+      "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 "+W.toFixed(2)+" "+H.toFixed(2)+"] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >> endobj",
+      "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier >> endobj",
+      "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >> endobj",
+      "6 0 obj << /Length "+stream.length+" >> stream\n"+stream+"\nendstream endobj"
     ];
-    for (let i=0;i<pages.length;i++) {
-      const H=pageHeights[i], pageObj=5+2*i, streamObj=6+2*i;
-      const stream=pages[i].map(c=>c.kind==="rule"
-        ?"0.5 w "+margin+" "+(H-c.y)+" m "+printableRight+" "+(H-c.y)+" l S"
-        :"BT /"+(c.bold?"F2":"F1")+" "+c.size.toFixed(2)+" Tf "+c.x.toFixed(2)+" "+(H-c.y).toFixed(2)+" Td ("+c.value+") Tj ET").join("\n");
-      objects.push(pageObj+" 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 "+W.toFixed(2)+" "+H.toFixed(2)+"] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents "+streamObj+" 0 R >> endobj");
-      objects.push(streamObj+" 0 obj << /Length "+stream.length+" >> stream\n"+stream+"\nendstream endobj");
-    }
-    let pdf="%PDF-1.4\n", offsets=[0];
+    let pdf="%PDF-1.4\n",offsets=[0];
     objects.forEach(o=>{offsets.push(pdf.length);pdf+=o+"\n";});
     const xref=pdf.length;
-    pdf+="xref\n0 "+(objects.length+1)+"\n0000000000 65535 f \n"+
+    pdf+="xref\n0 7\n0000000000 65535 f \n"+
       offsets.slice(1).map(n=>String(n).padStart(10,"0")+" 00000 n \n").join("")+
-      "trailer << /Size "+(objects.length+1)+" /Root 1 0 R >>\nstartxref\n"+xref+"\n%%EOF";
+      "trailer << /Size 7 /Root 1 0 R >>\nstartxref\n"+xref+"\n%%EOF";
     return new Blob([pdf],{type:"application/pdf"});
   }
 
