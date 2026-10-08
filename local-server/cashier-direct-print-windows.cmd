@@ -17,8 +17,8 @@ if not exist "%CHROME%" (
   exit /b 1
 )
 set "CASHIER_URL=https://kashif-traders-git-working-from-p-4c5db6-milkestone-enterprises.vercel.app/cashier-sales.html?directPrint=1"
-start "Kashif Traders Cashier" "%CHROME%" --user-data-dir="%LOCALAPPDATA%\KashifTraders\CashierDirectPrintProfile" --no-first-run --kiosk-printing --app="%CASHIER_URL%"
+start "Kashif Traders Cashier" "%CHROME%" --user-data-dir="%LOCALAPPDATA%\KashifTraders\CashierDirectPrintProfile" --no-first-run --app="%CASHIER_URL%"
 echo Cashier launched. Sign in once in the dedicated window.
-echo In Cashier use Print Receipt. PDF Share remains separate.
+echo SAFETY NOTICE: Direct printing is paused due to excess blank paper. Use Print Receipt PDF until safe driver-specific printing is ready.
 echo If print preview still opens, check Windows default printer and Chrome version.
 endlocal

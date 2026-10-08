@@ -453,109 +453,20 @@
   }
 
 
-  // Direct printing is opt-in, enabled only by the Windows cashier launcher.
-  // A normal web browser is NOT guaranteed to print silently.
-  const directPrintQuery = new URLSearchParams(location.search).get("directPrint");
-  const directPrintStorageKey = "kt-cashier-direct-print-profile-v1";
-  let directPrintOptIn = directPrintQuery === "1";
-  try {
-    // The dedicated Chrome cashier profile remembers the selection after login,
-    // dashboard navigation and reload. Other Chrome/Edge profiles remain separate.
-    if (directPrintQuery === "1") localStorage.setItem(directPrintStorageKey, "1");
-    if (directPrintQuery === "0") localStorage.removeItem(directPrintStorageKey);
-    if (directPrintQuery !== "0" && localStorage.getItem(directPrintStorageKey) === "1")
-      directPrintOptIn = true;
-  } catch (_) { /* URL query continues to work if storage is blocked */ }
-  const directPrintMode = directPrintOptIn && /Win/i.test(navigator.platform || navigator.userAgent);
+  // Safety stop: BlackCopper 80mm driver uses a 3276mm form and
+  // Chromium kiosk printing can feed an entire blank roll.
+  // Never issue background window.print() on this printer.
   const printModeIndicator = $("cashierPrintMode");
   if (printModeIndicator) {
-    printModeIndicator.textContent = directPrintMode
-      ? "DIRECT PRINT ON - Windows default printer (Chrome shortcut)"
-      : "PDF PRINT MODE - use the Desktop Cashier shortcut for direct printing";
-    printModeIndicator.className = "cashier-print-mode " + (directPrintMode ? "direct" : "standard");
+    printModeIndicator.textContent = "AUTO PRINT PAUSED - printer feeds blank paper. Use PDF Print until a safe printer bridge is configured.";
+    printModeIndicator.className = "cashier-print-mode standard";
   }
-  if (directPrintMode) $("cashierPrint").textContent = "Print Receipt (Direct)";
-  let directPrintBusy = false;
-  function directReceiptHtml(d) {
-    const info = [["Receipt No",d.invoice],["Date",d.date],["Customer",d.customer],
-      ["Created by",d.createdBy],["Paid by",d.paidBy],["Payment",d.payment]];
-    const meta = info.map(p => '<div class="meta"><b>'+esc(p[0])+'</b><span>'+esc(p[1])+'</span></div>').join("");
-    const items = d.items.map(p => '<div class="item"><div class="product">'+esc(p.name)+'</div>'+
-      '<div class="numbers"><span>'+esc(qtyText(p.qty)+" "+p.unit)+'</span>'+
-      '<span>'+esc(thermalMoney(p.rate))+'</span><span>'+esc(thermalMoney(p.amount))+'</span></div></div>').join("");
-    const total = (label,value) => '<div class="total"><span>'+esc(label)+'</span><b>'+esc(value)+'</b></div>';
-    const sums = total("Total Items",String(d.items.length))+
-      total("Subtotal",thermalMoney(d.subtotal))+
-      (d.discount ? total("Discount",thermalMoney(d.discount)) : "")+
-      total("Total PKR",thermalMoney(d.total))+total("Received",thermalMoney(d.received))+
-      (d.due > 0 ? total("Due",thermalMoney(d.due))+total("Status",d.status) : "");
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Kashif Traders Receipt</title>'+
-      '<style id="receiptPageSize">@page{size:72.1mm 180mm;margin:0}</style>'+
-      '<style>*{box-sizing:border-box}html,body{margin:0;padding:0;background:white;color:#000}'+
-      'body{font-family:"Courier New",Courier,monospace;font-weight:700;letter-spacing:0}'+
-      '.receipt{width:58mm;margin-left:3mm;padding:3.2mm 0 2.5mm;font-size:9pt;line-height:1.24}'+
-      '.brand{text-align:center;font-size:13pt;font-weight:900;white-space:nowrap}'+
-      '.subtitle{text-align:center;font-size:9pt;margin-top:1.3mm;margin-bottom:2.1mm}'+
-      '.rule{border-top:.2mm solid #555;margin:1.4mm 0 2mm}'+
-      '.meta{display:grid;grid-template-columns:22mm minmax(0,1fr);gap:0;padding:1mm 0}'+
-      '.meta span{overflow-wrap:anywhere;word-break:normal}'+
-      '.head,.numbers{display:grid;grid-template-columns:23mm 14mm 21mm;gap:0}'+
-      '.head{border-bottom:.2mm solid #777;padding:1.2mm 0 1.5mm}'+
-      '.head span:nth-child(n+2),.numbers span:nth-child(n+2){text-align:right}'+
-      '.item{border-bottom:.2mm solid #aaa;padding:1.5mm 0}'+
-      '.product{overflow-wrap:anywhere;margin-bottom:1.3mm}'+
-      '.numbers{font-size:8.7pt;font-weight:700;white-space:nowrap}'+
-      '.total{display:flex;align-items:baseline;justify-content:space-between;gap:2mm;padding:.8mm 0}'+
-      '.total b{white-space:nowrap}'+
-      '.footer{border-top:.2mm solid #777;margin-top:2mm;padding-top:2.5mm;text-align:center}'+
-      '</style></head><body><div class="receipt">'+
-      '<div class="brand">KASHIF TRADERS</div><div class="subtitle">Cash Sale Receipt</div>'+
-      '<div class="rule"></div>'+meta+'<div class="rule"></div>'+
-      '<div class="head"><span>Qty</span><span>Rate</span><span>Amount</span></div>'+
-      items+sums+'<div class="footer">Thank you.</div></div></body></html>';
-  }
-  function directPrintReceipt(d) {
-    if (directPrintBusy) return;
-    directPrintBusy = true;
-    const frame = document.createElement("iframe");
-    frame.setAttribute("aria-hidden","true");
-    // It must remain laid out, rather than display:none, for Chromium to print.
-    frame.style.cssText = "position:fixed;left:-10000px;top:0;width:72.1mm;height:1000px;border:0;opacity:0;pointer-events:none";
-    document.body.appendChild(frame);
-    let cleanupTimer;
-    const cleanup = () => {
-      clearTimeout(cleanupTimer);
-      if(frame.parentNode) frame.remove();
-      directPrintBusy = false;
-    };
-    try {
-      const doc = frame.contentDocument;
-      doc.open();
-      doc.write(directReceiptHtml(d));
-      doc.close();
-      // The page size follows the actual rendered receipt height, not a
-      // fixed 3276mm roll, so short bills do not waste a long blank strip.
-      const rect = doc.querySelector(".receipt").getBoundingClientRect();
-      const lengthMm = Math.min(3200,Math.max(65,Math.ceil((rect.bottom + 16) * 25.4 / 96)));
-      doc.getElementById("receiptPageSize").textContent =
-        "@page{size:72.1mm " + lengthMm + "mm;margin:0}";
-      frame.contentWindow.addEventListener("afterprint",cleanup,{once:true});
-      cleanupTimer = setTimeout(cleanup,60000);
-      // No PDF preview: window.print() targets the receipt iframe only.
-      // Silent printing requires the separately launched Chrome kiosk-printing mode.
-      frame.contentWindow.focus();
-      frame.contentWindow.print();
-      $("cashierStatus").textContent = "Receipt print command bhej di. Printer output check karein. Agar dialog khule to Direct Print shortcut se Cashier open karein.";
-    } catch(error) {
-      cleanup();
-      $("cashierStatus").textContent = "Direct printing unavailable: " + error.message + ". Normal Cashier page se PDF Print use karein.";
-    }
-  }
-
+  $("cashierPrint").textContent = "Print Receipt (PDF)";
+  
   function printReceipt() {
     const data = receiptData();
     if (!data) return;
-    if (directPrintMode) { directPrintReceipt(data); return; }
+    // PDF opens for a deliberate user-confirmed print. Never start kiosk printing.
     const url = URL.createObjectURL(pdfBlob());
     const w = window.open(url, "_blank");
     if (!w) {

@@ -73,33 +73,11 @@ test('receipt amount and total columns stay inside safe area',async()=>{
  }
 });
 
-const directHtmlCode=source.slice(source.indexOf('  function directReceiptHtml('),source.indexOf('  function directPrintReceipt('));
-test('direct thermal receipt HTML is escaped and keeps existing totals',()=>{
- const fn=vm.runInNewContext(directHtmlCode+';directReceiptHtml',{esc:v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'),qtyText:String,thermalMoney:String});
- const receipt={invoice:'CS-1',date:'08 Oct 2026 16:41',customer:'Walk-in <Customer>',createdBy:'Ali',paidBy:'Ali',payment:'Cash',items:[{name:'Milk <Powder>',qty:4,unit:'pcs',rate:250,amount:1000}],subtotal:1000,discount:0,total:1000,received:1000,due:0,status:'Paid'};
- const html=fn(receipt);
- assert.match(html,/72\.1mm/);
- assert.match(html,/Total Items/);
- assert.match(html,/1,000|1000/);
- assert.match(html,/Milk &lt;Powder&gt;/);
- assert.ok(!html.includes('Milk <Powder>'));
- assert.ok(!html.includes('<Customer>'));
- assert.ok(html.includes('08 Oct 2026 16:41'));
-});
 
-const modeCode=source.slice(source.indexOf('  const directPrintQuery ='),source.indexOf('  let directPrintBusy ='));
-test('dedicated Windows cashier Chrome profile retains printing mode after login',()=>{
- const saved=new Map(),store={setItem:(k,v)=>saved.set(k,v),getItem:k=>saved.get(k)||null,removeItem:k=>saved.delete(k)};
- const state={textContent:'',className:''};
- const getMode=(search,platform='Win32')=>vm.runInNewContext(modeCode+';directPrintMode',{
-   URLSearchParams,location:{search},navigator:{platform},localStorage:store,$:id=>id==='cashierPrintMode'?state:{textContent:''}
- });
- assert.equal(getMode('?directPrint=1'),true);
- assert.match(state.textContent,/DIRECT PRINT ON/);
- assert.equal(getMode(''),true);
- assert.equal(getMode('?other=1'),true);
- assert.equal(getMode('?directPrint=0'),false);
- assert.match(state.textContent,/PDF PRINT MODE/);
- assert.equal(getMode(''),false);
- assert.equal(getMode('?directPrint=1','Linux'),false);
+test('unsafe silent kiosk printing has been removed after excessive blank paper',()=>{
+ assert.doesNotMatch(source,/frame\.contentWindow\.print\s*\(/);
+ assert.doesNotMatch(source,/directPrintReceipt\s*\(/);
+ assert.match(source,/AUTO PRINT PAUSED/);
+ assert.match(source,/Print Receipt \(PDF\)/);
+ assert.match(source,/URL\.createObjectURL\(pdfBlob\(\)\)/);
 });
