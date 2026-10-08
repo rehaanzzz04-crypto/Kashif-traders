@@ -435,28 +435,20 @@
     };
   }
 
-  function receiptMarkup() {
-    const d = receiptData(); if (!d) return "";
-    const rows = d.items.map(p => '<tr><td class="item-name">' + esc(p.name) + '<small>' + esc(qtyText(p.qty) + " " + p.unit) + '</small></td><td>' + esc(qtyText(p.qty)) + '</td><td>' + esc(thermalMoney(p.rate)) + '</td><td>' + esc(thermalMoney(p.amount)) + '</td></tr>').join("");
-    const credit = d.due > 0 ? '<div class="sum"><span>Remaining / Due</span><b>PKR ' + esc(thermalMoney(d.due)) + '</b></div><div class="sum"><span>Status</span><b>' + esc(d.status) + '</b></div>' : "";
-    return '<main class="receipt"><header><h1>KASHIF TRADERS</h1><div>Cash Sale Receipt</div></header><div class="dash"></div>' +
-      '<section class="info"><div><span>Receipt No</span><b>' + esc(d.invoice) + '</b></div><div><span>Date</span><b>' + esc(d.date) + '</b></div><div><span>Customer</span><b>' + esc(d.customer) + '</b></div><div><span>Created by</span><b>' + esc(d.createdBy) + '</b></div><div><span>Paid by</span><b>' + esc(d.paidBy) + '</b></div><div><span>Payment</span><b>' + esc(d.payment) + '</b></div></section>' +
-      '<div class="dash"></div><table><thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<div class="dash"></div><section class="totals"><div class="sum"><span>Subtotal</span><b>PKR ' + esc(thermalMoney(d.subtotal)) + '</b></div><div class="sum"><span>Discount</span><b>PKR ' + esc(thermalMoney(d.discount)) + '</b></div><div class="sum grand"><span>Total</span><b>PKR ' + esc(thermalMoney(d.total)) + '</b></div><div class="sum"><span>Received</span><b>PKR ' + esc(thermalMoney(d.received)) + '</b></div>' + credit + '</section>' +
-      '<div class="dash"></div><footer>Thank you.</footer></main>';
-  }
-
-  function receiptDocument() {
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Receipt ' + esc(active?.invoice_number || "") + '</title><style>' +
-      '@page{size:80mm auto;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000}body{width:80mm;margin:0 auto;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}.receipt{width:72mm;margin:0 auto;padding:5mm 1.5mm 7mm;font-size:11px;line-height:1.34}header{text-align:center}h1{margin:0;font-size:19px;line-height:1.1;font-weight:900;letter-spacing:.2px}header div{margin-top:3px;font-size:11px}.dash{border-top:1px dashed #000;margin:8px 0}.info{display:grid;gap:3px}.info div{display:grid;grid-template-columns:25mm 1fr;gap:2mm}.info span{white-space:nowrap}.info b{font-weight:700;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px;line-height:1.24;font-variant-numeric:tabular-nums}th,td{padding:4px 1px;vertical-align:top;text-align:right}th{font-weight:900;font-size:11px;border-bottom:1px dashed #000}th:first-child,td:first-child{text-align:left;width:44%}th:nth-child(2),td:nth-child(2){width:9%}th:nth-child(3),td:nth-child(3){width:22%}th:nth-child(4),td:nth-child(4){width:25%}td:nth-child(2),td:nth-child(3),td:nth-child(4){font-weight:900;font-size:11.5px;white-space:nowrap;letter-spacing:.05px}.item-name{font-weight:800;font-size:11px;overflow-wrap:anywhere}.item-name small{display:block;font-weight:700;font-size:9.5px;margin-top:2px}.totals{margin-left:auto;width:68%}.sum{display:flex;justify-content:space-between;gap:6px;padding:2px 0}.sum b{white-space:nowrap}.grand{font-size:12px;font-weight:900;border-top:1px solid #000;margin-top:2px;padding-top:4px}footer{text-align:center;font-size:11px;padding-top:4px}@media screen{body{padding:12px 0}.receipt{box-shadow:0 0 0 1px #eee}}' +
-      '</style></head><body>' + receiptMarkup() + '<script>window.addEventListener("load",function(){window.print();});<\/script></body></html>';
-  }
-
   function printReceipt() {
     if (!receiptData()) return;
-    const w = window.open("", "_blank", "width=430,height=760");
-    if (!w) { $("cashierStatus").textContent = "Pop-ups allow karein."; return; }
-    w.document.open(); w.document.write(receiptDocument()); w.document.close();
+    const url = URL.createObjectURL(pdfBlob());
+    const w = window.open(url, "_blank");
+    if (!w) {
+      URL.revokeObjectURL(url);
+      $("cashierStatus").textContent = "Receipt kholne ke liye pop-ups allow karein.";
+      return;
+    }
+    $("cashierStatus").textContent = "Receipt PDF khul gayi hai. Us mein Print dabayein; paper 80mm aur scale 100% rakhein.";
+    // Keep the PDF alive while its viewer is open, including later printing/download.
+    const timer = setInterval(() => {
+      if (w.closed) { clearInterval(timer); URL.revokeObjectURL(url); }
+    }, 1000);
   }
 
   function wrapThermal(text,max) {
@@ -477,38 +469,52 @@
     const d = receiptData(); if (!d) return new Blob([],{type:"application/pdf"});
     const safe = s => String(s).replace(/([\\()])/g,"\\$1").replace(/[^\x20-\x7E]/g,"?");
     const W = 226.77, margin = 12, items = d.items;
-    let estimated = 205 + items.reduce((n,p) => n + Math.max(1,wrapThermal(p.name,24).length) * 12 + 14,0) + (d.due > 0 ? 28 : 0);
-    const H = Math.max(390,estimated), cmd = [];
-    const text = (value,x,y,size=8,bold=false,align="left") => {
-      const s = safe(value), cw = size * .6; let px = x;
-      if (align === "center") px = Math.max(margin,(W - s.length * cw) / 2);
-      if (align === "right") px = Math.max(margin,x - s.length * cw);
-      cmd.push("BT /" + (bold ? "F2" : "F1") + " " + size + " Tf " + px.toFixed(2) + " " + y.toFixed(2) + " Td (" + s + ") Tj ET");
+    const commands = [];
+    let y = 18;
+    // Courier has fixed character widths, so alignment and wrapping are exact.
+    const text = (value,x,size=10,bold=false,align="left") => {
+      const valueText = safe(value), width = String(value).replace(/[^\x20-\x7E]/g,"?").length * size * .6;
+      let px = align === "center" ? (W-width)/2 : align === "right" ? x-width : x;
+      commands.push({kind:"text",value:valueText,x:px,y,size,bold});
     };
-    const rule = y => cmd.push("0.5 w [2 2] 0 d " + margin + " " + y.toFixed(2) + " m " + (W-margin) + " " + y.toFixed(2) + " l S [] 0 d");
-    let y = H - 24;
-    text("KASHIF TRADERS",0,y,15,true,"center"); y -= 16;
-    text("Cash Sale Receipt",0,y,9,false,"center"); y -= 12; rule(y); y -= 14;
-    [["Receipt No",d.invoice],["Date",d.date],["Customer",d.customer],["Created by",d.createdBy],["Paid by",d.paidBy],["Payment",d.payment]].forEach(pair => { text(pair[0],margin,y,7.5); text(": " + pair[1],70,y,7.5); y -= 12; });
-    rule(y); y -= 14;
-    text("Item",margin,y,9,true); text("Qty",122,y,9,true,"right"); text("Rate",169,y,9,true,"right"); text("Amount",W-margin,y,9,true,"right"); y -= 9; rule(y); y -= 13;
+    const rule = () => commands.push({kind:"rule",y});
+    const pair = (label,value) => {
+      const lines = wrapThermal(value,23);
+      text(label,margin,8.5,true);
+      for (const line of lines) { text(line,96,8.5,true); y += 12; }
+    };
+    text("KASHIF TRADERS",0,15,true,"center"); y += 15;
+    text("Cash Sale Receipt",0,9,true,"center"); y += 10; rule(); y += 14;
+    [["Receipt No",d.invoice],["Date",d.date],["Customer",d.customer],["Created by",d.createdBy],["Paid by",d.paidBy],["Payment",d.payment]].forEach(([label,value])=>pair(label,value));
+    y += 2; rule(); y += 14;
+    text("Qty",margin,10,true); text("Rate",132,10,true,"right"); text("Amount",W-margin,10,true,"right"); y += 8; rule(); y += 14;
     items.forEach(p => {
-      const names = wrapThermal(p.name,24);
-      names.forEach((line,i) => { text(line,margin,y,8.75,i===0); if (i===0) { text(qtyText(p.qty),122,y,9,true,"right"); text(thermalMoney(p.rate),169,y,9,true,"right"); text(thermalMoney(p.amount),W-margin,y,9,true,"right"); } y -= 12.5; });
-      text(qtyText(p.qty) + " " + p.unit,margin,y,7.2,true); y -= 11.5;
+      for (const line of wrapThermal(p.name,33)) { text(line,margin,10,true); y += 13; }
+      // Numeric values have their own row and columns, away from product names.
+      const values=[qtyText(p.qty)+" "+p.unit,thermalMoney(p.rate),thermalMoney(p.amount)];
+      const size=Math.min(10,50/(values[0].length*.6),70/(values[1].length*.6),76/(values[2].length*.6));
+      text(values[0],margin,size,true);text(values[1],132,size,true,"right");text(values[2],W-margin,size,true,"right");
+      y += 10; rule(); y += 14;
     });
-    rule(y); y -= 15;
-    const sum = (label,value,bold=false) => { text(label,82,y,bold?9:8,bold); text(value,W-margin,y,bold?9:8,bold,"right"); y -= 12; };
-    sum("Subtotal","PKR " + thermalMoney(d.subtotal)); sum("Discount","PKR " + thermalMoney(d.discount)); sum("Total","PKR " + thermalMoney(d.total),true); sum("Received","PKR " + thermalMoney(d.received));
-    if (d.due > 0) { sum("Remaining / Due","PKR " + thermalMoney(d.due),true); sum("Status",d.status,true); }
-    y -= 2; rule(y); y -= 18; text("Thank you.",0,y,8.5,false,"center");
-    const stream = cmd.join("\n");
+    const sum = (label,value,bold=true) => {
+      const size=Math.min(10,105/(value.length*.6));
+      text(label,margin,9,bold); text(value,W-margin,size,bold,"right"); y += 14;
+    };
+    sum("Subtotal",thermalMoney(d.subtotal));
+    if(d.discount) sum("Discount",thermalMoney(d.discount));
+    sum("Total PKR",thermalMoney(d.total));sum("Received",thermalMoney(d.received));
+    if (d.due > 0) {sum("Due",thermalMoney(d.due));sum("Status",d.status);}
+    rule();y+=15;text("Thank you.",0,9,true,"center");
+    const H = Math.ceil(y+12);
+    const stream = commands.map(c => c.kind === "rule"
+      ? "0.5 w "+margin+" "+(H-c.y)+" m "+(W-margin)+" "+(H-c.y)+" l S"
+      : "BT /"+(c.bold?"F2":"F1")+" "+c.size.toFixed(2)+" Tf "+c.x.toFixed(2)+" "+(H-c.y).toFixed(2)+" Td ("+c.value+") Tj ET").join("\n");
     const objs = [
       "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
       "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
       "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W.toFixed(2) + " " + H.toFixed(2) + "] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >> endobj",
-      "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
-      "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj",
+      "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier >> endobj",
+      "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >> endobj",
       "6 0 obj << /Length " + stream.length + " >> stream\n" + stream + "\nendstream endobj"
     ];
     let pdf = "%PDF-1.4\n", off = [0];
@@ -519,7 +525,7 @@
   }
 
   async function shareReceipt() {
-    const blob = pdfBlob(), file = new File([blob],active.invoice_number + ".pdf",{type:"application/pdf"});
+    const blob = pdfBlob(), file = new File([blob],(active.invoice_reference || active.invoice_number) + ".pdf",{type:"application/pdf"});
     try {
       if (navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))) await navigator.share({files:[file],title:"Kashif Traders Receipt"});
       else {

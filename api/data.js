@@ -88,7 +88,21 @@ async function ensureClientOcrAudit(sql) {
   await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_corrected_at TIMESTAMPTZ`;
   await sql`ALTER TABLE client_invoices ADD COLUMN IF NOT EXISTS ocr_line_items JSONB NOT NULL DEFAULT \'[]\'::jsonb`;
 }
+// Keep the date-qualified reference unique in storage; show the shop's daily CS-N number.
+function cashInvoiceView(value) {
+  if (Array.isArray(value)) return value.map(cashInvoiceView);
+  if (!value || typeof value !== "object" || value instanceof Date) return value;
+  const result = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, cashInvoiceView(item)]));
+  const match = /^CS-(\d{8})-(\d+)$/.exec(String(value.invoice_number || ""));
+  if (match) {
+    result.invoice_reference = value.invoice_number;
+    result.invoice_number = "CS-" + Number(match[2]);
+    result.invoice_day = match[1].slice(0,4) + "-" + match[1].slice(4,6) + "-" + match[1].slice(6,8);
+  }
+  return result;
+}
 async function ensureCashSaleSchema(sql) {
+  await sql`CREATE TABLE IF NOT EXISTS cash_sale_daily_counters (business_date DATE PRIMARY KEY, last_number BIGINT NOT NULL)`;
   await sql`CREATE TABLE IF NOT EXISTS cash_sale_queue (id BIGSERIAL PRIMARY KEY, invoice_number TEXT UNIQUE NOT NULL, created_by_id BIGINT, created_by_name TEXT NOT NULL, customer_name TEXT, sale_date DATE NOT NULL DEFAULT CURRENT_DATE, items JSONB NOT NULL DEFAULT '[]'::jsonb, subtotal NUMERIC(14,2) NOT NULL DEFAULT 0, discount NUMERIC(14,2) NOT NULL DEFAULT 0, total NUMERIC(14,2) NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   await sql`CREATE TABLE IF NOT EXISTS cash_sale_customers (id BIGSERIAL PRIMARY KEY, customer_code TEXT UNIQUE NOT NULL, name TEXT NOT NULL, mobile TEXT, notes TEXT, status TEXT NOT NULL DEFAULT 'active', created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
   await sql`ALTER TABLE cash_sale_queue ADD COLUMN IF NOT EXISTS customer_id BIGINT`;
@@ -159,9 +173,14 @@ async function cashSales(sql, req, user) {
       if(!customer||customer.status!=="active") return {status:400,data:{error:"Valid Cash Sale customer select karein"}};
     }
     const subtotal=items.reduce((sum,x)=>sum+Math.max(0,Number(x.qty)||0)*Math.max(0,Number(x.rate)||0),0),
-      discount=Math.min(subtotal,Math.max(0,Number(b.discount)||0)), total=subtotal-discount, no="CS-"+Date.now();
-    const rows=await sql`INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_id,customer_name,sale_date,items,subtotal,discount,total)
-      VALUES(${no},${user.id},${user.full_name||user.employee_code},${customer?.id||null},${customer?.name||"Walk-in Customer"},${cleanText(b.sale_date)||new Date().toISOString().slice(0,10)},${JSON.stringify(items)},${subtotal},${discount},${total}) RETURNING *`;
+      discount=Math.min(subtotal,Math.max(0,Number(b.discount)||0)), total=subtotal-discount;
+    const rows=await sql`WITH next_number AS (
+        INSERT INTO cash_sale_daily_counters(business_date,last_number)
+        VALUES ((now() AT TIME ZONE 'Asia/Karachi')::date,1)
+        ON CONFLICT (business_date) DO UPDATE SET last_number=cash_sale_daily_counters.last_number+1
+        RETURNING 'CS-'||to_char(business_date,'YYYYMMDD')||'-'||last_number AS invoice_number
+      ) INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_id,customer_name,sale_date,items,subtotal,discount,total)
+      VALUES((SELECT invoice_number FROM next_number),${user.id},${user.full_name||user.employee_code},${customer?.id||null},${customer?.name||"Walk-in Customer"},COALESCE(${cleanText(b.sale_date)}::date,(now() AT TIME ZONE 'Asia/Karachi')::date),${JSON.stringify(items)},${subtotal},${discount},${total}) RETURNING *`;
     return {status:201,data:{record:rows[0]}};
   }
   if (req.method === "PATCH") {
@@ -672,10 +691,15 @@ async function customerPortal(sql,req,res,staffUser=null){
         quantity_changed_by_cashier:Boolean(original&&Math.abs(originalQty-x.qty)>0.000001)
       };
     });
-    const subtotal=items.reduce((n,x)=>n+Number(x.total||0),0),discount=Math.min(subtotal,Math.max(0,Number(b.discount)||0)),total=subtotal-discount,inv="CS-"+Date.now();
-    const q=await sql`INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_name,customer_id,items,subtotal,discount,total,status,amount_received,sale_date,created_at,updated_at) VALUES(${inv},${staffUser.id},${staffUser.full_name||staffUser.employee_code},${o.customer_name},${o.customer_id},${JSON.stringify(items)},${subtotal},${discount},${total},'pending',0,CURRENT_DATE,now(),now()) RETURNING *`;
+    const subtotal=items.reduce((n,x)=>n+Number(x.total||0),0),discount=Math.min(subtotal,Math.max(0,Number(b.discount)||0)),total=subtotal-discount;
+    const q=await sql`WITH next_number AS (
+      INSERT INTO cash_sale_daily_counters(business_date,last_number)
+      VALUES ((now() AT TIME ZONE 'Asia/Karachi')::date,1)
+      ON CONFLICT (business_date) DO UPDATE SET last_number=cash_sale_daily_counters.last_number+1
+      RETURNING 'CS-'||to_char(business_date,'YYYYMMDD')||'-'||last_number AS invoice_number
+    ) INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_name,customer_id,items,subtotal,discount,total,status,amount_received,sale_date,created_at,updated_at) VALUES((SELECT invoice_number FROM next_number),${staffUser.id},${staffUser.full_name||staffUser.employee_code},${o.customer_name},${o.customer_id},${JSON.stringify(items)},${subtotal},${discount},${total},'pending',0,(now() AT TIME ZONE 'Asia/Karachi')::date,now(),now()) RETURNING *`;
     await sql`UPDATE cash_customer_orders SET status='converted',cash_sale_id=${q[0].id},updated_at=now() WHERE id=${orderId} AND status='pending'`;
-    return res.status(201).json({record:q[0]});
+    return res.status(201).json({record:cashInvoiceView(q[0])});
   }
   const customer=sessionToken?(await sql`SELECT c.* FROM cash_customer_sessions s JOIN cash_sale_customers c ON c.id=s.customer_id WHERE s.token_hash=${digest(sessionToken)} AND s.expires_at>now() AND c.status='active' LIMIT 1`)[0]:null;
   if(!customer)return res.status(401).json({error:"Customer login required"});
@@ -688,7 +712,7 @@ async function customerPortal(sql,req,res,staffUser=null){
     const r=await sql`INSERT INTO cash_customer_orders(order_number,customer_id,items) VALUES(${no},${customer.id},${JSON.stringify(items)}) RETURNING id,order_number,status,created_at`;return res.status(201).json({record:r[0]});
   }
   if(req.method==="GET"&&action==="materials"){const from=cleanText(req.query?.from),to=cleanText(req.query?.to);let rows;if(from&&to){if(!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to)||from>to)return res.status(400).json({error:"Valid From / To dates required"});rows=await sql`SELECT x->>'name' product,COALESCE(x->>'unit','pcs') unit,SUM(COALESCE((x->>'qty')::numeric,0)) quantity FROM cash_sale_queue q CROSS JOIN LATERAL jsonb_array_elements(q.items) x WHERE q.customer_id=${customer.id} AND q.status IN ('paid','partial','credit') AND q.sale_date BETWEEN ${from}::date AND ${to}::date GROUP BY x->>'name',COALESCE(x->>'unit','pcs') ORDER BY product`;return res.status(200).json({from,to,records:rows})}const days=Math.min(365,Math.max(1,Number(req.query?.days)||30));rows=await sql`SELECT x->>'name' product,COALESCE(x->>'unit','pcs') unit,SUM(COALESCE((x->>'qty')::numeric,0)) quantity FROM cash_sale_queue q CROSS JOIN LATERAL jsonb_array_elements(q.items) x WHERE q.customer_id=${customer.id} AND q.status IN ('paid','partial','credit') AND q.sale_date>=CURRENT_DATE-${days}::int GROUP BY x->>'name',COALESCE(x->>'unit','pcs') ORDER BY product`;return res.status(200).json({days,records:rows})}
-  if(req.method==="GET"&&action==="dashboard"){const bills=await sql`SELECT id,invoice_number,sale_date,items,total,COALESCE(amount_received,0) amount_received,GREATEST(total-COALESCE(amount_received,0),0) balance_due,status,created_at FROM cash_sale_queue WHERE customer_id=${customer.id} AND status IN ('paid','partial','credit') ORDER BY created_at DESC,id DESC LIMIT 200`;const orders=await sql`SELECT id,order_number,items,status,cash_sale_id,created_at FROM cash_customer_orders WHERE customer_id=${customer.id} ORDER BY created_at DESC,id DESC LIMIT 100`;return res.status(200).json({customer:{customer_code:customer.customer_code,name:customer.name,mobile:customer.mobile},summary:{sales:bills.reduce((n,x)=>n+Number(x.total||0),0),received:bills.reduce((n,x)=>n+Number(x.amount_received||0),0),outstanding:bills.reduce((n,x)=>n+Number(x.balance_due||0),0)},bills,orders})}
+  if(req.method==="GET"&&action==="dashboard"){const bills=await sql`SELECT id,invoice_number,sale_date,items,total,COALESCE(amount_received,0) amount_received,GREATEST(total-COALESCE(amount_received,0),0) balance_due,status,created_at FROM cash_sale_queue WHERE customer_id=${customer.id} AND status IN ('paid','partial','credit') ORDER BY created_at DESC,id DESC LIMIT 200`;const orders=await sql`SELECT id,order_number,items,status,cash_sale_id,created_at FROM cash_customer_orders WHERE customer_id=${customer.id} ORDER BY created_at DESC,id DESC LIMIT 100`;return res.status(200).json({customer:{customer_code:customer.customer_code,name:customer.name,mobile:customer.mobile},summary:{sales:bills.reduce((n,x)=>n+Number(x.total||0),0),received:bills.reduce((n,x)=>n+Number(x.amount_received||0),0),outstanding:bills.reduce((n,x)=>n+Number(x.balance_due||0),0)},bills:cashInvoiceView(bills),orders})}
   return res.status(405).json({error:"Method not allowed"});
 }
 
@@ -716,11 +740,11 @@ async function handler(req, res) {
     if (resource === "client_invoices") await ensureClientOcrAudit(sql);
     if (resource === "cash_sales") {
       const out = await cashSales(sql, req, user);
-      return res.status(out.status).json(out.data);
+      return res.status(out.status).json(cashInvoiceView(out.data));
     }
     if (resource === "cash_sale_customers") {
       const out = await cashSaleCustomers(sql, req, user);
-      return res.status(out.status).json(out.data);
+      return res.status(out.status).json(cashInvoiceView(out.data));
     }
     if (resource === "sale_products") {
       const out = await saleProducts(sql, req);
