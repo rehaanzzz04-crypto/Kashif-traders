@@ -167,7 +167,7 @@ test('HTML print matches working thermal PDF layout for short and long bills',as
   assert.match(html,/<script>window\.addEventListener/);
   assert.match(html,/window\.print\(\)/);
   assert.equal((html.match(/KASHIF TRADERS/g)||[]).length,1);
-  assert.equal((html.match(/Cash Sale Receipt/g)||[]).length,0); // label is inline text
+  assert.equal((html.match(/Cash Sale Receipt/g)||[]).length,1); // label is inline text
   assert.match(html,/>Cash Sale Receipt<\/span>/);
   assert.match(html,/>Total Items<\/span>/);
   assert.match(html,/>Received<\/span>/);
