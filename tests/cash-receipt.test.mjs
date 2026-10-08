@@ -19,9 +19,11 @@ test('thermal PDF expands with content and keeps totals/footer within the page',
  for(const count of [1,6,50]){
  const data={invoice:'CS-1',date:'08-Oct-2026',customer:'A long customer name that wraps into additional lines',createdBy:'Ali',paidBy:'Cashier',payment:'Cash',items:Array.from({length:count},()=>({name:'Full Cream Milk Powder Bakery Pack',qty:2,unit:'kg',rate:1500,amount:3000})),subtotal:count*3000,total:count*3000,discount:0,received:0,due:count*3000,status:'Credit'};
  const pdf=await vm.runInNewContext(pdfCode+';pdfBlob()',{Blob,receiptData:()=>data,qtyText:String,thermalMoney:String}).text();
- const height=Number(pdf.match(/MediaBox \[0 0 204.09 ([\d.]+)/)[1]);assert.ok(height>previous);previous=height;
+ const heights=[...pdf.matchAll(/MediaBox \[0 0 204.09 ([\d.]+)\]/g)].map(m=>Number(m[1]));
+ assert.ok(heights.length>=1);assert.ok(heights.every(h=>h<=595.28));
+ const height=heights.reduce((a,b)=>a+b,0);assert.ok(height>previous);previous=height;
  assert.match(pdf,/\(Thank you\.\)/);assert.match(pdf,/\(CS-1\)/);assert.match(pdf,/\(Total Items\)/);assert.ok(pdf.includes("("+count+") Tj"));
- for(const m of pdf.matchAll(/([\d.]+) ([\d.]+) Td /g)){assert.ok(Number(m[1])>=0&&Number(m[1])<204.09);assert.ok(Number(m[2])>=7&&Number(m[2])<height);}
+ for(const m of pdf.matchAll(/([\d.]+) ([\d.]+) Td /g)){assert.ok(Number(m[1])>=0&&Number(m[1])<204.09);assert.ok(Number(m[2])>=7&&Number(m[2])<=595.28);}
  }
 });
 
@@ -80,4 +82,31 @@ test('unsafe silent kiosk printing has been removed after excessive blank paper'
  assert.match(source,/AUTO PRINT PAUSED/);
  assert.match(source,/Print Receipt \(PDF\)/);
  assert.match(source,/URL\.createObjectURL\(pdfBlob\(\)\)/);
+});
+
+test('historical paid receipts show received; partial and credit remain accurate',()=>{
+ const helper=source.slice(source.indexOf('  const receivedOf ='),source.indexOf('  const balanceOf ='));
+ const rec=vm.runInNewContext(helper+';receiptReceivedOf',{paymentArray:x=>Array.isArray(x)?x:[]});
+ assert.equal(rec({status:'paid',total:2890}),2890);
+ assert.equal(rec({status:'paid',total:2890,amount_received:0,payments:[]}),2890);
+ assert.equal(rec({status:'paid',total:2890,amount_received:900}),900);
+ assert.equal(rec({status:'partial',total:2890,payments:[{amount:1000},{amount:200}]}),1200);
+ assert.equal(rec({status:'credit',total:2890}),0);
+});
+test('multi-page thermal bills stay within 210mm; totals on final page',async()=>{
+ for(const count of [1,5,8,15,30,50]){
+ const data={invoice:'CS-3',date:'09-Oct-2026 00:25',customer:'Shop Customer',createdBy:'Ali',paidBy:'Ali',payment:'Cash',items:Array.from({length:count},(_,i)=>({name:'Full Cream Milk Powder Bakery Pack '+i,qty:2,unit:'kg',rate:1500,amount:3000})),subtotal:count*3000,total:count*3000,discount:0,received:count*3000,due:0,status:'Paid'};
+ const pdf=await vm.runInNewContext(pdfCode+';pdfBlob()',{Blob,receiptData:()=>data,qtyText:String,thermalMoney:String}).text();
+ const boxes=[...pdf.matchAll(/MediaBox \[0 0 204.09 ([\d.]+)\]/g)].map(m=>Number(m[1]));
+ assert.equal(Number(pdf.match(/\/Count (\d+)/)[1]),boxes.length);
+ assert.ok(boxes.every(h=>h>0&&h<=595.28));
+ assert.equal((pdf.match(/\(Total Items\)/g)||[]).length,1);
+ assert.equal((pdf.match(/\(Received\)/g)||[]).length,1);
+ assert.equal((pdf.match(/\(Thank you\.\)/g)||[]).length,1);
+ for(const m of pdf.matchAll(/BT \/F[12] ([\d.]+) Tf ([\d.]+) ([\d.]+) Td \(([^)]*)\) Tj ET/g)){
+   assert.ok(Number(m[3])>=7&&Number(m[3])<=595.28,'vertical overflow '+m[4]);
+   assert.ok(Number(m[2])>=7&&Number(m[2])+m[4].length*Number(m[1])*.6<=174.1,'horizontal overflow '+m[4]);
+ }
+ if(count>=30)assert.ok(boxes.length>=2);
+ }
 });

@@ -13,6 +13,13 @@
   const itemArray = x => safeArray(x?.items);
   const paymentArray = x => safeArray(x?.payments);
   const receivedOf = x => Math.max(0, Number(x?.amount_received) || 0);
+  // Legacy paid invoices may lack amount_received; do not infer payments on credit bills.
+  const receiptReceivedOf = x => {
+    const total = Math.max(0, Number(x?.total) || 0);
+    const stored = receivedOf(x);
+    const payments = paymentArray(x).reduce((n,p) => n + Math.max(0, Number(p?.amount) || 0), 0);
+    return Math.min(total, stored > 0 ? stored : payments > 0 ? payments : x?.status === "paid" ? total : 0);
+  };
   const balanceOf = x => Math.max(0, Number(x?.total || 0) - receivedOf(x));
   const hasCustomerAccount = x => Number(x?.customer_id || 0) > 0;
 
@@ -437,7 +444,7 @@
     const subtotal = Number(active.subtotal ?? itemSubtotal);
     const discount = Math.max(0, Number(active.discount || 0));
     const total = Number(active.total ?? Math.max(0, subtotal - discount));
-    const received = Math.min(total, receivedOf(active));
+    const received = Math.min(total, receiptReceivedOf(active));
     const due = Math.max(0, total - received);
     const payment = due > 0 ? (received > 0 ? "Partial / " + (active.payment_method || "") : "Credit") : (active.payment_method || "");
     return {
@@ -474,7 +481,7 @@
       $("cashierStatus").textContent = "Receipt kholne ke liye pop-ups allow karein.";
       return;
     }
-    $("cashierStatus").textContent = "Receipt PDF khul gayi hai. 80mm roll (72.1mm printable), Actual size 100%, aur printer auto-cut rakhein.";
+    $("cashierStatus").textContent = "Receipt PDF ready. BlackCopper printer mein 72.1 x 210mm aur Actual size 100% rakhein. Lambi receipts 210mm pages mein hain.";
     // Keep the PDF alive while its viewer is open, including later printing/download.
     const timer = setInterval(() => {
       if (w.closed) { clearInterval(timer); URL.revokeObjectURL(url); }
@@ -499,15 +506,22 @@
     const d = receiptData(); if (!d) return new Blob([],{type:"application/pdf"});
     const safe = s => String(s).replace(/([\\()])/g,"\\$1").replace(/[^\x20-\x7E]/g,"?");
     const W = 204.09, margin = 8, printableRight = 174, items = d.items; // Keep text inside the printer's narrower safe area
-    const commands = [];
-    let y = 16;
+    const pages = [[]]; // No page can exceed the BlackCopper 210mm safe form.
+    let page = 0, y = 16;
     // Courier has fixed character widths, so alignment and wrapping are exact.
     const text = (value,x,size=10,bold=false,align="left") => {
       const valueText = safe(value), width = String(value).replace(/[^\x20-\x7E]/g,"?").length * size * .6;
       let px = align === "center" ? (margin+printableRight-width)/2 : align === "right" ? x-width : x;
-      commands.push({kind:"text",value:valueText,x:px,y,size,bold});
+      pages[page].push({kind:"text",value:valueText,x:px,y,size,bold});
     };
-    const rule = () => commands.push({kind:"rule",y});
+    const rule = () => pages[page].push({kind:"rule",y});
+    const nextPage = () => {
+      page += 1; pages.push([]); y = 16;
+      text("KASHIF TRADERS",0,12,true,"center");y += 16;
+      text("Receipt "+d.invoice+" (cont.)",0,8,true,"center");y += 13;
+      rule();y += 13;
+    };
+    const ensureRoom = needed => { if (y + needed > 564) nextPage(); };
     const pair = (label,value) => {
       const lines = wrapThermal(value,18);
       text(label,margin,8.5,true);
@@ -519,7 +533,13 @@
     y += 2; rule(); y += 12;
     text("Qty",margin,9.5,true); text("Rate",108,9.5,true,"right"); text("Amount",printableRight,9.5,true,"right"); y += 8; rule(); y += 12;
     items.forEach(p => {
-      for (const line of wrapThermal(p.name,26)) { text(line,margin,10,true); y += 12; }
+      const lines = wrapThermal(p.name,26);
+      if (lines.length * 12 + 22 < 520) ensureRoom(lines.length * 12 + 22);
+      for (const line of lines) {
+        if (y + 34 > 564) nextPage();
+        text(line,margin,10,true); y += 12;
+      }
+      ensureRoom(22);
       // Numeric values have their own row and columns, away from product names.
       const values=[qtyText(p.qty)+" "+p.unit,thermalMoney(p.rate),thermalMoney(p.amount)];
       const size=Math.min(9.8,49/(values[0].length*.6),45/(values[1].length*.6),58/(values[2].length*.6));
@@ -530,28 +550,36 @@
       const size=Math.min(9.8,80/(value.length*.6));
       text(label,margin,9,bold); text(value,printableRight,size,bold,"right"); y += 14;
     };
+    ensureRoom(14 * (5 + (d.discount ? 1 : 0) + (d.due > 0 ? 2 : 0)) + 40);
     sum("Total Items",String(items.length));
     sum("Subtotal",thermalMoney(d.subtotal));
     if(d.discount) sum("Discount",thermalMoney(d.discount));
     sum("Total PKR",thermalMoney(d.total));sum("Received",thermalMoney(d.received));
     if (d.due > 0) {sum("Due",thermalMoney(d.due));sum("Status",d.status);}
     rule();y+=14;text("Thank you.",0,9,true,"center");
-    const H = Math.ceil(y+8);
-    const stream = commands.map(c => c.kind === "rule"
-      ? "0.5 w "+margin+" "+(H-c.y)+" m "+printableRight+" "+(H-c.y)+" l S"
-      : "BT /"+(c.bold?"F2":"F1")+" "+c.size.toFixed(2)+" Tf "+c.x.toFixed(2)+" "+(H-c.y).toFixed(2)+" Td ("+c.value+") Tj ET").join("\n");
-    const objs = [
+    // Each PDF page is at most 72.1 x 210mm, even for very long bills.
+    const pageHeights = pages.map((_,i) => i === page ? Math.ceil(y+8) : 595.28);
+    const kids = pages.map((_,i) => (5+2*i)+" 0 R").join(" ");
+    const objects = [
       "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
-      "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
-      "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W.toFixed(2) + " " + H.toFixed(2) + "] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >> endobj",
-      "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier >> endobj",
-      "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >> endobj",
-      "6 0 obj << /Length " + stream.length + " >> stream\n" + stream + "\nendstream endobj"
+      "2 0 obj << /Type /Pages /Kids ["+kids+"] /Count "+pages.length+" >> endobj",
+      "3 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier >> endobj",
+      "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >> endobj"
     ];
-    let pdf = "%PDF-1.4\n", off = [0];
-    objs.forEach(o => { off.push(pdf.length); pdf += o + "\n"; });
-    const x = pdf.length;
-    pdf += "xref\n0 7\n0000000000 65535 f \n" + off.slice(1).map(n => String(n).padStart(10,"0") + " 00000 n \n").join("") + "trailer << /Size 7 /Root 1 0 R >>\nstartxref\n" + x + "\n%%EOF";
+    for (let i=0;i<pages.length;i++) {
+      const H=pageHeights[i], pageObj=5+2*i, streamObj=6+2*i;
+      const stream=pages[i].map(c=>c.kind==="rule"
+        ?"0.5 w "+margin+" "+(H-c.y)+" m "+printableRight+" "+(H-c.y)+" l S"
+        :"BT /"+(c.bold?"F2":"F1")+" "+c.size.toFixed(2)+" Tf "+c.x.toFixed(2)+" "+(H-c.y).toFixed(2)+" Td ("+c.value+") Tj ET").join("\n");
+      objects.push(pageObj+" 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 "+W.toFixed(2)+" "+H.toFixed(2)+"] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents "+streamObj+" 0 R >> endobj");
+      objects.push(streamObj+" 0 obj << /Length "+stream.length+" >> stream\n"+stream+"\nendstream endobj");
+    }
+    let pdf="%PDF-1.4\n", offsets=[0];
+    objects.forEach(o=>{offsets.push(pdf.length);pdf+=o+"\n";});
+    const xref=pdf.length;
+    pdf+="xref\n0 "+(objects.length+1)+"\n0000000000 65535 f \n"+
+      offsets.slice(1).map(n=>String(n).padStart(10,"0")+" 00000 n \n").join("")+
+      "trailer << /Size "+(objects.length+1)+" /Root 1 0 R >>\nstartxref\n"+xref+"\n%%EOF";
     return new Blob([pdf],{type:"application/pdf"});
   }
 
