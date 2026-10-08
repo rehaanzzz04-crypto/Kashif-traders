@@ -573,47 +573,79 @@
   }
 
 
+  // Same production browser HTML/print mechanism, with the approved
+  // working-branch receipt appearance in normal document flow.
+  // No fixed 210mm/3276mm page and no absolutely-positioned receipt canvas.
+  function receiptMarkup() {
+    const d = receiptData(); if (!d) return "";
+    const info = [["Receipt No",d.invoice],["Date",d.date],["Customer",d.customer],
+      ["Created by",d.createdBy],["Paid by",d.paidBy],["Payment",d.payment]]
+      .map(([label,value]) => '<div class="receipt-meta"><span>' + esc(label) +
+        '</span><b>' + esc(value) + '</b></div>').join("");
+    const items = d.items.map(p =>
+      '<div class="receipt-item"><div class="receipt-name">' + esc(p.name) +
+      '</div><div class="receipt-values"><span>' + esc(qtyText(p.qty) + " " + p.unit) +
+      '</span><span>' + esc(thermalMoney(p.rate)) + '</span><span>' +
+      esc(thermalMoney(p.amount)) + '</span></div></div>').join("");
+    const sum = (label,value) => '<div class="receipt-total-row"><span>' +
+      esc(label) + '</span><b>' + esc(value) + '</b></div>';
+    return '<main class="receipt"><header><h1>KASHIF TRADERS</h1>' +
+      '<div>Cash Sale Receipt</div></header><div class="receipt-rule"></div>' + info +
+      '<div class="receipt-rule"></div>' +
+      '<div class="receipt-values receipt-heading"><span>Qty</span><span>Rate</span><span>Amount</span></div>' +
+      items + '<section class="receipt-totals">' +
+      sum("Total Items",String(d.items.length)) +
+      sum("Subtotal",thermalMoney(d.subtotal)) +
+      (d.discount ? sum("Discount",thermalMoney(d.discount)) : "") +
+      sum("Total PKR",thermalMoney(d.total)) +
+      sum("Received",thermalMoney(d.received)) +
+      (d.due > 0 ? sum("Due",thermalMoney(d.due)) + sum("Status",d.status) : "") +
+      '</section><div class="receipt-rule"></div><footer>Thank you.</footer></main>';
+  }
+
   function receiptDocument() {
-    const layout = receiptLayout();
-    if (!layout) return "";
-    const pageHeightMm = Math.ceil(layout.H * 25.4 / 72) + 2;
-    const styles = '@page{size:72.1mm ' + pageHeightMm + 'mm;margin:0}' +
+    const d = receiptData(); if (!d) return "";
+    // Mirrors production's flowing 80mm HTML printing, rather than forcing
+    // a sized/positioned canvas that the BlackCopper driver can extend to 3276mm.
+    const styles = '@page{size:80mm auto;margin:0}' +
       '*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000}' +
-      'html,body{width:72.1mm;min-height:0;height:auto}' +
-      '.receipt{position:relative;width:204.09pt;height:' + layout.H + 'pt;margin:0;overflow:hidden;' +
-      'font-family:"Courier New",Courier,monospace;line-height:1;color:#000}' +
-      '.receipt-text{position:absolute;white-space:pre;line-height:1;font-family:"Courier New",Courier,monospace}' +
-      '.receipt-rule{position:absolute;height:0;border-top:0.5pt solid #000}' +
-      '.preview-note{margin:0;padding:9px 7px;background:#fff1ce;color:#392700;font:12px/1.4 Arial,sans-serif}' +
-      '@media print{.preview-note{display:none!important}html,body{margin:0;padding:0}}';
-    const markup = layout.commands.map(c => {
-      if (c.kind === "rule") {
-        return '<div class="receipt-rule" style="left:' + layout.margin + 'pt;top:' + c.y +
-          'pt;width:' + (layout.printableRight - layout.margin) + 'pt"></div>';
-      }
-      return '<span class="receipt-text" style="left:' + c.x.toFixed(2) +
-        'pt;top:' + (c.y - c.size * 0.88).toFixed(2) + 'pt;font-size:' +
-        c.size.toFixed(2) + 'pt;font-weight:' + (c.bold ? '700' : '400') + '">' +
-        esc(c.rawValue) + '</span>';
-    }).join("");
-    // Re-measure on load as in the production receipt printer. This is a
-    // browser print dialog, never background kiosk printing.
+      'body{width:80mm;margin:0 auto;font-family:"Courier New",Courier,monospace;' +
+      '-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+      '.receipt{width:72mm;margin:0 auto;padding:16pt 30pt 8pt 8pt;font-size:10pt;line-height:1.2}' +
+      '.receipt header{text-align:center;white-space:nowrap}' +
+      '.receipt h1{margin:0;font-size:15pt;line-height:15pt;font-weight:700;letter-spacing:0}' +
+      '.receipt header div{font-size:9pt;line-height:12pt;font-weight:700;margin-top:3pt}' +
+      '.receipt-rule{border-top:.5pt solid #333;margin:10pt 0 12pt}' +
+      '.receipt-meta{display:grid;grid-template-columns:72pt minmax(0,1fr);' +
+      'font-size:8.5pt;line-height:11pt;font-weight:700;gap:0}' +
+      '.receipt-meta span{white-space:nowrap}.receipt-meta b{min-width:0;overflow-wrap:anywhere}' +
+      '.receipt-values{display:grid;grid-template-columns:39% 27% 34%;align-items:start;' +
+      'font-weight:700;font-size:9.8pt;line-height:11pt;white-space:nowrap}' +
+      '.receipt-values span:nth-child(n+2){text-align:right}' +
+      '.receipt-heading{font-size:9.5pt;margin:0 0 12pt;padding-bottom:8pt;border-bottom:.5pt solid #333}' +
+      '.receipt-item{break-inside:avoid;page-break-inside:avoid;margin:0 0 12pt;' +
+      'border-bottom:.5pt solid #888;padding-bottom:10pt}' +
+      '.receipt-name{font-size:10pt;line-height:12pt;font-weight:700;overflow-wrap:anywhere;' +
+      'margin:0 0 1pt}' +
+      '.receipt-totals{break-inside:avoid;page-break-inside:avoid;margin-top:2pt}' +
+      '.receipt-total-row{display:flex;justify-content:space-between;align-items:baseline;' +
+      'font-size:9pt;line-height:14pt;font-weight:700;gap:6pt;white-space:nowrap}' +
+      '.receipt-total-row b{font-size:9.8pt;font-weight:700}' +
+      '.receipt footer{text-align:center;font-size:9pt;font-weight:700;line-height:12pt}' +
+      '.preview-note{font:12px/1.4 Arial,sans-serif;background:#fff1ce;color:#392700;padding:9px 7px}' +
+      '@media screen{body{padding:12px 0}.receipt{outline:1px solid #e6e6e6}}' +
+      '@media print{html,body{width:80mm;margin:0;padding:0;height:auto;min-height:0}' +
+      '.preview-note{display:none!important}.receipt{outline:none}}';
     const init = '<script>window.addEventListener("load",function(){' +
-      'var el=document.querySelector(".receipt");' +
-      'var mm=Math.ceil(el.getBoundingClientRect().height*25.4/96)+2;' +
-      'var style=document.createElement("style");' +
-      'style.textContent="@page{size:72.1mm "+mm+"mm;margin:0}";' +
-      'document.head.appendChild(style);' +
-      'requestAnimationFrame(function(){window.print();});' +
-      '});</script>';
+      'document.fonts.ready.then(function(){requestAnimationFrame(function(){' +
+      'window.print();});});});</script>';
     return '<!doctype html><html><head><meta charset="utf-8"><title>Kashif Traders Receipt ' +
-      esc(receiptData().invoice) + '</title><style>' + styles + '</style></head><body>' +
-      '<main class="receipt">' + markup + '</main>' +
-      '<div class="preview-note">Receipt length: ' + pageHeightMm +
-      'mm. Agar print dialog automatic open na ho to ' +
-      '<button type="button" onclick="window.print()" style="padding:5px 10px;font-weight:700;cursor:pointer">Print Preview</button> dabayein. ' +
-      '3276mm ka blank paper dikhay to Print CANCEL karein.</div>' +
-      init + '</body></html>';
+      esc(d.invoice) + '</title><style>' + styles + '</style></head><body>' +
+      receiptMarkup() + '<div class="preview-note">' +
+      'Print Preview <button type="button" onclick="window.print()" ' +
+      'style="padding:5px 10px;font-weight:700">Open Print Settings</button>. ' +
+      'Print preview mein bill ke baad lambi khaali sheet aaye to Cancel karein; ' +
+      'auto-cut/silent print abhi OFF hai.</div>' + init + '</body></html>';
   }
 
   async function shareReceipt() {

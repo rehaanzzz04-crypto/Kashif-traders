@@ -17,3 +17,9 @@ Cashier invoices now produce **one unbroken PDF page**, irrespective of product 
 The Cashier **Print Receipt** button now opens an HTML receipt generated using exactly the same layout coordinates as the working-branch PDF Share generator. It uses the successful production browser-print approach rather than routing print via PDF. The HTML page declares the measured page height in `@page` and remeasures the receipt when the page loads before opening a **normal print dialog**. For 28 items the expected receipt is about 536mm high, not 3276mm.
 
 **Check the Windows print preview before pressing Print.** If the printer driver forces a 3276mm blank page (or more than one page), **Cancel**. This mechanism improves the layout but physical output still requires one controlled BlackCopper test; browser CSS does not override every driver. The old silent/kiosk printer shortcut is **NOT** re-enabled. PDF Share still uses the continuous, working-branch PDF layout. The `CS-N` daily numbering is unchanged.
+
+## Flowing HTML print layout for BlackCopper (2026-10-09)
+
+The first working-branch HTML version created a fixed-size, absolutely-positioned receipt canvas. Browser/BlackCopper print preview still used the 3276mm Windows paper form with a large blank remainder. The next change switches **HTML Print Receipt only** to the original production print mechanism (`@page{size:80mm auto;margin:0}`) and an ordinary **flowing** HTML document while keeping the working-branch visual layout: one header, the six detail rows, product name and aligned Qty / Rate / Amount, and totals at the end. The PDF Share generator remains unchanged, and the `CS-N` daily invoice sequence is unaffected.
+
+**Important: The driver may still ignore `@page` and feed the whole selected 3276mm form. Check the Windows print preview first; do not print if it shows a long blank page.** Normal manual print dialog only, no kiosk printing.

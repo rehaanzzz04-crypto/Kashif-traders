@@ -151,47 +151,32 @@ test('one continuous PDF page for bills of 5, 12, 28, 50 items',async()=>{
  assert.doesNotMatch(source,/frame\.contentWindow\.print\s*\(/);
 });
 
-test('HTML print matches working thermal PDF layout for short and long bills',async()=>{
+test('production style flowing HTML print keeps working receipt design and data',async()=>{
  const printCode=source.slice(source.indexOf('  function wrapThermal('),source.indexOf('  async function shareReceipt('));
- const receiptEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
- const heights=[];
+ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
  for(const count of [1,5,12,28,50]){
-  const d={invoice:'CS-3',date:'09-Oct-2026',customer:'Walk-in Customer',createdBy:'Ali',paidBy:'Ali',payment:'Cash',items:Array.from({length:count},(_,i)=>({name:'CHOCOLATE POWDER DARK '+i,qty:2,unit:'KG',rate:1500,amount:3000})),subtotal:count*3000,discount:0,total:count*3000,received:count*3000,due:0,status:'Paid'};
-  const ctx={Blob,receiptData:()=>d,esc:receiptEsc,qtyText:String,thermalMoney:String};
+  const d={invoice:'CS-3',date:'09-Oct-2026',customer:'Walk-in Customer',createdBy:'Ali',paidBy:'Ali',payment:'Cash',items:Array.from({length:count},(_,i)=>({name:'Chocolate Powder Dark '+i,qty:2,unit:'KG',rate:1500,amount:3000})),subtotal:count*3000,discount:0,total:count*3000,received:count*3000,due:0,status:'Paid'};
+  const ctx={Blob,receiptData:()=>d,esc,qtyText:String,thermalMoney:String};
   const html=vm.runInNewContext(printCode+';receiptDocument()',ctx);
   const pdf=await vm.runInNewContext(printCode+';pdfBlob()',ctx).text();
-  const heightPt=Number(pdf.match(/MediaBox \[0 0 204.09 ([\d.]+)\]/)[1]);
-  heights.push(heightPt);
-  assert.match(html, new RegExp('@page\\{size:72\\.1mm '+(Math.ceil(heightPt*25.4/72)+2)+'mm;margin:0\\}'));
-  assert.match(html,/<main class="receipt">/);
-  assert.match(html,/<script>window\.addEventListener/);
-  assert.match(html,/window\.print\(\)/);
+  assert.match(html,/@page\{size:80mm auto;margin:0\}/);
+  assert.doesNotMatch(html,/@page\{size:72\.1mm \d+mm/);
+  assert.doesNotMatch(html,/position:absolute|position:relative|height:\d+pt/);
+  assert.equal((html.match(/class="receipt-item"/g)||[]).length,count);
   assert.equal((html.match(/KASHIF TRADERS/g)||[]).length,1);
-  assert.equal((html.match(/Cash Sale Receipt/g)||[]).length,1); // label is inline text
-  assert.match(html,/>Cash Sale Receipt<\/span>/);
+  assert.equal((html.match(/>Cash Sale Receipt<\/div>/g)||[]).length,1);
   assert.match(html,/>Total Items<\/span>/);
   assert.match(html,/>Received<\/span>/);
+  assert.match(html,/Qty<\/span><span>Rate<\/span><span>Amount<\/span>/);
   assert.match(html,/Thank you\./);
   assert.match(html,/CS-3/);
   assert.equal(Number(pdf.match(/\/Count (\d+)/)[1]),1);
+  const script=html.match(/<script>([\s\S]*?)<\/script>/);
+  assert.ok(script,'print script must close correctly');
+  assert.doesNotThrow(()=>new vm.Script(script[1]));
+  assert.match(script[1],/window\.print\(\)/);
+  assert.match(html,/onclick="window\.print\(\)"/);
  }
- assert.ok(heights.every((h,i)=>i===0||h>heights[i-1]));
- assert.ok(heights[3]>595.28);
  assert.doesNotMatch(source,/frame\.contentWindow\.print\s*\(/);
  assert.doesNotMatch(source,/directPrintReceipt\s*\(/);
-});
-
-test('thermal popup contains executable print script and manual print-preview fallback',()=>{
- const js=source.slice(source.indexOf('  function wrapThermal('),source.indexOf('  async function shareReceipt('));
- const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
- const data={invoice:'CS-3',date:'09 Oct 2026',customer:'Walk-in',createdBy:'Ali',paidBy:'Ali',payment:'Cash',items:[{name:'Test',qty:1,unit:'pcs',rate:500,amount:500}],subtotal:500,discount:0,total:500,received:500,due:0,status:'Paid'};
- const html=vm.runInNewContext(js+';receiptDocument()',{Blob,esc,receiptData:()=>data,qtyText:String,thermalMoney:String});
- const script=html.match(/<script>([\s\S]*?)<\/script>/);
- assert.ok(script,'real HTML script closing tag is required');
- assert.equal((html.match(/<\/script>/g)||[]).length,1);
- assert.doesNotMatch(html,/<\\\/script>/);
- assert.doesNotThrow(()=>new vm.Script(script[1]));
- assert.match(script[1],/window\.print\(\)/);
- assert.match(html,/onclick="window\.print\(\)"/);
- assert.match(html,/Print CANCEL/);
 });
