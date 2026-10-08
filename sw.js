@@ -1,6 +1,6 @@
 'use strict';
 importScripts('/offline-shell-manifest.js');
-const CACHE = 'kt-shell-20261008-paymentprint3';
+const CACHE = 'kt-shell-20261009-directprint2';
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);

@@ -20,3 +20,9 @@ Microsoft Edge version **144+** has official enterprise policy **SilentPrintingE
 - If multiple printers are installed, keep the thermal printer as Windows default for the Cashier window.
 - If you need PDF preview, open the normal Cashier URL **without** `?directPrint=1`.
 - This cannot bypass printer failure, a disconnected USB cable, or the OS print spooler.
+
+## Seeing the PDF viewer instead of direct printing?
+
+Login redirects can lose the original `?directPrint=1` query. After signing in, **close the PDF viewer and double-click the same Desktop shortcut again**. The Cashier page now retains direct-print mode in the shortcut's isolated Chrome profile. The label **DIRECT PRINT ON** must be visible next to the print button; **PDF PRINT MODE** means the normal flow is active. No new shortcut download is needed if it already points to the working-branch alias. Other Chrome/Edge browser profiles remain unaffected.
+
+To intentionally turn off silent printing within that special profile, navigate to `/cashier-sales.html?directPrint=0`, or use a standard browser to open the regular Cashier URL.

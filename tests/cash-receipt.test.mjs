@@ -86,3 +86,20 @@ test('direct thermal receipt HTML is escaped and keeps existing totals',()=>{
  assert.ok(!html.includes('<Customer>'));
  assert.ok(html.includes('08 Oct 2026 16:41'));
 });
+
+const modeCode=source.slice(source.indexOf('  const directPrintQuery ='),source.indexOf('  let directPrintBusy ='));
+test('dedicated Windows cashier Chrome profile retains printing mode after login',()=>{
+ const saved=new Map(),store={setItem:(k,v)=>saved.set(k,v),getItem:k=>saved.get(k)||null,removeItem:k=>saved.delete(k)};
+ const state={textContent:'',className:''};
+ const getMode=(search,platform='Win32')=>vm.runInNewContext(modeCode+';directPrintMode',{
+   URLSearchParams,location:{search},navigator:{platform},localStorage:store,$:id=>id==='cashierPrintMode'?state:{textContent:''}
+ });
+ assert.equal(getMode('?directPrint=1'),true);
+ assert.match(state.textContent,/DIRECT PRINT ON/);
+ assert.equal(getMode(''),true);
+ assert.equal(getMode('?other=1'),true);
+ assert.equal(getMode('?directPrint=0'),false);
+ assert.match(state.textContent,/PDF PRINT MODE/);
+ assert.equal(getMode(''),false);
+ assert.equal(getMode('?directPrint=1','Linux'),false);
+});

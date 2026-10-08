@@ -455,8 +455,26 @@
 
   // Direct printing is opt-in, enabled only by the Windows cashier launcher.
   // A normal web browser is NOT guaranteed to print silently.
-  const directPrintMode = new URLSearchParams(location.search).get("directPrint") === "1"
-    && /Win/i.test(navigator.platform || navigator.userAgent);
+  const directPrintQuery = new URLSearchParams(location.search).get("directPrint");
+  const directPrintStorageKey = "kt-cashier-direct-print-profile-v1";
+  let directPrintOptIn = directPrintQuery === "1";
+  try {
+    // The dedicated Chrome cashier profile remembers the selection after login,
+    // dashboard navigation and reload. Other Chrome/Edge profiles remain separate.
+    if (directPrintQuery === "1") localStorage.setItem(directPrintStorageKey, "1");
+    if (directPrintQuery === "0") localStorage.removeItem(directPrintStorageKey);
+    if (directPrintQuery !== "0" && localStorage.getItem(directPrintStorageKey) === "1")
+      directPrintOptIn = true;
+  } catch (_) { /* URL query continues to work if storage is blocked */ }
+  const directPrintMode = directPrintOptIn && /Win/i.test(navigator.platform || navigator.userAgent);
+  const printModeIndicator = $("cashierPrintMode");
+  if (printModeIndicator) {
+    printModeIndicator.textContent = directPrintMode
+      ? "DIRECT PRINT ON - Windows default printer (Chrome shortcut)"
+      : "PDF PRINT MODE - use the Desktop Cashier shortcut for direct printing";
+    printModeIndicator.className = "cashier-print-mode " + (directPrintMode ? "direct" : "standard");
+  }
+  if (directPrintMode) $("cashierPrint").textContent = "Print Receipt (Direct)";
   let directPrintBusy = false;
   function directReceiptHtml(d) {
     const info = [["Receipt No",d.invoice],["Date",d.date],["Customer",d.customer],
