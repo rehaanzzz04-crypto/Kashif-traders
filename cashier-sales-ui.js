@@ -152,6 +152,7 @@
       deleteButton.disabled = !canDelete || busy;
     }
     $("cashierPrint").disabled = !printable;
+    $("cashierHtmlPreview").disabled = !printable;
     $("cashierShare").disabled = !printable;
     if (pending) $("cashierPaid").textContent = "Receive Payment / Credit";
     else if (openCredit) $("cashierPaid").textContent = "Receive Credit Payment";
@@ -460,29 +461,61 @@
   }
 
 
-  // Retain the proven production HTML printing mechanism (browser print dialog),
-  // while keeping the working-branch Courier receipt layout and PDF Share.
-  // The old Chrome kiosk/hidden-iframe silent-print path remains disabled.
+  // Operator-enabled laptop loopback ESC/POS, no browser page-size form.
   const printModeIndicator = $("cashierPrintMode");
   if (printModeIndicator) {
-    printModeIndicator.textContent = "HTML THERMAL PRINT - print preview required | Silent print OFF";
+    printModeIndicator.textContent = "USB DIRECT PRINT: Local Cashier bridge required";
     printModeIndicator.className = "cashier-print-mode standard";
   }
-  $("cashierPrint").textContent = "Print Receipt";
-
-  function printReceipt() {
-    const data = receiptData();
-    if (!data) return;
-    const html = receiptDocument();
-    const w = window.open("", "_blank", "width=440,height=800");
-    if (!w) {
-      $("cashierStatus").textContent = "Thermal receipt ke liye browser pop-ups allow karein.";
-      return;
+  $("cashierPrint").textContent = "Print Receipt (USB)";
+  let printingReceipt = false, lastPrintedInvoice = "", lastPrintedAt = 0;
+  async function printReceipt() {
+    const d = receiptData();
+    if (!d || printingReceipt) return;
+    const status = $("cashierStatus");
+    if (!Array.isArray(d.items) || !d.items.length || d.items.length > 50) {
+      status.textContent = "USB test limit: 1 se 50 products allowed hain."; return;
     }
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-    $("cashierStatus").textContent = "HTML receipt print preview khul raha hai. Agar blank paper bohat lamba dikhay to PRINT CANCEL karein; pehle layout verify karein.";
+    printingReceipt = true;
+    const button = $("cashierPrint");
+    button.disabled = true;
+    try {
+      const base = "http://127.0.0.1:8788";
+      const healthResponse = await fetch(base + "/health",{cache:"no-store",signal:AbortSignal.timeout(4500)});
+      const health = await healthResponse.json();
+      if (!healthResponse.ok || !health.ready || health.mode !== "cashier" || health.dryRun !== false)
+        throw Error("start-thermal-cashier.cmd se laptop ka Cashier USB Mode ON karein.");
+      if (lastPrintedInvoice === d.invoice && Date.now() - lastPrintedAt < 20000 &&
+        !confirm("Ye receipt abhi print hui thi. Duplicate copy dobara print karni hai?")) return;
+      status.textContent = "BlackCopper ko receipt bhej rahe hain...";
+      const payload = {jobId:crypto.randomUUID(),confirmPrint:"CASHIER-RECEIPT",receipt:d};
+      const response = await fetch(base + "/print",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(payload),signal:AbortSignal.timeout(24000)
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok || result.dryRun || result.duplicate)
+        throw Error(result.error || "Printer job accept nahi hui");
+      lastPrintedInvoice = d.invoice;
+      lastPrintedAt = Date.now();
+      status.textContent = d.invoice + " ki USB print job spooler mein accept hui. Physical paper check karein.";
+    } catch(e) {
+      status.textContent = "USB Print: " +
+        (e.name === "TypeError" ? "Bridge unavailable ya website origin allowed nahi." : e.message) +
+        " Auto retry nahi hogi; dobara print se pehle queue check karein.";
+    } finally {
+      printingReceipt = false;
+      button.disabled = !receiptData() || active?.status === "pending" || active?.status === "cancelled";
+    }
+  }
+
+  function previewReceipt() {
+    if (!receiptData()) return;
+    if (!confirm("HTML Preview mein 3276mm blank paper aa sakta hai. Aisa ho to Print CANCEL karein. Continue?")) return;
+    const w = window.open("", "_blank", "width=440,height=800");
+    if (!w) { $("cashierStatus").textContent = "Browser pop-ups allow karein.";return; }
+    w.document.open();w.document.write(receiptDocument());w.document.close();
+    $("cashierStatus").textContent = "HTML Preview khul gaya. Preview ko dekh kar hi manual print karein.";
   }
 
   function wrapThermal(text,max) {
@@ -663,6 +696,7 @@
   }
 
   $("cashierPrint").onclick = printReceipt;
+  $("cashierHtmlPreview").onclick = previewReceipt;
   $("cashierShare").onclick = shareReceipt;
 
   async function load(force = false) {

@@ -36,3 +36,17 @@ This is **not** the final branded design. ESC/POS output is plain 42-column ther
 If the Windows test says `win-raw-printer.ps1 cannot be loaded because running scripts is disabled`, the bridge previously launched Windows PowerShell without an execution-policy argument. Starting from the updated version, it adds `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ...` **only to that spawned helper process**. It does NOT run `Set-ExecutionPolicy`, modify any registry/group policy, or change persistent Windows settings. Group Policy or antivirus can still block execution; in that event stop and diagnose rather than reducing system-wide protection.
 
 Important: stop both old console windows (Ctrl+C, confirm Y) and use a freshly downloaded, extracted working-branch ZIP. Perform the same supervised one-product physical test only after ensuring the printer job queue is empty. If paper feeds excessively, cancel the print queue and turn off printer. Receipt formatting/ERP production are unchanged.
+
+## Cashier USB printing on Working Branch, optional live mode
+
+After the one-item TEST-1 receipt printed correctly and paper stopped at its end, there is now a separately enabled Cashier mode (still experimental for longer bills). The existing TEST-1 starter remains test-only.
+
+1. Download latest Working Branch ZIP and extract into a NEW folder. Stop any old test bridge with Ctrl+C.
+2. Connect BlackCopper USB printer and clear Windows print queue.
+3. Double-click local-server/start-thermal-cashier.cmd. Check the working branch website origin. Paste exact https://hostname if your working preview URL differs from the default branch URL. Type YES-CASHIER.
+4. Keep the black bridge window open. Open Working Branch Cashier Billing and click Print Receipt (USB) once for a small, already-processed bill. This sends RAW ESC/POS, without browser print dialog or the 3276mm paper form.
+5. Verify printed text and actual paper length before testing a 23-item bill. If blank feed occurs, power off printer/cancel Windows print job.
+6. A quick duplicate print requires confirmation. Uncertain jobs are not automatically retried. PDF Share remains unchanged and HTML Preview is a manual fallback (cancel long blank preview).
+7. Stop Cashier mode with Ctrl+C after use. No Windows service/auto-start, no auto cut.
+
+Guards: exact origin allowlist, loopback only, explicit cashier-mode operator approval, 50 items and 250 lines maximum, one job per press, no automatic fallback. RAW text receipts follow approved field order but their font measurements can differ from PDF. Production unchanged.
