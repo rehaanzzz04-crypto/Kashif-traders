@@ -72,3 +72,17 @@ test('receipt amount and total columns stay inside safe area',async()=>{
    assert.match(pdf,/\(Total Items\)/);
  }
 });
+
+const directHtmlCode=source.slice(source.indexOf('  function directReceiptHtml('),source.indexOf('  function directPrintReceipt('));
+test('direct thermal receipt HTML is escaped and keeps existing totals',()=>{
+ const fn=vm.runInNewContext(directHtmlCode+';directReceiptHtml',{esc:v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'),qtyText:String,thermalMoney:String});
+ const receipt={invoice:'CS-1',date:'08 Oct 2026 16:41',customer:'Walk-in <Customer>',createdBy:'Ali',paidBy:'Ali',payment:'Cash',items:[{name:'Milk <Powder>',qty:4,unit:'pcs',rate:250,amount:1000}],subtotal:1000,discount:0,total:1000,received:1000,due:0,status:'Paid'};
+ const html=fn(receipt);
+ assert.match(html,/72\.1mm/);
+ assert.match(html,/Total Items/);
+ assert.match(html,/1,000|1000/);
+ assert.match(html,/Milk &lt;Powder&gt;/);
+ assert.ok(!html.includes('Milk <Powder>'));
+ assert.ok(!html.includes('<Customer>'));
+ assert.ok(html.includes('08 Oct 2026 16:41'));
+});
