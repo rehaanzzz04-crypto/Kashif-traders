@@ -460,34 +460,29 @@
   }
 
 
-  // Safety stop: BlackCopper 80mm driver uses a 3276mm form and
-  // Chromium kiosk printing can feed an entire blank roll.
-  // Never issue background window.print() on this printer.
+  // Retain the proven production HTML printing mechanism (browser print dialog),
+  // while keeping the working-branch Courier receipt layout and PDF Share.
+  // The old Chrome kiosk/hidden-iframe silent-print path remains disabled.
   const printModeIndicator = $("cashierPrintMode");
   if (printModeIndicator) {
-    printModeIndicator.textContent = "AUTO PRINT PAUSED - printer feeds blank paper. Use PDF Print until a safe printer bridge is configured.";
+    printModeIndicator.textContent = "HTML THERMAL PRINT - print preview required | Silent print OFF";
     printModeIndicator.className = "cashier-print-mode standard";
   }
-  $("cashierPrint").textContent = "Print Receipt (PDF)";
-  
+  $("cashierPrint").textContent = "Print Receipt";
+
   function printReceipt() {
     const data = receiptData();
     if (!data) return;
-    // PDF opens for a deliberate user-confirmed print. Never start kiosk printing.
-    const url = URL.createObjectURL(pdfBlob());
-    const w = window.open(url, "_blank");
+    const html = receiptDocument();
+    const w = window.open("", "_blank", "width=440,height=800");
     if (!w) {
-      URL.revokeObjectURL(url);
-      $("cashierStatus").textContent = "Receipt kholne ke liye pop-ups allow karein.";
+      $("cashierStatus").textContent = "Thermal receipt ke liye browser pop-ups allow karein.";
       return;
     }
-    $("cashierStatus").textContent = lastReceiptHeightPts <= 595.28
-      ? "Receipt PDF ready (one page). BlackCopper: 72.1 x 210mm, Actual Size 100%."
-      : "ONE CONTINUOUS PDF ready (" + Math.ceil(lastReceiptHeightPts * 25.4 / 72) + "mm). Printer ALERT: 210mm form par poora print nahi hoga; 3276mm form ne pehle blank paper diya tha. Bina safe printer-specific test ke physical print na karein.";
-    // Keep the PDF alive while its viewer is open, including later printing/download.
-    const timer = setInterval(() => {
-      if (w.closed) { clearInterval(timer); URL.revokeObjectURL(url); }
-    }, 1000);
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    $("cashierStatus").textContent = "HTML receipt print preview khul raha hai. Agar blank paper bohat lamba dikhay to PRINT CANCEL karein; pehle layout verify karein.";
   }
 
   function wrapThermal(text,max) {
@@ -505,8 +500,8 @@
   }
 
   let lastReceiptHeightPts = 0;
-  function pdfBlob() {
-    const d = receiptData(); if (!d) return new Blob([],{type:"application/pdf"});
+  function receiptLayout() {
+    const d = receiptData(); if (!d) return null;
     const safe = s => String(s).replace(/([\\()])/g,"\\$1").replace(/[^\x20-\x7E]/g,"?");
     const W = 204.09, margin = 8, printableRight = 174, items = d.items; // Keep text inside the printer's narrower safe area
     const commands = []; // One continuous PDF page without 210mm pagination.
@@ -515,7 +510,7 @@
     const text = (value,x,size=10,bold=false,align="left") => {
       const valueText = safe(value), width = String(value).replace(/[^\x20-\x7E]/g,"?").length * size * .6;
       let px = align === "center" ? (margin+printableRight-width)/2 : align === "right" ? x-width : x;
-      commands.push({kind:"text",value:valueText,x:px,y,size,bold});
+      commands.push({kind:"text",value:valueText,rawValue:String(value),x:px,y,size,bold});
     };
     const rule = () => commands.push({kind:"rule",y});
     const pair = (label,value) => {
@@ -547,7 +542,15 @@
     if (d.due > 0) {sum("Due",thermalMoney(d.due));sum("Status",d.status);}
     rule();y+=14;text("Thank you.",0,9,true,"center");
     const H = Math.ceil(y+8);
-    lastReceiptHeightPts=H;
+    return {H,W,margin,printableRight,commands};
+  }
+
+  function pdfBlob() {
+    const layout = receiptLayout();
+    if (!layout) return new Blob([],{type:"application/pdf"});
+    const {H,W,margin,printableRight,commands} = layout;
+    lastReceiptHeightPts = H;
+
     // One continuous single-page PDF; physical roll printing requires driver calibration.
     const stream=commands.map(c=>c.kind==="rule"
       ? "0.5 w "+margin+" "+(H-c.y)+" m "+printableRight+" "+(H-c.y)+" l S"
@@ -567,6 +570,48 @@
       offsets.slice(1).map(n=>String(n).padStart(10,"0")+" 00000 n \n").join("")+
       "trailer << /Size 7 /Root 1 0 R >>\nstartxref\n"+xref+"\n%%EOF";
     return new Blob([pdf],{type:"application/pdf"});
+  }
+
+
+  function receiptDocument() {
+    const layout = receiptLayout();
+    if (!layout) return "";
+    const pageHeightMm = Math.ceil(layout.H * 25.4 / 72) + 2;
+    const styles = '@page{size:72.1mm ' + pageHeightMm + 'mm;margin:0}' +
+      '*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#000}' +
+      'html,body{width:72.1mm;min-height:0;height:auto}' +
+      '.receipt{position:relative;width:204.09pt;height:' + layout.H + 'pt;margin:0;overflow:hidden;' +
+      'font-family:"Courier New",Courier,monospace;line-height:1;color:#000}' +
+      '.receipt-text{position:absolute;white-space:pre;line-height:1;font-family:"Courier New",Courier,monospace}' +
+      '.receipt-rule{position:absolute;height:0;border-top:0.5pt solid #000}' +
+      '.preview-note{margin:0;padding:9px 7px;background:#fff1ce;color:#392700;font:12px/1.4 Arial,sans-serif}' +
+      '@media print{.preview-note{display:none!important}html,body{margin:0;padding:0}}';
+    const markup = layout.commands.map(c => {
+      if (c.kind === "rule") {
+        return '<div class="receipt-rule" style="left:' + layout.margin + 'pt;top:' + c.y +
+          'pt;width:' + (layout.printableRight - layout.margin) + 'pt"></div>';
+      }
+      return '<span class="receipt-text" style="left:' + c.x.toFixed(2) +
+        'pt;top:' + (c.y - c.size * 0.88).toFixed(2) + 'pt;font-size:' +
+        c.size.toFixed(2) + 'pt;font-weight:' + (c.bold ? '700' : '400') + '">' +
+        esc(c.rawValue) + '</span>';
+    }).join("");
+    // Re-measure on load as in the production receipt printer. This is a
+    // browser print dialog, never background kiosk printing.
+    const init = '<script>window.addEventListener("load",function(){' +
+      'var el=document.querySelector(".receipt");' +
+      'var mm=Math.ceil(el.getBoundingClientRect().height*25.4/96)+2;' +
+      'var style=document.createElement("style");' +
+      'style.textContent="@page{size:72.1mm "+mm+"mm;margin:0}";' +
+      'document.head.appendChild(style);' +
+      'requestAnimationFrame(function(){window.print();});' +
+      '});<\\/script>';
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Kashif Traders Receipt ' +
+      esc(receiptData().invoice) + '</title><style>' + styles + '</style></head><body>' +
+      '<main class="receipt">' + markup + '</main>' +
+      '<div class="preview-note">Receipt length: ' + pageHeightMm +
+      'mm. Print preview mein sirf ek slip aur minimum blank paper hon. Agar 3276mm khaali page dikhay to Cancel karein.</div>' +
+      init + '</body></html>';
   }
 
   async function shareReceipt() {

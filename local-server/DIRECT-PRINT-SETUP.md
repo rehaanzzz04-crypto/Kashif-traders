@@ -11,3 +11,9 @@ A proper one-click printing implementation will need Windows-side controlled RAW
 ## One PDF page, one receipt (2026-10-09)
 
 Cashier invoices now produce **one unbroken PDF page**, irrespective of product count (within the PDF page-size limit). A 28-item bill is roughly 536mm high. This fixes repeated physical page-breaks in preview, **not** BlackCopper's fixed-size driver behavior. The working browser's silent print remains disabled. For long bills, the standard 210mm selection will crop/reflow, while the 3276mm driver form previously caused excessive blank feed. Do **not** print long invoices until printer-specific continuous-feed or tested ESC/POS support is available. Short bills can use the successfully tested 72.1 x 210mm manual configuration.
+
+## HTML thermal print restored on working branch (2026-10-09)
+
+The Cashier **Print Receipt** button now opens an HTML receipt generated using exactly the same layout coordinates as the working-branch PDF Share generator. It uses the successful production browser-print approach rather than routing print via PDF. The HTML page declares the measured page height in `@page` and remeasures the receipt when the page loads before opening a **normal print dialog**. For 28 items the expected receipt is about 536mm high, not 3276mm.
+
+**Check the Windows print preview before pressing Print.** If the printer driver forces a 3276mm blank page (or more than one page), **Cancel**. This mechanism improves the layout but physical output still requires one controlled BlackCopper test; browser CSS does not override every driver. The old silent/kiosk printer shortcut is **NOT** re-enabled. PDF Share still uses the continuous, working-branch PDF layout. The `CS-N` daily numbering is unchanged.

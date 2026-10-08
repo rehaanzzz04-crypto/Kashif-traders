@@ -150,3 +150,33 @@ test('one continuous PDF page for bills of 5, 12, 28, 50 items',async()=>{
  assert.match(source,/ONE CONTINUOUS PDF ready/);
  assert.doesNotMatch(source,/frame\.contentWindow\.print\s*\(/);
 });
+
+test('HTML print matches working thermal PDF layout for short and long bills',async()=>{
+ const printCode=source.slice(source.indexOf('  function wrapThermal('),source.indexOf('  async function shareReceipt('));
+ const receiptEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+ const heights=[];
+ for(const count of [1,5,12,28,50]){
+  const d={invoice:'CS-3',date:'09-Oct-2026',customer:'Walk-in Customer',createdBy:'Ali',paidBy:'Ali',payment:'Cash',items:Array.from({length:count},(_,i)=>({name:'CHOCOLATE POWDER DARK '+i,qty:2,unit:'KG',rate:1500,amount:3000})),subtotal:count*3000,discount:0,total:count*3000,received:count*3000,due:0,status:'Paid'};
+  const ctx={Blob,receiptData:()=>d,esc:receiptEsc,qtyText:String,thermalMoney:String};
+  const html=vm.runInNewContext(printCode+';receiptDocument()',ctx);
+  const pdf=await vm.runInNewContext(printCode+';pdfBlob()',ctx).text();
+  const heightPt=Number(pdf.match(/MediaBox \[0 0 204.09 ([\d.]+)\]/)[1]);
+  heights.push(heightPt);
+  assert.match(html, new RegExp('@page\\{size:72\\.1mm '+(Math.ceil(heightPt*25.4/72)+2)+'mm;margin:0\\}'));
+  assert.match(html,/<main class="receipt">/);
+  assert.match(html,/<script>window\.addEventListener/);
+  assert.match(html,/window\.print\(\)/);
+  assert.equal((html.match(/KASHIF TRADERS/g)||[]).length,1);
+  assert.equal((html.match(/Cash Sale Receipt/g)||[]).length,0); // label is inline text
+  assert.match(html,/>Cash Sale Receipt<\/span>/);
+  assert.match(html,/>Total Items<\/span>/);
+  assert.match(html,/>Received<\/span>/);
+  assert.match(html,/Thank you\./);
+  assert.match(html,/CS-3/);
+  assert.equal(Number(pdf.match(/\/Count (\d+)/)[1]),1);
+ }
+ assert.ok(heights.every((h,i)=>i===0||h>heights[i-1]));
+ assert.ok(heights[3]>595.28);
+ assert.doesNotMatch(source,/frame\.contentWindow\.print\s*\(/);
+ assert.doesNotMatch(source,/directPrintReceipt\s*\(/);
+});
