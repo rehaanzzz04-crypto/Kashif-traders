@@ -52,8 +52,23 @@ test('72mm receipt printable width fits long product names, amounts and footer',
  assert.ok(draws.length>15,'receipt has content');
  for(const d of draws){
    const size=Number(d[1]),x=Number(d[2]),value=d[4];
-   assert.ok(x>=0 && x+value.length*size*.6<=width-5.0,'text clipped: '+value);
+   assert.ok(x>=7 && x+value.length*size*.6<=174.1,'text clipped: '+value);
  }
  const footer=draws.find(d=>d[4]==='Thank you.');
  assert.ok(footer && Number(footer[3])>=7 && Number(footer[3])<=10,'short footer/end gap');
+});
+
+test('receipt amount and total columns stay inside safe area',async()=>{
+ const items=[{name:'SALVA KETCHUP SASHY',qty:4,unit:'pcs',rate:250,amount:1000},{name:'WARDA KETCHUP POUCH 4KG',qty:1,unit:'pcs',rate:800,amount:800}];
+ for(const total of [1800,123456789.99]){
+   const data={invoice:'CS-1',date:'08-Oct-2026, 4:41 pm',customer:'Walk-in Customer',createdBy:'Ali amjad',paidBy:'Ali amjad',payment:'Cash',items,subtotal:total,discount:0,total,received:total,due:0,status:'Paid'};
+   const pdf=await vm.runInNewContext(pdfCode+';pdfBlob()',{Blob,receiptData:()=>data,qtyText:String,thermalMoney:v=>Number(v).toLocaleString('en-PK',{maximumFractionDigits:2})}).text();
+   const draws=[...pdf.matchAll(/BT \/F[12] ([\d.]+) Tf ([\d.]+) ([\d.]+) Td \(([^)]*)\) Tj ET/g)];
+   for(const d of draws) {
+     const x=Number(d[2]),end=x+d[4].length*Number(d[1])*.6;
+     assert.ok(x>=7 && end<=174.1, 'not inside printer safe area: '+d[4]);
+   }
+   assert.ok(draws.length>=20);
+   assert.match(pdf,/\(Total Items\)/);
+ }
 });

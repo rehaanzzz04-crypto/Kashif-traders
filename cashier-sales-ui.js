@@ -484,37 +484,37 @@
   function pdfBlob() {
     const d = receiptData(); if (!d) return new Blob([],{type:"application/pdf"});
     const safe = s => String(s).replace(/([\\()])/g,"\\$1").replace(/[^\x20-\x7E]/g,"?");
-    const W = 204.09, margin = 10, items = d.items; // 72mm matches the 72.1mm thermal driver printable width
+    const W = 204.09, margin = 8, printableRight = 174, items = d.items; // Keep text inside the printer's narrower safe area
     const commands = [];
     let y = 16;
     // Courier has fixed character widths, so alignment and wrapping are exact.
     const text = (value,x,size=10,bold=false,align="left") => {
       const valueText = safe(value), width = String(value).replace(/[^\x20-\x7E]/g,"?").length * size * .6;
-      let px = align === "center" ? (W-width)/2 : align === "right" ? x-width : x;
+      let px = align === "center" ? (margin+printableRight-width)/2 : align === "right" ? x-width : x;
       commands.push({kind:"text",value:valueText,x:px,y,size,bold});
     };
     const rule = () => commands.push({kind:"rule",y});
     const pair = (label,value) => {
-      const lines = wrapThermal(value,20);
+      const lines = wrapThermal(value,18);
       text(label,margin,8.5,true);
-      for (const line of lines) { text(line,84,8.5,true); y += 11; }
+      for (const line of lines) { text(line,80,8.5,true); y += 11; }
     };
     text("KASHIF TRADERS",0,15,true,"center"); y += 15;
     text("Cash Sale Receipt",0,9,true,"center"); y += 10; rule(); y += 12;
     [["Receipt No",d.invoice],["Date",d.date],["Customer",d.customer],["Created by",d.createdBy],["Paid by",d.paidBy],["Payment",d.payment]].forEach(([label,value])=>pair(label,value));
     y += 2; rule(); y += 12;
-    text("Qty",margin,9.5,true); text("Rate",123,9.5,true,"right"); text("Amount",W-margin,9.5,true,"right"); y += 8; rule(); y += 12;
+    text("Qty",margin,9.5,true); text("Rate",108,9.5,true,"right"); text("Amount",printableRight,9.5,true,"right"); y += 8; rule(); y += 12;
     items.forEach(p => {
-      for (const line of wrapThermal(p.name,30)) { text(line,margin,10,true); y += 12; }
+      for (const line of wrapThermal(p.name,26)) { text(line,margin,10,true); y += 12; }
       // Numeric values have their own row and columns, away from product names.
       const values=[qtyText(p.qty)+" "+p.unit,thermalMoney(p.rate),thermalMoney(p.amount)];
-      const size=Math.min(10,50/(values[0].length*.6),54/(values[1].length*.6),65/(values[2].length*.6));
-      text(values[0],margin,size,true);text(values[1],123,size,true,"right");text(values[2],W-margin,size,true,"right");
+      const size=Math.min(9.8,49/(values[0].length*.6),45/(values[1].length*.6),58/(values[2].length*.6));
+      text(values[0],margin,size,true);text(values[1],108,size,true,"right");text(values[2],printableRight,size,true,"right");
       y += 10; rule(); y += 12;
     });
     const sum = (label,value,bold=true) => {
-      const size=Math.min(10,93/(value.length*.6));
-      text(label,margin,9,bold); text(value,W-margin,size,bold,"right"); y += 14;
+      const size=Math.min(9.8,80/(value.length*.6));
+      text(label,margin,9,bold); text(value,printableRight,size,bold,"right"); y += 14;
     };
     sum("Total Items",String(items.length));
     sum("Subtotal",thermalMoney(d.subtotal));
@@ -524,7 +524,7 @@
     rule();y+=14;text("Thank you.",0,9,true,"center");
     const H = Math.ceil(y+8);
     const stream = commands.map(c => c.kind === "rule"
-      ? "0.5 w "+margin+" "+(H-c.y)+" m "+(W-margin)+" "+(H-c.y)+" l S"
+      ? "0.5 w "+margin+" "+(H-c.y)+" m "+printableRight+" "+(H-c.y)+" l S"
       : "BT /"+(c.bold?"F2":"F1")+" "+c.size.toFixed(2)+" Tf "+c.x.toFixed(2)+" "+(H-c.y).toFixed(2)+" Td ("+c.value+") Tj ET").join("\n");
     const objs = [
       "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
