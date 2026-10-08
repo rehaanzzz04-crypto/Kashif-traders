@@ -460,7 +460,7 @@
       $("cashierStatus").textContent = "Receipt kholne ke liye pop-ups allow karein.";
       return;
     }
-    $("cashierStatus").textContent = "Receipt PDF khul gayi hai. Us mein Print dabayein; paper 80mm aur scale 100% rakhein.";
+    $("cashierStatus").textContent = "Receipt PDF khul gayi hai. 80mm roll (72.1mm printable), Actual size 100%, aur printer auto-cut rakhein.";
     // Keep the PDF alive while its viewer is open, including later printing/download.
     const timer = setInterval(() => {
       if (w.closed) { clearInterval(timer); URL.revokeObjectURL(url); }
@@ -484,9 +484,9 @@
   function pdfBlob() {
     const d = receiptData(); if (!d) return new Blob([],{type:"application/pdf"});
     const safe = s => String(s).replace(/([\\()])/g,"\\$1").replace(/[^\x20-\x7E]/g,"?");
-    const W = 226.77, margin = 12, items = d.items;
+    const W = 204.09, margin = 10, items = d.items; // 72mm matches the 72.1mm thermal driver printable width
     const commands = [];
-    let y = 18;
+    let y = 16;
     // Courier has fixed character widths, so alignment and wrapping are exact.
     const text = (value,x,size=10,bold=false,align="left") => {
       const valueText = safe(value), width = String(value).replace(/[^\x20-\x7E]/g,"?").length * size * .6;
@@ -495,25 +495,25 @@
     };
     const rule = () => commands.push({kind:"rule",y});
     const pair = (label,value) => {
-      const lines = wrapThermal(value,23);
+      const lines = wrapThermal(value,20);
       text(label,margin,8.5,true);
-      for (const line of lines) { text(line,96,8.5,true); y += 12; }
+      for (const line of lines) { text(line,84,8.5,true); y += 11; }
     };
     text("KASHIF TRADERS",0,15,true,"center"); y += 15;
-    text("Cash Sale Receipt",0,9,true,"center"); y += 10; rule(); y += 14;
+    text("Cash Sale Receipt",0,9,true,"center"); y += 10; rule(); y += 12;
     [["Receipt No",d.invoice],["Date",d.date],["Customer",d.customer],["Created by",d.createdBy],["Paid by",d.paidBy],["Payment",d.payment]].forEach(([label,value])=>pair(label,value));
-    y += 2; rule(); y += 14;
-    text("Qty",margin,10,true); text("Rate",132,10,true,"right"); text("Amount",W-margin,10,true,"right"); y += 8; rule(); y += 14;
+    y += 2; rule(); y += 12;
+    text("Qty",margin,9.5,true); text("Rate",123,9.5,true,"right"); text("Amount",W-margin,9.5,true,"right"); y += 8; rule(); y += 12;
     items.forEach(p => {
-      for (const line of wrapThermal(p.name,33)) { text(line,margin,10,true); y += 13; }
+      for (const line of wrapThermal(p.name,30)) { text(line,margin,10,true); y += 12; }
       // Numeric values have their own row and columns, away from product names.
       const values=[qtyText(p.qty)+" "+p.unit,thermalMoney(p.rate),thermalMoney(p.amount)];
-      const size=Math.min(10,50/(values[0].length*.6),70/(values[1].length*.6),76/(values[2].length*.6));
-      text(values[0],margin,size,true);text(values[1],132,size,true,"right");text(values[2],W-margin,size,true,"right");
-      y += 10; rule(); y += 14;
+      const size=Math.min(10,50/(values[0].length*.6),54/(values[1].length*.6),65/(values[2].length*.6));
+      text(values[0],margin,size,true);text(values[1],123,size,true,"right");text(values[2],W-margin,size,true,"right");
+      y += 10; rule(); y += 12;
     });
     const sum = (label,value,bold=true) => {
-      const size=Math.min(10,105/(value.length*.6));
+      const size=Math.min(10,93/(value.length*.6));
       text(label,margin,9,bold); text(value,W-margin,size,bold,"right"); y += 14;
     };
     sum("Total Items",String(items.length));
@@ -521,8 +521,8 @@
     if(d.discount) sum("Discount",thermalMoney(d.discount));
     sum("Total PKR",thermalMoney(d.total));sum("Received",thermalMoney(d.received));
     if (d.due > 0) {sum("Due",thermalMoney(d.due));sum("Status",d.status);}
-    rule();y+=15;text("Thank you.",0,9,true,"center");
-    const H = Math.ceil(y+12);
+    rule();y+=14;text("Thank you.",0,9,true,"center");
+    const H = Math.ceil(y+8);
     const stream = commands.map(c => c.kind === "rule"
       ? "0.5 w "+margin+" "+(H-c.y)+" m "+(W-margin)+" "+(H-c.y)+" l S"
       : "BT /"+(c.bold?"F2":"F1")+" "+c.size.toFixed(2)+" Tf "+c.x.toFixed(2)+" "+(H-c.y).toFixed(2)+" Td ("+c.value+") Tj ET").join("\n");

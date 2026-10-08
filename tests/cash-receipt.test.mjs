@@ -19,9 +19,9 @@ test('thermal PDF expands with content and keeps totals/footer within the page',
  for(const count of [1,6,50]){
  const data={invoice:'CS-1',date:'08-Oct-2026',customer:'A long customer name that wraps into additional lines',createdBy:'Ali',paidBy:'Cashier',payment:'Cash',items:Array.from({length:count},()=>({name:'Full Cream Milk Powder Bakery Pack',qty:2,unit:'kg',rate:1500,amount:3000})),subtotal:count*3000,total:count*3000,discount:0,received:0,due:count*3000,status:'Credit'};
  const pdf=await vm.runInNewContext(pdfCode+';pdfBlob()',{Blob,receiptData:()=>data,qtyText:String,thermalMoney:String}).text();
- const height=Number(pdf.match(/MediaBox \[0 0 226.77 ([\d.]+)/)[1]);assert.ok(height>previous);previous=height;
+ const height=Number(pdf.match(/MediaBox \[0 0 204.09 ([\d.]+)/)[1]);assert.ok(height>previous);previous=height;
  assert.match(pdf,/\(Thank you\.\)/);assert.match(pdf,/\(CS-1\)/);assert.match(pdf,/\(Total Items\)/);assert.ok(pdf.includes("("+count+") Tj"));
- for(const m of pdf.matchAll(/([\d.]+) ([\d.]+) Td /g)){assert.ok(Number(m[1])>=0&&Number(m[1])<226.77);assert.ok(Number(m[2])>=10&&Number(m[2])<height);}
+ for(const m of pdf.matchAll(/([\d.]+) ([\d.]+) Td /g)){assert.ok(Number(m[1])>=0&&Number(m[1])<204.09);assert.ok(Number(m[2])>=7&&Number(m[2])<height);}
  }
 });
 
@@ -41,4 +41,19 @@ test('payment keeps the saved receipt selected across refresh, including an empt
   await vm.runInContext('load()',context);assert.equal(context.active.id,1);
   assert.match(nodes.cashierStatus.textContent,/receipt print/);
  }
+});
+
+test('72mm receipt printable width fits long product names, amounts and footer',async()=>{
+ const data={invoice:'CS-122',date:'08-Oct-2026, 4:41 pm',customer:'Very Long Bakery Customer Business Account',createdBy:'Ali',paidBy:'Cashier',payment:'Cash',items:[{name:'Full Cream Milk Powder Premium Bakery Pack 25KG',qty:12.5,unit:'kg',rate:12500,amount:156250},{name:'Salsa Ketchup Sashy',qty:4,unit:'pcs',rate:250,amount:1000}],subtotal:157250,discount:0,total:157250,received:157250,due:0,status:'Paid'};
+ const pdf=await vm.runInNewContext(pdfCode+';pdfBlob()',{Blob,receiptData:()=>data,qtyText:String,thermalMoney:String}).text();
+ const width=Number(pdf.match(/MediaBox \[0 0 ([\d.]+) ([\d.]+)/)[1]);
+ assert.equal(width,204.09);
+ const draws=[...pdf.matchAll(/BT \/F[12] ([\d.]+) Tf ([\d.]+) ([\d.]+) Td \(([^)]*)\) Tj ET/g)];
+ assert.ok(draws.length>15,'receipt has content');
+ for(const d of draws){
+   const size=Number(d[1]),x=Number(d[2]),value=d[4];
+   assert.ok(x>=0 && x+value.length*size*.6<=width-5.0,'text clipped: '+value);
+ }
+ const footer=draws.find(d=>d[4]==='Thank you.');
+ assert.ok(footer && Number(footer[3])>=7 && Number(footer[3])<=10,'short footer/end gap');
 });
