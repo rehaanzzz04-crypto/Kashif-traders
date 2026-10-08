@@ -433,13 +433,13 @@ async function saleProducts(sql, req) {
   await sql`CREATE INDEX IF NOT EXISTS cash_sale_products_search_idx ON cash_sale_products (name, sku, barcode)`;
   const id = asId(req.query?.id), b = bodyOf(req);
   if (req.method === "GET") {
-    const search = cleanText(req.query?.search) || "", like = `%${search}%`, status = cleanText(req.query?.status);
+    const search = cleanText(req.query?.search) || "", like = `%${search}%`, status = cleanText(req.query?.status), limit = Math.min(1000, Math.max(1, Number(req.query?.limit) || 200));
     const rows = await sql`SELECT id,sku,name,category,unit,purchase_price,sale_price,reorder_level,barcode,status,created_at,updated_at,(product_image_url IS NOT NULL) has_image,product_image_url
       FROM cash_sale_products
       WHERE (${id}::bigint IS NULL OR id=${id})
         AND (${search}='' OR COALESCE(sku,'') ILIKE ${like} OR name ILIKE ${like} OR COALESCE(category,'') ILIKE ${like} OR COALESCE(barcode,'') ILIKE ${like})
         AND (${status}::text IS NULL OR status=${status})
-      ORDER BY name,id LIMIT 200`;
+      ORDER BY name,id LIMIT ${limit}`;
     return { status: 200, data: { records: rows } };
   }
   if (req.method === "POST") {
