@@ -14,7 +14,7 @@ const script=path.join(path.dirname(fileURLToPath(import.meta.url)),"win-raw-pri
 const recent=new Set();
 function json(res,status,result,headers={}){res.writeHead(status,{"Content-Type":"application/json","Cache-Control":"no-store",...headers});res.end(JSON.stringify(result));}
 function spool(bytes){return new Promise((resolve,reject)=>{
- const child=spawn("powershell.exe",["-NoProfile","-NonInteractive","-File",script,"-PrinterName",PRINTER],{windowsHide:true});
+ const child=spawn("powershell.exe",["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",script,"-PrinterName",PRINTER],{windowsHide:true});
  let out="",err="",settled=false;
  const finish=(error)=>{if(settled)return;settled=true;clearTimeout(timeout);error?reject(error):resolve(out)};
  const timeout=setTimeout(()=>{child.kill();finish(new Error("Printer timeout"))},20000);

@@ -30,3 +30,9 @@ The dry-run test passed on 1, 5, 23, 28, and 50 synthetic items. **Dry run canno
 7. Stop the bridge with Ctrl+C after one print. Send the receipt photo and console screenshot before any further integration or enabling printing of real invoices.
 
 This is **not** the final branded design. ESC/POS output is plain 42-column thermal text and should be compared against the approved Cashier format before integration. Production, the real Cashier Print button, and PDF Share are unchanged.
+
+## PowerShell execution policy error (PSSecurityException)
+
+If the Windows test says `win-raw-printer.ps1 cannot be loaded because running scripts is disabled`, the bridge previously launched Windows PowerShell without an execution-policy argument. Starting from the updated version, it adds `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ...` **only to that spawned helper process**. It does NOT run `Set-ExecutionPolicy`, modify any registry/group policy, or change persistent Windows settings. Group Policy or antivirus can still block execution; in that event stop and diagnose rather than reducing system-wide protection.
+
+Important: stop both old console windows (Ctrl+C, confirm Y) and use a freshly downloaded, extracted working-branch ZIP. Perform the same supervised one-product physical test only after ensuring the printer job queue is empty. If paper feeds excessively, cancel the print queue and turn off printer. Receipt formatting/ERP production are unchanged.

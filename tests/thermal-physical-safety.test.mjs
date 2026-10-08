@@ -26,3 +26,8 @@ test("operator must confirm physical job twice; dry-run launcher refuses physica
  assert.match(safeStart,/if \/I "%~1"=="print"/);
  assert.doesNotMatch(safeStart,/if \/I "%~1"=="print" set "KT_PRINT_DRY_RUN=0"/);
 });
+
+test("Windows PowerShell policy exemption is limited to spawned printer helper process",()=>{
+ assert.match(bridge,/spawn\("powershell\.exe",\["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File",script/);
+ assert.doesNotMatch(bridge,/Set-ExecutionPolicy|MachinePolicy|LocalMachine/);
+});
