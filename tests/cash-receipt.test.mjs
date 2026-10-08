@@ -110,3 +110,27 @@ test('multi-page thermal bills stay within 210mm; totals on final page',async()=
  if(count>=30)assert.ok(boxes.length>=2);
  }
 });
+
+test('long continuous thermal bill repeats no company header',async()=>{
+ for(const count of [5,12,28,50]){
+ const data={invoice:'CS-1',date:'09-Oct-2026',customer:'Walk-in',createdBy:'Ali',paidBy:'Ali',payment:'Cash',items:Array.from({length:count},(_,i)=>({name:'Full Cream Milk Powder '+i,qty:2,unit:'kg',rate:1500,amount:3000})),subtotal:count*3000,total:count*3000,discount:0,received:count*3000,due:0,status:'Paid'};
+ const pdf=await vm.runInNewContext(pdfCode+';pdfBlob()',{Blob,receiptData:()=>data,qtyText:String,thermalMoney:String}).text();
+ const pages=Number(pdf.match(/\/Count (\d+)/)[1]);
+ assert.equal((pdf.match(/\(KASHIF TRADERS\)/g)||[]).length,1);
+ assert.equal((pdf.match(/\(Cash Sale Receipt\)/g)||[]).length,1);
+ assert.doesNotMatch(pdf,/\(cont\.\)/);
+ assert.equal((pdf.match(/\(Total Items\)/g)||[]).length,1);
+ assert.equal((pdf.match(/\(Thank you\.\)/g)||[]).length,1);
+ if(count>=28)assert.ok(pages>1);
+ for(const box of pdf.matchAll(/MediaBox \[0 0 204.09 ([\d.]+)\]/g))assert.ok(Number(box[1])<=595.28);
+ }
+});
+test('selected business date controls daily cash sale sequence',()=>{
+ assert.match(api,/WITH business_day AS \(/);
+ assert.match(api,/SELECT day,1 FROM business_day/);
+ assert.match(api,/\(SELECT day FROM business_day\)/);
+ const view=vm.runInNewContext(helper+';cashInvoiceView');
+ const values=view([{invoice_number:'CS-20261009-1'},{invoice_number:'CS-20261009-2'},{invoice_number:'CS-20261010-1'}]);
+ assert.deepEqual(Array.from(values,x=>x.invoice_number),['CS-1','CS-2','CS-1']);
+ assert.notEqual(values[0].invoice_reference,values[2].invoice_reference);
+});

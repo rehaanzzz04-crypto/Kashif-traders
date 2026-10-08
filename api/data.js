@@ -174,13 +174,17 @@ async function cashSales(sql, req, user) {
     }
     const subtotal=items.reduce((sum,x)=>sum+Math.max(0,Number(x.qty)||0)*Math.max(0,Number(x.rate)||0),0),
       discount=Math.min(subtotal,Math.max(0,Number(b.discount)||0)), total=subtotal-discount;
-    const rows=await sql`WITH next_number AS (
+    // Allocate the daily CS-N number for the same Karachi business day
+    // that is stored on the invoice. Internal CS-YYYYMMDD-N stays unique.
+    const rows=await sql`WITH business_day AS (
+        SELECT COALESCE(${cleanText(b.sale_date)||null}::date,(now() AT TIME ZONE 'Asia/Karachi')::date) AS day
+      ), next_number AS (
         INSERT INTO cash_sale_daily_counters(business_date,last_number)
-        VALUES ((now() AT TIME ZONE 'Asia/Karachi')::date,1)
+        SELECT day,1 FROM business_day
         ON CONFLICT (business_date) DO UPDATE SET last_number=cash_sale_daily_counters.last_number+1
         RETURNING 'CS-'||to_char(business_date,'YYYYMMDD')||'-'||last_number AS invoice_number
       ) INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_id,customer_name,sale_date,items,subtotal,discount,total)
-      VALUES((SELECT invoice_number FROM next_number),${user.id},${user.full_name||user.employee_code},${customer?.id||null},${customer?.name||"Walk-in Customer"},COALESCE(${cleanText(b.sale_date)}::date,(now() AT TIME ZONE 'Asia/Karachi')::date),${JSON.stringify(items)},${subtotal},${discount},${total}) RETURNING *`;
+      VALUES((SELECT invoice_number FROM next_number),${user.id},${user.full_name||user.employee_code},${customer?.id||null},${customer?.name||"Walk-in Customer"},(SELECT day FROM business_day),${JSON.stringify(items)},${subtotal},${discount},${total}) RETURNING *`;
     return {status:201,data:{record:rows[0]}};
   }
   if (req.method === "PATCH") {

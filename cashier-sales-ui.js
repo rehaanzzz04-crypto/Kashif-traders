@@ -515,11 +515,12 @@
       pages[page].push({kind:"text",value:valueText,x:px,y,size,bold});
     };
     const rule = () => pages[page].push({kind:"rule",y});
+    // 210mm PDF page boundaries are kept for the BlackCopper driver,
+    // but the printed roll reads as one invoice with one heading.
     const nextPage = () => {
-      page += 1; pages.push([]); y = 16;
-      text("KASHIF TRADERS",0,12,true,"center");y += 16;
-      text("Receipt "+d.invoice+" (cont.)",0,8,true,"center");y += 13;
-      rule();y += 13;
+      page += 1;
+      pages.push([]);
+      y = 12;
     };
     const ensureRoom = needed => { if (y + needed > 564) nextPage(); };
     const pair = (label,value) => {
