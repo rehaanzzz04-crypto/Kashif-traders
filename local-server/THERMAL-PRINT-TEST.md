@@ -16,3 +16,17 @@ The plain-text 42-column ESC/POS layout retains company title, customer details,
 5. Confirm the final line **ALL DRY-RUN CHECKS PASSED**, take a screenshot, then close the second window. Stop the server with Ctrl+C in the first window.
 
 The check never uses real customer invoices. **Do not run \`start-thermal-test.cmd print\` yet**. Physical BlackCopper compatibility and the correct printer mode require a separate supervised 1-item test. Current Cashier **Print Receipt** is unchanged.
+
+## One-item supervised physical printer test
+
+The dry-run test passed on 1, 5, 23, 28, and 50 synthetic items. **Dry run cannot establish BlackCopper hardware compatibility.** For the next test, download the UPDATED working branch ZIP and extract to a NEW location to avoid old scripts.
+
+1. Keep the printer connected by USB. In Windows > Printers & scanners, check that BlackCopper 80mm Series(1) is installed and that its print queue is empty.
+2. Stop the existing DRY_RUN bridge with Ctrl+C; only one bridge may listen at 127.0.0.1:8788.
+3. In local-server folder double-click start-thermal-physical-test.cmd, read the warning, then type YES-TEST and Enter. This starts limited physical mode (one short TEST-1 product per job).
+4. With the first window still open, double-click print-one-thermal-test.cmd. It checks health, then asks for PRINT-ONE. Do not confirm until the printer is supervised and able to be powered off if feeding occurs.
+5. After confirmation, a short fake test receipt (one product, PKR 10) is sent by RAW ESC/POS; there is NO cutter command or Windows form-feed instruction. Do not claim physical success until the paper is observed.
+6. If any blank feed or garbled text occurs, immediately cancel the Windows print job and turn the printer off. Do not repeat blindly.
+7. Stop the bridge with Ctrl+C after one print. Send the receipt photo and console screenshot before any further integration or enabling printing of real invoices.
+
+This is **not** the final branded design. ESC/POS output is plain 42-column thermal text and should be compared against the approved Cashier format before integration. Production, the real Cashier Print button, and PDF Share are unchanged.

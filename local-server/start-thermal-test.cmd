@@ -8,7 +8,11 @@ if errorlevel 1 (
  exit /b 1
 )
 set "KT_PRINT_DRY_RUN=1"
-if /I "%~1"=="print" set "KT_PRINT_DRY_RUN=0"
+if /I "%~1"=="print" (
+ echo Physical mode now requires separate supervised start-thermal-physical-test.cmd.
+ pause
+ exit /b 1
+)
 echo RAW PRINT TEST. Mode: %KT_PRINT_DRY_RUN% (1 is safe dry-run, 0 sends paper).
 echo Windows default browser receipt printing remains unchanged.
 echo Ctrl+C to stop.
