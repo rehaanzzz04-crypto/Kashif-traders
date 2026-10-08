@@ -32,6 +32,18 @@ if /I not "%APPROVE%"=="YES-CASHIER" (
 set "KT_PRINT_DRY_RUN=0"
 set "KT_PRINT_TEST_ONLY=0"
 set "KT_PRINT_CASHIER=1"
+set "KT_PRINT_AUTOCUT=0"
+set "KT_PRINT_CUT_VERIFIED=0"
+echo Cutter is OFF until the supervised cutter test passes.
+set "CUT_APPROVAL="
+set /p "CUT_APPROVAL=If CUT TEST PASSED, type ENABLE-CUT (Enter leaves off): "
+if /I "%CUT_APPROVAL%"=="ENABLE-CUT" (
+ set "KT_PRINT_AUTOCUT=1"
+ set "KT_PRINT_CUT_VERIFIED=1"
+ echo Automatic cutting enabled for this session.
+) else (
+ echo Auto cutter remains OFF.
+)
 echo Cashier USB Print Mode ACTIVE. Keep this window open.
 echo Stop with Ctrl+C after billing.
 node local-server\thermal-print-bridge.mjs

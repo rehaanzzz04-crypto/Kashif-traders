@@ -50,3 +50,9 @@ After the one-item TEST-1 receipt printed correctly and paper stopped at its end
 7. Stop Cashier mode with Ctrl+C after use. No Windows service/auto-start, no auto cut.
 
 Guards: exact origin allowlist, loopback only, explicit cashier-mode operator approval, 50 items and 250 lines maximum, one job per press, no automatic fallback. RAW text receipts follow approved field order but their font measurements can differ from PDF. Production unchanged.
+
+## Compact receipt and cutter test (2026-10-09)
+
+The physical RAW printer stopped feeding after the receipt, but there was no auto cut and the earlier TEST-1 was joined to the next bill. The updated receipt keeps the approved Working Branch field order, aligned columns, one heading, and totals with slightly more compact 28-dot ESC/POS spacing. It is hardware text, not pixel-identical PDF typography.
+
+Cut is OFF by default. Confirm the actual printer has a working auto cutter. Stop the old bridge, download a NEW Working Branch ZIP, then start `local-server/start-thermal-cut-test.cmd`. Type `YES-CUT-TEST` and open `print-one-thermal-test.cmd` in a second terminal. After checking printer readiness, enter `PRINT-ONE`. A single full-cut command (GS V 0) is sent at the end after three short feed lines. If cutter does not work, leave regular mode without cutter; do not retry blindly. Once physical cut succeeds, restart `start-thermal-cashier.cmd` and type `ENABLE-CUT` at the extra prompt. Stop printing immediately if the paper unexpectedly feeds or jams. Production and PDF Share unchanged.

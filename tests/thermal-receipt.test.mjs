@@ -36,3 +36,15 @@ test("reject control chars in products and prevent oversized bill",()=>{
  const invalid=data();invalid.items[0].rate=-1;
  assert.throws(()=>rawReceipt(invalid),/invalid/i);
 });
+
+test("approved compact layout and optional cutter",()=>{
+ const d=data(23),off=rawReceipt(d),on=rawReceipt(d,{cut:true});
+ assert.ok(off.indexOf(Buffer.from([27,51,28]))>=0);
+ assert.ok(off.indexOf(Buffer.from([29,33,17]))>=0);
+ assert.equal(off.indexOf(Buffer.from([29,86,0])),-1);
+ assert.equal(on.indexOf(Buffer.from([29,86,0])),on.length-3);
+ assert.equal(on.indexOf(Buffer.from([29,86,0]),on.length-2),-1);
+ assert.equal(on.includes(12),false);
+ assert.equal(receiptLines(d).filter(x=>x==="KASHIF TRADERS").length,1);
+ assert.equal(receiptLines(d).filter(x=>x==="Thank you.").length,1);
+});

@@ -10,6 +10,11 @@ const TEST_ONLY=process.env.KT_PRINT_TEST_ONLY==="1";
 const CASHIER=process.env.KT_PRINT_CASHIER==="1";
 if(!DRY && Number(TEST_ONLY)+Number(CASHIER)!==1)throw Error("Physical printing requires exactly one explicitly enabled mode");
 const MODE=DRY?"dry-run":TEST_ONLY?"test-only":"cashier";
+const CUT_ENABLED=process.env.KT_PRINT_AUTOCUT==="1";
+const CUT_TEST=process.env.KT_PRINT_CUT_TEST==="1";
+const CUT_VERIFIED=process.env.KT_PRINT_CUT_VERIFIED==="1";
+if(CUT_ENABLED && !((TEST_ONLY && CUT_TEST) || (CASHIER && CUT_VERIFIED)))
+ throw Error("Cutter must pass supervised test first");
 const ALLOWED=new Set(["http://localhost:8787","http://127.0.0.1:8787",...(process.env.KT_PRINT_ORIGIN||"").split(",").map(x=>x.trim()).filter(Boolean)]);
 if([...ALLOWED].some(o=>o==="*" || !/^https?:\/\/[^/]+$/.test(o)))throw Error("Invalid printer allowed origin");
 const script=path.join(path.dirname(fileURLToPath(import.meta.url)),"win-raw-printer.ps1");
@@ -32,13 +37,13 @@ const server=http.createServer(async(req,res)=>{
  if(!ALLOWED.has(origin)||!/^127\.0\.0\.1:8788$|^localhost:8788$/.test(req.headers.host||""))return json(res,403,{error:"Untrusted origin"});
  const hdr={"Access-Control-Allow-Origin":origin,"Vary":"Origin","Access-Control-Allow-Methods":"GET,POST,OPTIONS","Access-Control-Allow-Headers":"Content-Type","Access-Control-Allow-Private-Network":"true"};
  if(req.method==="OPTIONS"){res.writeHead(204,hdr);res.end();return}
- if(req.method==="GET"&&req.url==="/health")return json(res,200,{ready:true,dryRun:DRY,printer:PRINTER,testOnly:TEST_ONLY,mode:MODE},hdr);
+ if(req.method==="GET"&&req.url==="/health")return json(res,200,{ready:true,dryRun:DRY,printer:PRINTER,testOnly:TEST_ONLY,mode:MODE,autoCut:CUT_ENABLED},hdr);
  if(req.method!=="POST"||req.url!=="/print")return json(res,404,{error:"Not found"},hdr);
  try{
   let body="";for await(const part of req){body+=part;if(body.length>65000)throw Error("Too large")}
   const payload=JSON.parse(body);
   const id=String(payload.jobId||"");if(!/^[A-Za-z0-9-]{12,80}$/.test(id))throw Error("Job ID invalid");
-  const lines=receiptLines(payload.receipt),bytes=rawReceipt(payload.receipt);
+  const lines=receiptLines(payload.receipt),bytes=rawReceipt(payload.receipt,{cut:CUT_ENABLED && !DRY});
   if(!DRY && TEST_ONLY && (
     payload.confirmPrint!=="PRINT-ONE-TEST" ||
     payload.receipt?.invoice!=="TEST-1" ||

@@ -9,7 +9,7 @@ const safeStart=read("start-thermal-test.cmd");
 test("live printing needs explicit test-only opt-in and is restricted to one test item",()=>{
  assert.match(bridge,/const DRY=process\.env\.KT_PRINT_DRY_RUN!=="0"/);
  assert.match(bridge,/const TEST_ONLY=process\.env\.KT_PRINT_TEST_ONLY==="1"/);
- assert.match(bridge,/if\(!DRY&&!TEST_ONLY\)throw Error/);
+ assert.match(bridge,/Number\(TEST_ONLY\)\+Number\(CASHIER\)!==1/);
  assert.match(bridge,/payload\.confirmPrint!=="PRINT-ONE-TEST"/);
  assert.match(bridge,/payload\.receipt\?\.invoice!=="TEST-1"/);
  assert.match(bridge,/payload\.receipt\?\.items\?\.length!==1/);
@@ -52,4 +52,18 @@ test("cashier button uses USB and does not silently fall back to browser paper f
  assert.doesNotMatch(flow,/window\.open|receiptDocument\(/);
  assert.match(html,/id="cashierHtmlPreview"/);
  assert.match(html,/Print Receipt \(USB\)/);
+});
+
+test("cutter only after explicit test or verified live opt-in",()=>{
+ assert.match(bridge,/const CUT_ENABLED=process\.env\.KT_PRINT_AUTOCUT==="1"/);
+ assert.match(bridge,/CUT_TEST=process\.env\.KT_PRINT_CUT_TEST==="1"/);
+ assert.match(bridge,/CUT_VERIFIED=process\.env\.KT_PRINT_CUT_VERIFIED==="1"/);
+ assert.match(bridge,/rawReceipt\(payload\.receipt,\{cut:CUT_ENABLED && !DRY\}\)/);
+ const cutter=read("start-thermal-cut-test.cmd");
+ assert.match(cutter,/YES-CUT-TEST/);
+ assert.match(cutter,/KT_PRINT_TEST_ONLY=1/);
+ assert.match(cutter,/KT_PRINT_AUTOCUT=1/);
+ const cashier=read("start-thermal-cashier.cmd");
+ assert.match(cashier,/KT_PRINT_AUTOCUT=0/);
+ assert.match(cashier,/ENABLE-CUT/);
 });
