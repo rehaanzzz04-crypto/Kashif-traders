@@ -1,111 +1,14 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#173f35">
-<title>Smart Billing Counter | Kashif Traders</title>
-<script src="/offline-sync.js?v=20260922-localserver1"></script>
-<script defer src="/offline-register.js?v=20260922-pages1"></script>
-<style>
-:root{--green:#173f35;--gold:#c9a85d;--ink:#243229;--muted:#66786e;--line:#dbe4da;--paper:#f3f6f1}
-*{box-sizing:border-box}html{scroll-behavior:smooth}
-body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.5 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}button{font:inherit;cursor:pointer}
-.masthead{position:sticky;top:0;z-index:20;background:var(--green);color:#fff;border-bottom:3px solid var(--gold);box-shadow:0 6px 18px #122d2424}
-.mast{max-width:1680px;margin:auto;display:flex;align-items:center;gap:12px;padding:12px 18px}
-.back{background:#ffffff15;color:#fff;border:1px solid #ffffff30;border-radius:12px;padding:9px 13px;font-weight:700}
-.brand-mark{width:44px;height:44px;display:grid;place-items:center;background:var(--gold);color:var(--green);border-radius:12px;font-size:18px;font-weight:900;flex:none}
-.brand{min-width:0;flex:1}.brand strong{display:block;font-size:19px;line-height:1.1}.brand span{font-size:11px;letter-spacing:1.5px;opacity:.85}
-.connection{white-space:nowrap;border-radius:999px;background:#ffffff12;border:1px solid #ffffff25;padding:7px 10px;font-size:12px;font-weight:700}
-.connection:before{content:"";display:inline-block;width:7px;height:7px;margin-right:8px;border-radius:50%;background:#76daa8}.connection.offline:before{background:#ffce6a}
-.wrap{max-width:1680px;margin:0 auto;padding:16px 18px 28px}
-.intro{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
-.intro h1{font-size:19px;margin:0;line-height:1.35}.intro p{margin:3px 0 0;color:var(--muted);font-size:12px}
-.actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.action{border:1px solid #cbdad0;background:#fff;color:var(--green);border-radius:10px;padding:9px 12px;font-weight:750}
-.action.primary{border-color:var(--green);background:var(--green);color:#fff}
-.activity{margin:0 0 12px;padding:10px 12px;background:#e7eee7;border:1px solid #c9d9cd;border-radius:12px;color:#2e5940;font-size:12px;font-weight:650}
-.workspace{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:14px;align-items:start}
-.panel{min-width:0;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 25px #173f350b}
-.panel-title{padding:11px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px}
-.panel-title h2{font-size:16px;margin:0}.panel-title p{font-size:11px;color:var(--muted);margin:2px 0 0}
-.tag{font-weight:800;font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:var(--green);background:#e8f3eb;border-radius:999px;padding:6px 9px;white-space:nowrap}
-iframe{display:block;width:100%;height:calc(100dvh - 222px);min-height:615px;border:0;background:#f8f7f3}
-.hint{font-size:11px;margin:12px 1px 0;color:var(--muted);line-height:1.6}
-@media(max-width:1030px){.workspace{grid-template-columns:1fr}.panel iframe{height:720px;min-height:560px}}
-@media(max-width:590px){.mast{padding:9px 11px;gap:9px}.brand-mark{width:35px;height:35px;font-size:15px}.brand strong{font-size:15px}.brand span{font-size:9px;letter-spacing:.8px}.back{padding:7px 9px;font-size:12px}.connection{font-size:0;padding:7px}.connection:before{margin:0}.wrap{padding:12px 9px 20px}.intro h1{font-size:17px}.actions{width:100%}.action{flex:1;padding:10px 7px;font-size:12px}.panel-title{padding:10px}.panel-title h2{font-size:14px}.panel iframe{height:74dvh;min-height:520px}.workspace{gap:12px}}
-</style>
-</head>
-<body>
-<header class="masthead"><div class="mast">
-<button class="back" type="button" id="backToErp" aria-label="Back to ERP">‹ ERP</button><div class="brand-mark">KT</div>
-<div class="brand"><strong>Smart Billing Counter</strong><span>KASHIF TRADERS</span></div>
-<div id="connection" class="connection" aria-live="polite">Connected</div>
-</div></header>
-<main class="wrap">
-<div class="intro"><div><h1>Sale + Cashier · One Counter</h1>
-<p>Invoice banayein, payment receive karein aur isi screen se 80mm receipt print karein.</p></div>
-<div class="actions"><button type="button" class="action primary" id="goSale">New Sale</button><button type="button" class="action" id="goCashier">Bills &amp; Payments</button><button type="button" class="action" id="refreshBills">Refresh Bills</button></div></div>
-<div class="activity" id="activity" role="status" aria-live="polite">Dono panels aik hi Cash Sales invoice records use karte hain. Cashier list har 10 seconds update hoti hai.</div>
-<div class="workspace">
-<section class="panel" id="salePanel" aria-label="Sale creation"><div class="panel-title"><div><h2>01 · Create Cash Sale</h2><p>Scan, search, customer, quantity &amp; bill save</p></div><span class="tag">Cash Sale</span></div>
-<iframe id="saleFrame" src="/smart-cash-sale.html" title="Cash Sale controls" allow="camera; clipboard-write"></iframe></section>
-<section class="panel" id="cashierPanel" aria-label="Cashier billing"><div class="panel-title"><div><h2>02 · Receive &amp; Print</h2><p>Pending, credit, partial, paid, customer orders &amp; 80mm receipt</p></div><span class="tag">Cashier</span></div>
-<iframe id="cashierFrame" src="/cashier-sales.html" title="Cashier Billing controls" allow="camera; clipboard-write"></iframe></section>
-</div>
-<p class="hint">Original Cash Sale aur Cashier Billing pages unchanged hain. Online aur same local server par dono ka shared invoice record use hota hai. Offline cloud-sync pending ho to cashier payment se pehle confirmation check karein. Receipt printing ke liye existing printer setup zaroori hai.</p>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#134b3e"><title>Smart Billing Counter | Kashif Traders</title><script src="/offline-sync.js?v=20260922-localserver1"></script><link rel="stylesheet" href="/smart-billing-counter.css?v=20261009-approved1"><script defer src="/offline-register.js?v=20260922-pages1"></script><script defer src="/smart-billing-counter.js?v=20261009-approved1"></script></head><body>
+<header class="bar"><div class="bar-inner"><button class="back" id="back" type="button">‹ ERP</button><div class="logo">KT</div><div class="brand"><b>Smart Billing Counter</b><small>KASHIF TRADERS</small></div><div class="bar-search"><input id="quickSearch" placeholder="Search product (name, barcode, SKU…)"><button id="scanTop" type="button">▣</button></div><span id="online" class="indicator">Online</span><div class="bar-actions"><button id="newSale" type="button">＋ New Sale</button><button id="holdTop" type="button">◷ Hold</button><button id="billsTop" type="button">▤ Bills</button><button id="printTop" class="print-top" type="button">▣ Print</button></div></div></header>
+<main class="wrap"><nav class="tabs" aria-label="Counter navigation"><button class="tab current" id="navSale" type="button">New Sale</button><button class="tab" id="navPending" type="button">Pending Bills <span id="pendingCount" class="count">0</span></button><button class="tab" id="navPaid" type="button">Paid Bills</button><button class="tab" id="navOrders" type="button">Customer Orders <span id="orderCount" class="count">0</span></button><button class="tab" id="navReport" type="button">Today's Sales</button></nav>
+<div class="workspace" id="mainWorkspace">
+<section class="pane" aria-label="Product Gallery"><div class="mode-tabs"><button class="active" type="button" id="modeGallery">Product Gallery</button><button type="button" id="manageProducts">Manage Products</button></div><div class="product-search"><input id="productSearch" autocomplete="off" placeholder="Search products / barcode"><button class="outline" id="scanProduct" type="button" title="Barcode scanner">▣ Scan</button></div><div class="categories" id="categories"><button class="active" data-category="all">All</button></div><div id="gallery" class="gallery"><div class="empty">Products loading…</div></div><div class="gallery-foot"><div><b id="selectedCount">0 products selected</b><span id="selectedAmount">Total: PKR 0</span></div><button type="button" id="addSelected" class="btn">Add Selected ›</button></div></section>
+<section class="pane invoice-layout" aria-label="Invoice"><div class="pane-heading"><h2>Invoice Items <span id="itemCount">(0)</span></h2><button class="danger small" id="clearCart" type="button">× Clear All</button></div><div class="invoice-lines"><table class="items-table"><thead><tr><th>Product</th><th>Qty</th><th>Rate (PKR)</th><th>Amount</th><th></th></tr></thead><tbody id="items"><tr><td colspan="5" class="empty">Gallery se products select karein.</td></tr></tbody></table></div><div class="totals"><div class="total-line"><span>Items</span><b id="totalItems">0</b></div><div class="total-line"><span>Subtotal</span><b id="subtotal">PKR 0</b></div><div class="total-line"><label for="discount">Discount</label><input class="discount" id="discount" type="number" step="0.01" min="0" value="0"></div><div class="total-line grand"><span>Grand Total</span><strong id="grand">PKR 0</strong></div></div></section>
+<section class="pane customer-pane" aria-label="Customer and payment"><div class="customer-grid"><div><div class="pane-heading"><h2>Customer</h2><button id="newCustomer" class="soft small" type="button">+ New Customer</button></div><select id="customer"><option value="">Walk-in Customer</option></select><div class="row2"><div><label for="salesman">Salesman</label><input id="salesman" readonly placeholder="Current employee"></div><div><label for="saleDate">Sale Date</label><input id="saleDate" type="date"></div></div></div><div><label>Payment</label><select id="payment"><option>Cash</option><option>Partial</option><option>Bank Transfer</option><option>EasyPaisa</option><option>JazzCash</option><option>Credit</option></select><div class="method-grid" id="methods"><button class="active" data-method="Cash">Cash</button><button data-method="Partial">Partial</button><button data-method="Bank Transfer">Bank</button><button data-method="EasyPaisa">EasyPaisa</button><button data-method="JazzCash">JazzCash</button><button data-method="Credit">Credit</button></div><label for="received">Received Amount</label><input id="received" type="number" min="0" step="0.01" value="0"><div class="balance"><span>Balance Due</span><strong id="due">PKR 0</strong></div></div><div class="stack"><button id="complete" type="button" class="btn">Complete Sale &amp; Print</button><div class="action-row"><button id="pending" type="button" class="outline">Save as Pending</button><button id="cancel" type="button" class="danger">Cancel Sale</button></div><button type="button" id="pdf" class="outline" disabled>PDF Share Last Invoice</button></div></div><div id="status" class="status" role="status" aria-live="polite">Products select karein, rate change karein aur payment complete karein.</div></section></div>
+<section class="recent" id="recent"><div class="recent-heading"><h2>Recent Bills (Today)</h2><div class="recent-controls"><input id="billSearch" placeholder="Search invoice, customer, salesman"><button id="refresh" type="button" class="outline small">↻ Refresh</button></div></div><div class="bill-tabs" id="billTabs"><button type="button" class="active" data-bill-status="pending">Pending</button><button type="button" data-bill-status="paid">Paid</button><button type="button" data-bill-status="credit_open">Credit / Partial</button><button type="button" data-bill-status="cancelled">Cancelled</button></div><div class="table-scroll"><table class="recent-table"><thead><tr><th>Bill</th><th>Date & Time</th><th>Customer</th><th>Salesman</th><th>Items</th><th>Total</th><th>Received</th><th>Balance</th><th>Status</th><th>Action</th></tr></thead><tbody id="bills"><tr><td colspan="10" class="empty">Bills loading…</td></tr></tbody></table></div></section>
 </main>
-<script>
-'use strict';
-(() => {
-const $ = id => document.getElementById(id);
-const sale=$('saleFrame'), cashier=$('cashierFrame'), activity=$('activity'), connection=$('connection');
-const embeddedStyle='header.cs-top{display:none!important}main.cs-wrap{max-width:none!important;margin:0!important;padding:12px!important}body{background:#f7f8f5!important}.cs-rolebar{margin-top:0!important}.cashier-head{margin-top:0!important}.cs-layout,.cashier-layout{gap:10px!important}';
-function show(message,waiting=false){activity.textContent=message;activity.style.background=waiting?'#fff5da':'#e7eee7';activity.style.borderColor=waiting?'#eddaa0':'#c9d9cd';activity.style.color=waiting?'#61450e':'#2e5940'}
-function decorate(frame,kind){
- let doc;
- try { doc=frame.contentDocument; } catch { return; }
- if(!doc||!doc.body)return;
- try { if(frame.contentWindow.location.pathname==='/login.html'){location.replace('/login.html');return;} }catch{return}
- if(!doc.getElementById('smartCounterEmbedStyle')){
-   const style=doc.createElement('style');style.id='smartCounterEmbedStyle';style.textContent=embeddedStyle;doc.head.appendChild(style);
- }
- const status=doc.getElementById(kind==='sale'?'csStatus':'cashierStatus');
- if(!status)return;
- let previous='';
- new MutationObserver(()=>{
-   const value=String(status.textContent||'').trim();if(!value||value===previous)return;previous=value;
-   if(kind==='sale'){
-      if(/cashier ko bhej diya gaya/i.test(value))show(value+' Cashier list automatic refresh hoti hai.');
-      else if(/phone par mehfooz/i.test(value))show('Invoice offline save hui hai. Sync confirm hone tak cashier par paid na karein.',true);
-   }else if(/payment save ho gayi|invoice cancelled|invoice updated/i.test(value))show(value);
- }).observe(status,{childList:true,subtree:true,characterData:true});
-}
-sale.addEventListener('load',()=>decorate(sale,'sale'));
-cashier.addEventListener('load',()=>decorate(cashier,'cashier'));
-$('backToErp').onclick=()=>location.assign('/');
-$('goSale').onclick=()=>$('salePanel').scrollIntoView({behavior:'smooth',block:'start'});
-$('goCashier').onclick=()=>$('cashierPanel').scrollIntoView({behavior:'smooth',block:'start'});
-$('refreshBills').onclick=()=>{
- try{
- const doc=cashier.contentDocument;
- if(!doc||!doc.getElementById('cashierList')){show('Cashier panel abhi load ho raha hai.',true);return;}
- const editing=Boolean(doc.getElementById('cashierEdit')?.textContent.includes('Finish Price Edit'));
- const modal=doc.getElementById('cashierPaymentModal');
- if(editing||(modal&&!modal.classList.contains('cs-hidden'))){show('Payment ya invoice edit complete karein, phir refresh karein.',true);return;}
- const tab=doc.querySelector('.cashier-tabs [data-status].active');
- if(tab){tab.click();show('Cashier bills refresh request bhej di gayi.');}
- else show('Cashier abhi ready nahi hai.',true);
- }catch{show('Cashier panel unavailable. Connection check karein.',true)}
-};
-function updateConnection(){
- const local=['localhost','127.0.0.1'].includes(location.hostname)||/^192\.168\.|^10\.|^172\.(1[6-9]|2\d|3[01])\./.test(location.hostname);
- const offline=!navigator.onLine;connection.classList.toggle('offline',offline);
- connection.textContent=offline?(local?'Local Network':'Offline / Sync Pending'):(local?'Local Server':'Online');
-}
-window.addEventListener('online',updateConnection);window.addEventListener('offline',updateConnection);updateConnection();
-fetch('/api/auth?action=me',{cache:'no-store'}).then(r=>{if(r.status===401)location.replace('/login.html')}).catch(()=>{if(navigator.onLine)show('Session check unavailable. Connection verify karein.',true)});
-})();
-</script>
-</body>
-</html>
+<div id="customerModal" class="modal hidden"><div class="dialog"><h2>New Cash Sale Customer</h2><form id="customerForm"><label>Name<input name="name" required placeholder="Customer / business name"></label><label>Mobile<input name="mobile" inputmode="tel" placeholder="03xx..."></label><label>Notes<input name="notes"></label><footer><button type="button" class="outline" id="closeCustomer">Cancel</button><button type="submit" class="btn">Save Customer</button></footer></form></div></div>
+<div id="invoiceModal" class="modal hidden"><div class="dialog"><h2 id="invoiceTitle">Invoice</h2><div id="invoiceInfo"></div><label>Payment Method<select id="billMethod"><option>Cash</option><option>Bank Transfer</option><option>EasyPaisa</option><option>JazzCash</option></select></label><label>Received Amount<input id="billReceive" type="number" min="0" step="0.01"></label><div class="status" id="invoiceStatus"></div><footer><button class="outline" id="closeInvoice" type="button">Close</button><button class="btn" id="confirmBill" type="button">Receive / Save</button></footer><footer><button class="outline" id="printBill" type="button">Print Receipt</button><button class="outline" id="shareBill" type="button">PDF Share</button></footer></div></div>
+<div id="legacyModal" class="modal hidden"><div class="dialog wide"><div class="manage-toolbar"><strong id="legacyTitle">Manage Products</strong><button id="closeLegacy" type="button" class="outline small">× Close</button></div><iframe id="legacyFrame" title="Existing product manager and cashier tools" loading="lazy"></iframe></div></div>
+<div id="scannerModal" class="modal hidden"><div class="dialog"><h2>Scan Product</h2><p>Camera barcode scanning supported browsers par available hai. Barcode manually bhi enter kar sakte hain.</p><video id="scannerVideo" muted playsinline style="width:100%;height:220px;background:#162820;border-radius:9px"></video><input id="barcode" placeholder="Barcode" inputmode="numeric"><footer><button id="closeScanner" class="outline" type="button">Close</button><button id="startScanner" class="outline" type="button">Start Camera</button><button id="findBarcode" class="btn" type="button">Find Product</button></footer></div></div>
+</body></html>
