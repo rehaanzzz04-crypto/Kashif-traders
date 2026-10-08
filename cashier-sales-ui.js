@@ -605,12 +605,14 @@
       'style.textContent="@page{size:72.1mm "+mm+"mm;margin:0}";' +
       'document.head.appendChild(style);' +
       'requestAnimationFrame(function(){window.print();});' +
-      '});<\\/script>';
+      '});</script>';
     return '<!doctype html><html><head><meta charset="utf-8"><title>Kashif Traders Receipt ' +
       esc(receiptData().invoice) + '</title><style>' + styles + '</style></head><body>' +
       '<main class="receipt">' + markup + '</main>' +
       '<div class="preview-note">Receipt length: ' + pageHeightMm +
-      'mm. Print preview mein sirf ek slip aur minimum blank paper hon. Agar 3276mm khaali page dikhay to Cancel karein.</div>' +
+      'mm. Agar print dialog automatic open na ho to ' +
+      '<button type="button" onclick="window.print()" style="padding:5px 10px;font-weight:700;cursor:pointer">Print Preview</button> dabayein. ' +
+      '3276mm ka blank paper dikhay to Print CANCEL karein.</div>' +
       init + '</body></html>';
   }
 

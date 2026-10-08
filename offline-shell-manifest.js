@@ -35,7 +35,7 @@ self.KT_SHELL_ASSETS = [
   "/cashier-sales-report.css?v=20260929-livecharts1",
   "/cashier-sales-report.html",
   "/cashier-sales-ui.js",
-  "/cashier-sales-ui.js?v=20261009-htmlprint7",
+  "/cashier-sales-ui.js?v=20261009-htmlprint8",
   "/cashier-sales.css",
   "/cashier-sales.css?v=20260929-inlinepayment1",
   "/cashier-sales.html",

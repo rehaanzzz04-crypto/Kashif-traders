@@ -180,3 +180,18 @@ test('HTML print matches working thermal PDF layout for short and long bills',as
  assert.doesNotMatch(source,/frame\.contentWindow\.print\s*\(/);
  assert.doesNotMatch(source,/directPrintReceipt\s*\(/);
 });
+
+test('thermal popup contains executable print script and manual print-preview fallback',()=>{
+ const js=source.slice(source.indexOf('  function wrapThermal('),source.indexOf('  async function shareReceipt('));
+ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+ const data={invoice:'CS-3',date:'09 Oct 2026',customer:'Walk-in',createdBy:'Ali',paidBy:'Ali',payment:'Cash',items:[{name:'Test',qty:1,unit:'pcs',rate:500,amount:500}],subtotal:500,discount:0,total:500,received:500,due:0,status:'Paid'};
+ const html=vm.runInNewContext(js+';receiptDocument()',{Blob,esc,receiptData:()=>data,qtyText:String,thermalMoney:String});
+ const script=html.match(/<script>([\s\S]*?)<\/script>/);
+ assert.ok(script,'real HTML script closing tag is required');
+ assert.equal((html.match(/<\/script>/g)||[]).length,1);
+ assert.doesNotMatch(html,/<\\\/script>/);
+ assert.doesNotThrow(()=>new vm.Script(script[1]));
+ assert.match(script[1],/window\.print\(\)/);
+ assert.match(html,/onclick="window\.print\(\)"/);
+ assert.match(html,/Print CANCEL/);
+});
