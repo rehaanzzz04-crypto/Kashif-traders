@@ -119,10 +119,10 @@ async function readProductCatalog(){
  // This intentionally matches the successful Manage Products request:
  // ONE native GET, no 3x retry waterfall and no intercepted GET fallback.
  const url='/api/data?resource=sale_products';
- const snap=products.length?{records:products}:await Promise.race([Promise.resolve().then(()=>window.KT_OFFLINE?.savedCatalog?.()),new Promise(resolve=>setTimeout(()=>resolve(null),450))]).catch(()=>null);
+ const snap=products.length?{records:products}:await window.KT_OFFLINE?.savedCatalog?.().catch(()=>null);
  if(!navigator.onLine){
    if(snap?.records?.length)return {records:activeProductList(snap.records),source:'offline'};
-   throw Error('No offline product copy on this URL. Connect once and select Prepare Offline.');
+   throw Error('Offline catalog is browser mein saved nahi. Internet ON karke isi URL par Prepare Offline karein.');
  }
  try{
    if(!window.KT_OFFLINE?.fetchDirect)throw Error('Product request adapter not ready');
@@ -130,7 +130,7 @@ async function readProductCatalog(){
    const contentType=String(res.headers.get('content-type')||'').toLowerCase();
    if(res.redirected||/\/login(?:\.html)?$/.test(new URL(res.url||location.href,location.href).pathname))throw Error('Product API login par redirect ho rahi hai. ERP login dobara karein.');
    if(!contentType.includes('json'))throw Error('Product API returned '+(contentType.includes('html')?'HTML':'non-JSON')+' (HTTP '+res.status+'). Preview login/protection check karein.');
-   let body;try{body=await res.json()}catch{throw Error('Product API invalid JSON (HTTP '+res.status+').')}
+   let body;try{body=await res.json()}catch{throw Error('Server se invalid JSON mila (HTTP '+res.status+').')}
    if(!res.ok)throw Error(body?.error||'Product API HTTP '+res.status);
    const source=Array.isArray(body?.records)?body.records:Array.isArray(body?.data?.records)?body.data.records:null;
    if(!source)throw Error('Product API unexpected JSON format; Manage Products se list recover karein.');
@@ -156,7 +156,9 @@ async function loadProducts(){
    const gallery=$('gallery');
    if(!products.length)gallery.innerHTML='<div class="empty">Products loading…</div>';
    // Render the persisted catalog BEFORE contacting the server.
-   const hadOfflineCopy=await Promise.race([showStoredProducts(),new Promise(resolve=>setTimeout(()=>resolve(false),650))]);
+   // Read the account-scoped local backup before trying the network.
+   // A slow IndexedDB startup must not be mistaken for a missing catalog.
+   const hadOfflineCopy=await showStoredProducts();
    if(!navigator.onLine){
      if(!hadOfflineCopy){
        updateCatalogState('Offline catalog missing on this URL','warning');
@@ -176,8 +178,15 @@ async function loadProducts(){
      category='all';galleryPage=0;
      categories();renderGallery();
      if(products.length){
-       await confirmProductCache(products);
-       if(catalogCacheConfirmed)status(products.length+' products offline save ho gayi hain. Internet band karke refresh test kar sakte hain.');
+       // A saved copy already passed read-back verification. Do not require
+       // another network auth / write before displaying cached products.
+       if(result.source!=='offline'){
+         await confirmProductCache(products);
+         if(catalogCacheConfirmed)status(products.length+' products offline save ho gayi hain. Internet band karke refresh test kar sakte hain.');
+       }else{
+         catalogCacheConfirmed=true;
+         updateCatalogState('✓ Offline Ready · '+products.length+' products','ready');
+       }
      }
      if(!products.length) {
        updateCatalogState('No product records returned','warning');
