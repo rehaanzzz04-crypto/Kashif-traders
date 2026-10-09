@@ -422,19 +422,157 @@ $("recoverySave").onclick=async()=>{
   }catch(e){$("recoveryMsg").textContent=e.message}
 };
 $("logout").onclick=async()=>{await api("logout",{method:"POST"}).catch(()=>{});location.reload()};
-function render(){rebuildCustomerPopularity();$("hello").textContent="Welcome, "+data.customer.name;$("meta").textContent=data.customer.customer_code+(data.customer.mobile?" · "+data.customer.mobile:"");$("sales").textContent=money(data.summary.sales);$("received").textContent=money(data.summary.received);$("outstanding").textContent=money(data.summary.outstanding);$("billList").innerHTML=data.bills.length?data.bills.map(b=>{const items=Array.isArray(b.items)?b.items:[];return '<div class="invoice"><div class="invoice-head" data-bill="'+b.id+'"><span><b>'+esc(b.invoice_number)+'</b><small>'+esc(b.sale_date)+' · '+esc(String(b.status).toUpperCase())+'</small><small class="invoice-toggle">Tap for complete invoice</small></span><span style="text-align:right"><b>'+money(b.total)+'</b><small>Due '+money(b.balance_due)+'</small></span></div><div class="invoice-detail hidden" id="bill-'+b.id+'">'+items.map(i=>'<div class="invoice-item"><span><b>'+esc(i.name||"Product")+'</b><small>'+Number(i.qty||0).toLocaleString("en-PK",{maximumFractionDigits:3})+' '+esc(i.unit||"")+' × '+money(i.rate??i.price??0)+'</small></span><b>'+money(i.total??(Number(i.qty||0)*Number(i.rate??i.price??0)))+'</b></div>').join("")+'<div class="invoice-totals"><div class="invoice-total-row grand"><span>Invoice Total</span><span>'+money(b.total)+'</span></div><div class="invoice-total-row"><span>Received</span><span>'+money(b.amount_received)+'</span></div><div class="invoice-total-row"><span>Balance Due</span><b>'+money(b.balance_due)+'</b></div></div></div></div>'}).join(""):'<p class="note">Abhi koi approved invoice nahi.</p>';document.querySelectorAll(".invoice-head").forEach(h=>h.onclick=()=>{const d=$("bill-"+h.dataset.bill);if(d)d.classList.toggle("hidden")});$("orderList").innerHTML=data.orders.length?data.orders.map(o=>'<div class="row"><span><b>'+esc(o.order_number)+'</b><small>'+new Date(o.created_at).toLocaleString("en-PK")+'</small></span><span><i class="badge">'+esc(String(o.status).toUpperCase())+'</i> <button class="btn outline repeat" data-id="'+o.id+'">Repeat</button></span></div>').join(""):'<p class="note">Abhi koi order nahi.</p>';document.querySelectorAll(".repeat").forEach(b=>b.onclick=()=>repeatOrder(Number(b.dataset.id)));loadProducts()}
-function rebuildCustomerPopularity(){customerPopularity=new Map();for(const b of (data?.bills||[])){const items=Array.isArray(b.items)?b.items:[];for(const i of items){const id=String(i.product_id||i.id||"");if(!id)continue;customerPopularity.set(id,Number(customerPopularity.get(id)||0)+Math.max(0,Number(i.qty)||0))}}}
-async function loadProducts(){if(products.length)return;try{products=(await api("products")).records||[];rebuildCustomerPopularity();if(!$("orderRows").children.length)addRow()}catch(e){$("orderMsg").textContent=e.message}}
-function addRow(item=null){const d=document.createElement("div");d.className="orderrow";d.innerHTML='<select><option value="">Select product</option>'+products.map(p=>'<option value="'+p.id+'" '+(Number(item?.product_id)===Number(p.id)?"selected":"")+'>'+esc(p.name)+' · '+esc(p.unit)+'</option>').join("")+'</select><input type="number" min=".001" step=".001" placeholder="Qty" value="'+(item?.qty||"")+'"><button class="btn outline">×</button>';d.querySelector("button").onclick=()=>d.remove();$("orderRows").appendChild(d)}
-$("addRow").onclick=()=>addRow();
-function renderPicker(){const q=$("pickerSearch").value.trim().toLowerCase(),rows=products.filter(p=>!q||[p.name,p.category,p.barcode,p.sku].some(v=>String(v||"").toLowerCase().includes(q))).sort((a,b)=>(Number(customerPopularity.get(String(b.id))||0)-Number(customerPopularity.get(String(a.id))||0))||String(a.name||"").localeCompare(String(b.name||"")));$("pickerGrid").innerHTML=rows.length?rows.map(p=>{const sel=pickerSelected.has(String(p.id)),fav=Number(customerPopularity.get(String(p.id))||0);return '<button type="button" class="picker-item'+(sel?' selected':'')+'" data-pid="'+p.id+'">'+(p.product_image_url?'<img src="'+esc(p.product_image_url)+'" alt="">':'<div class="picker-ph">KT</div>')+'<span class="picker-check">✓</span><span class="picker-name">'+esc(p.name)+'</span><span class="picker-meta">'+esc(p.unit||"pcs")+(fav>0?' · Bought '+fav.toLocaleString("en-PK"):'')+'</span></button>'}).join(""):'<p class="note">Koi product nahi mila.</p>';$("pickerGrid").querySelectorAll("[data-pid]").forEach(b=>b.onclick=()=>{const id=String(b.dataset.pid);if(pickerSelected.has(id))pickerSelected.delete(id);else pickerSelected.add(id);b.classList.toggle("selected",pickerSelected.has(id));$("pickerCount").textContent=pickerSelected.size+" selected";$("pickerAdd").disabled=!pickerSelected.size})}
-$("openProductPicker").onclick=async()=>{if(!products.length)await loadProducts();pickerSelected=new Set();$("pickerSearch").value="";$("pickerCount").textContent="0 selected";$("pickerAdd").disabled=true;$("productPicker").classList.remove("picker-hidden");renderPicker()};
-$("pickerSearch").oninput=renderPicker;
-$("pickerCancel").onclick=()=>{$("productPicker").classList.add("picker-hidden");pickerSelected=new Set()};
-$("pickerAdd").onclick=()=>{const chosen=products.filter(p=>pickerSelected.has(String(p.id)));for(const p of chosen)addRow({product_id:p.id,qty:1});$("productPicker").classList.add("picker-hidden");$("orderMsg").textContent=chosen.length+" products order mein add ho gaye.";pickerSelected=new Set()};
-function repeatOrder(id){const o=data.orders.find(x=>Number(x.id)===id);if(!o)return;$("orderRows").innerHTML="";(Array.isArray(o.items)?o.items:[]).forEach(addRow);window.scrollTo({top:0,behavior:"smooth"})}
-$("sendOrder").onclick=async()=>{const items=[...document.querySelectorAll(".orderrow")].map(r=>({product_id:Number(r.querySelector("select").value),qty:Number(r.querySelector("input").value)})).filter(x=>x.product_id&&x.qty>0);try{$("orderMsg").textContent="Sending...";await api("order",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items})});data=await api("dashboard");$("orderRows").innerHTML="";render();$("orderMsg").textContent="Order successfully send ho gaya. Price admin/cashier approval ke baad invoice par show hogi."}catch(e){$("orderMsg").textContent=e.message}};
-document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-tab]").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll(".tab").forEach(x=>x.classList.add("hidden"));$(b.dataset.tab).classList.remove("hidden");if(b.dataset.tab==="materials")loadMaterials(15)});
+
+let portalView='home',orderFilter='all',portalCategory='all',sendBusy=false;
+function navigatePortal(view){
+ const screens=['home','orders','myOrders','invoices','statements','materials','profile'];
+ if(!screens.includes(view))return;
+ portalView=view;
+ for(const id of screens)$(id).classList.toggle('hidden',id!==view);
+ document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+ if(view==='materials')loadMaterials(15);
+ if(view==='orders'){renderPicker();reviewOrder();}
+ if(view==='myOrders')renderOrderList();
+ window.scrollTo({top:0,behavior:'smooth'});
+}
+document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>navigatePortal(b.dataset.view)));
+function render(){
+ rebuildCustomerPopularity();
+ $("hello").textContent='Welcome, '+data.customer.name;
+ $("meta").textContent=data.customer.customer_code+(data.customer.mobile?' · '+data.customer.mobile:'');
+ $("sales").textContent=money(data.summary.sales);
+ $("received").textContent=money(data.summary.received);
+ $("outstanding").textContent=money(data.summary.outstanding);
+ $("statementSales").textContent=money(data.summary.sales);
+ $("statementPaid").textContent=money(data.summary.received);
+ $("statementDue").textContent=money(data.summary.outstanding);
+ $("profileName").textContent=data.customer.name;
+ $("profileCode").textContent=data.customer.customer_code;
+ $("profileMobile").textContent=data.customer.mobile||'—';
+ $("billList").innerHTML=data.bills.length?data.bills.map(b=>{
+  const items=Array.isArray(b.items)?b.items:[];
+  return '<div class="invoice"><div class="invoice-head" data-bill="'+b.id+'"><span><b>'+esc(b.invoice_number)+'</b><small>'+esc(b.sale_date)+' · '+esc(String(b.status).toUpperCase())+'</small><small class="invoice-toggle">Tap for complete invoice</small></span><span style="text-align:right"><b>'+money(b.total)+'</b><small>Due '+money(b.balance_due)+'</small></span></div><div class="invoice-detail hidden" id="bill-'+b.id+'">'+items.map(i=>'<div class="invoice-item"><span><b>'+esc(i.name||'Product')+'</b><small>'+Number(i.qty||0).toLocaleString('en-PK',{maximumFractionDigits:3})+' '+esc(i.unit||'')+' × '+money(i.rate??i.price??0)+'</small></span><b>'+money(i.total??Number(i.qty||0)*Number(i.rate??i.price??0))+'</b></div>').join('')+'<div class="invoice-totals"><div class="invoice-total-row grand"><span>Invoice Total</span><span>'+money(b.total)+'</span></div><div class="invoice-total-row"><span>Received</span><span>'+money(b.amount_received)+'</span></div><div class="invoice-total-row"><span>Balance Due</span><b>'+money(b.balance_due)+'</b></div></div></div></div>';
+ }).join(''):'<p class="note">Abhi koi approved invoice nahi.</p>';
+ document.querySelectorAll('.invoice-head').forEach(el=>el.onclick=()=>{const detail=$('bill-'+el.dataset.bill);if(detail)detail.classList.toggle('hidden')});
+ renderOrderList();loadProducts();navigatePortal(portalView);
+}
+function rebuildCustomerPopularity(){
+ customerPopularity=new Map();
+ for(const b of data?.bills||[]){
+  for(const i of Array.isArray(b.items)?b.items:[]){
+   const id=String(i.product_id||i.id||'');if(!id)continue;
+   customerPopularity.set(id,Number(customerPopularity.get(id)||0)+Math.max(0,Number(i.qty)||0));
+  }
+ }
+}
+let productsPending=null;
+async function loadProducts(force=false){
+ if(products.length&&!force){renderCategories();renderPicker();return}
+ if(productsPending)return productsPending;
+ productsPending=(async()=>{
+  try{
+   const res=await api('products');const list=res.records||[];
+   if(list.length||!products.length)products=list;
+   rebuildCustomerPopularity();renderCategories();renderPicker();
+   if(!products.length)$('orderMsg').textContent='No products available. Please contact Kashif Traders.';
+  }catch(e){
+   $('orderMsg').textContent=e.message;
+   $('pickerGrid').innerHTML='<p class="note">Products load nahi ho sakay. Refresh Products dobara try karein.</p>';
+  }
+ })().finally(()=>{productsPending=null});
+ return productsPending;
+}
+function renderCategories(){
+ const names=['All',...new Set(products.map(p=>p.category||'Others'))];
+ $('portalCategories').innerHTML=names.map(name=>'<button type="button" data-category="'+esc(name)+'" class="'+(portalCategory===(name==='All'?'all':name)?'active':'')+'">'+esc(name)+'</button>').join('');
+ $('portalCategories').querySelectorAll('[data-category]').forEach(el=>el.onclick=()=>{
+  portalCategory=el.dataset.category==='All'?'all':el.dataset.category;
+  renderCategories();renderPicker();
+ });
+}
+function pickedOrderItems(){
+ const result=[];
+ for(const row of document.querySelectorAll('.orderrow')){
+  const select=row.querySelector('select'),input=row.querySelector('input');
+  const id=Number(select?.value||0),qty=Number(input?.value||0);
+  if(id>0&&qty>0)result.push({product_id:id,qty});
+ }
+ return result;
+}
+function addRow(item=null){
+ const row=document.createElement('div');row.className='orderrow';
+ row.innerHTML='<select aria-label="Select product"><option value="">Select product</option>'+products.map(p=>'<option value="'+p.id+'" '+(Number(item?.product_id)===Number(p.id)?'selected':'')+'>'+esc(p.name)+' · '+esc(p.unit)+'</option>').join('')+'</select><input aria-label="Quantity" type="number" min=".001" step=".001" placeholder="Qty" value="'+(item?.qty||'')+'"><button class="btn outline" type="button" aria-label="Remove product">×</button>';
+ row.querySelector('button').onclick=()=>{row.remove();reviewOrder()};
+ row.querySelector('select').onchange=reviewOrder;row.querySelector('input').oninput=reviewOrder;
+ $('orderRows').appendChild(row);reviewOrder();
+}
+function reviewOrder(){
+ const rows=pickedOrderItems(),count=rows.length;
+ $('reviewCount').textContent=count+' Product'+(count===1?'':'s');
+ $('cartCount').textContent=count;
+ $('reviewList').innerHTML=rows.length?rows.map(item=>{
+  const p=products.find(x=>Number(x.id)===item.product_id);
+  return '<div class="portal-review-line">'+(p?.product_image_url?'<img loading="lazy" src="'+esc(p.product_image_url)+'" alt="">':'<span class="mini-placeholder">KT</span>')+'<span>'+esc(p?.name||'Product')+'<small>'+esc(p?.unit||'pcs')+'</small></span><b>Qty '+item.qty+'</b></div>';
+ }).join(''):'<div class="portal-cart-empty">Select products from gallery to start your order.</div>';
+}
+function renderPicker(){
+ const q=$('pickerSearch').value.trim().toLowerCase();
+ const rows=products.filter(p=>(portalCategory==='all'||(p.category||'Others')===portalCategory)&&(!q||[p.name,p.category,p.barcode,p.sku].some(v=>String(v||'').toLowerCase().includes(q))))
+   .sort((a,b)=>Number(customerPopularity.get(String(b.id))||0)-Number(customerPopularity.get(String(a.id))||0)||String(a.name||'').localeCompare(String(b.name||'')));
+ $('pickerGrid').innerHTML=rows.length?rows.slice(0,150).map(p=>{
+  const selected=pickerSelected.has(String(p.id));
+  return '<button type="button" class="picker-item'+(selected?' selected':'')+'" data-pid="'+p.id+'">'+(p.product_image_url?'<img loading="lazy" decoding="async" src="'+esc(p.product_image_url)+'" alt="">':'<div class="picker-ph">KT</div>')+'<span><span class="picker-name">'+esc(p.name)+'</span><span class="picker-meta">'+esc(p.unit||'pcs')+'</span></span><span class="picker-check">'+(selected?'✓':'+')+'</span></button>';
+ }).join(''):'<p class="note">Koi product nahi mila.</p>';
+ $('pickerGrid').querySelectorAll('[data-pid]').forEach(b=>b.onclick=()=>{
+  const id=String(b.dataset.pid);
+  if(pickerSelected.has(id))pickerSelected.delete(id);else pickerSelected.add(id);
+  b.classList.toggle('selected',pickerSelected.has(id));b.querySelector('.picker-check').textContent=pickerSelected.has(id)?'✓':'+';
+  $('pickerCount').textContent=pickerSelected.size+' selected';$('pickerAdd').disabled=!pickerSelected.size;
+ });
+}
+$('pickerSearch').oninput=renderPicker;
+$('openProductPicker').onclick=()=>loadProducts(true);
+$('pickerCancel').onclick=()=>{pickerSelected.clear();renderPicker();$('pickerCount').textContent='0 selected';$('pickerAdd').disabled=true};
+$('pickerAdd').onclick=()=>{
+ const chosen=products.filter(p=>pickerSelected.has(String(p.id)));chosen.forEach(p=>addRow({product_id:p.id,qty:1}));
+ pickerSelected.clear();renderPicker();$('pickerCount').textContent='0 selected';$('pickerAdd').disabled=true;
+ $('orderMsg').textContent=chosen.length+' products order mein add ho gaye.';
+};
+$('addRow').onclick=()=>addRow();
+$('clearOrder').onclick=()=>{if(pickedOrderItems().length&&!confirm('Clear selected products?'))return;$('orderRows').innerHTML='';reviewOrder()};
+function renderOrderList(){
+ const records=(data?.orders||[]).filter(o=>orderFilter==='all'||String(o.status)===orderFilter);
+ $('orderList').innerHTML=records.length?records.map(o=>'<div class="row status-'+esc(o.status)+'" data-order="'+o.id+'"><span><b>'+esc(o.order_number)+'</b><small>'+new Date(o.created_at).toLocaleString('en-PK')+'</small></span><span><i class="badge">'+esc(String(o.status).toUpperCase())+'</i> <button class="btn outline repeat" data-id="'+o.id+'">Repeat</button></span></div>').join(''):'<p class="note">Is filter mein koi order nahi.</p>';
+ document.querySelectorAll('.repeat').forEach(b=>b.onclick=e=>{e.stopPropagation();repeatOrder(Number(b.dataset.id))});
+ $('orderList').querySelectorAll('[data-order]').forEach(el=>el.onclick=()=>showOrderDetail(Number(el.dataset.order)));
+}
+function showOrderDetail(id){
+ const o=(data?.orders||[]).find(x=>Number(x.id)===id);if(!o)return;
+ const items=Array.isArray(o.items)?o.items:[];
+ $('orderDetail').innerHTML='<h3>'+esc(o.order_number)+'</h3><div class="detail-line"><span>Status</span><b>'+esc(String(o.status).toUpperCase())+'</b></div><div class="detail-line"><span>Ordered</span><b>'+new Date(o.created_at).toLocaleString('en-PK')+'</b></div>'+items.map(i=>'<div class="detail-line"><span>'+esc(i.name||products.find(p=>Number(p.id)===Number(i.product_id))?.name||'Product')+'</span><b>Qty '+Number(i.qty||0)+'</b></div>').join('')+'<p class="portal-privacy">Prices approved invoice mein show hongi.</p>';
+ $('orderDetail').classList.remove('hidden');
+ $('orderDetail').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+$('orderFilters').querySelectorAll('[data-order-status]').forEach(el=>el.onclick=()=>{orderFilter=el.dataset.orderStatus;document.querySelectorAll('[data-order-status]').forEach(x=>x.classList.toggle('active',x===el));$('orderDetail').classList.add('hidden');renderOrderList()});
+function repeatOrder(id){
+ const order=(data?.orders||[]).find(x=>Number(x.id)===id);if(!order)return;
+ $('orderRows').innerHTML='';(Array.isArray(order.items)?order.items:[]).forEach(addRow);
+ navigatePortal('orders');$('orderMsg').textContent='Repeated order ready. Review quantities before sending.';
+}
+$('sendOrder').onclick=async()=>{
+ if(sendBusy)return;
+ const items=pickedOrderItems();if(!items.length){$('orderMsg').textContent='Select at least one product and enter quantity.';return}
+ if(!confirm('Send order with '+items.length+' products?'))return;
+ sendBusy=true;$('sendOrder').disabled=true;
+ try{
+  $('orderMsg').textContent='Sending...';
+  await api('order',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
+  data=await api('dashboard');$('orderRows').innerHTML='';pickerSelected.clear();render();
+  $('orderMsg').textContent='Order sent successfully. Prices remain hidden until approval.';
+  navigatePortal('myOrders');
+ }catch(e){$('orderMsg').textContent=e.message+' Check My Orders before resending.'}
+ finally{sendBusy=false;$('sendOrder').disabled=false}
+};
 async function loadMaterials(days){try{const j=await api("materials&days="+days);$("materialList").innerHTML=j.records.length?j.records.map(x=>'<div class="material"><b>'+esc(x.product)+'</b><small>'+Number(x.quantity).toLocaleString("en-PK",{maximumFractionDigits:3})+' '+esc(x.unit)+' purchased</small></div>').join(""):'<p class="note">Is period mein koi purchase nahi.</p>'}catch(e){$("materialList").innerHTML='<p>'+esc(e.message)+'</p>'}}
 document.querySelectorAll(".mat").forEach(b=>b.onclick=()=>{document.querySelectorAll(".mat").forEach(x=>x.classList.toggle("active",x===b));loadMaterials(Number(b.dataset.days))});
 $("matCustom").onclick=async()=>{const from=$("matFrom").value,to=$("matTo").value;if(!from||!to){$("materialList").innerHTML='<p class="note">From aur To dono dates select karein.</p>';return}try{document.querySelectorAll(".mat").forEach(x=>x.classList.remove("active"));const j=await api("materials&from="+encodeURIComponent(from)+"&to="+encodeURIComponent(to));$("materialList").innerHTML=j.records.length?j.records.map(x=>'<div class="material"><b>'+esc(x.product)+'</b><small>'+Number(x.quantity).toLocaleString("en-PK",{maximumFractionDigits:3})+' '+esc(x.unit)+' purchased</small></div>').join(""):'<p class="note">Selected dates mein koi purchase nahi.</p>'}catch(e){$("materialList").innerHTML='<p>'+esc(e.message)+'</p>'}};
