@@ -263,6 +263,9 @@
     canonical('/api/data?resource=sale_products&status=active')
   ];
   async function savedCatalog(){
+    // A freshly opened tab may inspect IndexedDB before the async auth
+    // handshake writes the user id to localStorage. Verify online once.
+    if(!owner() && networkAvailable())await ensureIdentity();
     const userId=owner();
     if(!userId)return {records:[],ready:false,reason:'No cached user session'};
     for(const url of catalogCandidates){
@@ -289,6 +292,7 @@
       await saveSnapshot(catalogURL,res,userId);
       const snapshot=await get('snapshots',userId+':'+catalogURL);
       if(!snapshot)throw Error('Snapshot not persisted');
+      if(!snapshot.type.includes('json'))throw Error('Catalog snapshot is not JSON');
       const confirmed=JSON.parse(await snapshot.blob.text());
       if(!Array.isArray(confirmed.records)||confirmed.records.length!==active.length)throw Error('Saved product count mismatch');
       return {saved:true,count:active.length,savedAt:snapshot.at};
