@@ -83,7 +83,66 @@ function addProduct(p){const old=cart.find(x=>String(x.id)===String(p.id));if(ol
 function categories(){const cats=['All',...new Set(products.map(p=>p.category||'Others'))];$('categories').innerHTML=cats.map(c=>'<button type="button" data-category="'+esc(c)+'" class="'+(category===(c==='All'?'all':c)?'active':'')+'">'+esc(c)+'</button>').join('');$('categories').querySelectorAll('button').forEach(b=>b.onclick=()=>{category=b.dataset.category==='All'?'all':b.dataset.category;galleryPage=0;categories();renderGallery()})}
 function filtered(){const q=$('productSearch').value.trim().toLowerCase();return products.filter(p=>(category==='all'||(p.category||'Others')===category)&&(!q||[p.name,p.sku,p.barcode,p.category].some(v=>String(v||'').toLowerCase().includes(q)))).sort((a,b)=>{if(!q)return String(a.name).localeCompare(String(b.name));const rank=p=>String(p.barcode||'').toLowerCase()===q?0:String(p.name||'').toLowerCase().startsWith(q)?1:2;return rank(a)-rank(b)||String(a.name).localeCompare(String(b.name))})}
 function renderGallery(){const rows=filtered(),show=rows.slice(0,(galleryPage+1)*galleryChunk);$('gallery').innerHTML=show.map(p=>'<button type="button" class="product '+(selected.has(String(p.id))?'selected':'')+'" data-product="'+p.id+'"><span class="tick">✓</span>'+(p.product_image_url?'<img src="'+esc(p.product_image_url)+'" loading="lazy" decoding="async" alt="">':'<span class="placeholder">KT</span>')+'<strong>'+esc(p.name)+'</strong><span class="price">'+money(p.sale_price)+'</span></button>').join('')+(rows.length>show.length?'<button id="moreProducts" class="outline load-more">Show More Products ('+show.length+' / '+rows.length+')</button>':'')||'<div class="empty">Koi product nahi mila.</div>';for(const btn of $('gallery').querySelectorAll('[data-product]'))btn.onclick=()=>{const id=String(btn.dataset.product);if(selected.has(id))selected.delete(id);else selected.add(id);btn.classList.toggle('selected',selected.has(id));renderTotals()};const more=$('moreProducts');if(more)more.onclick=()=>{galleryPage++;renderGallery()}}
-async function loadProducts(){try{const data=await api('/api/data?resource=sale_products&status=active&limit=1000');products=data.records||[];categories();renderGallery()}catch(e){$('gallery').innerHTML='<div class="empty">'+esc(e.message)+'</div>';status(e.message,'error')}}
+let productsLoadInFlight=null;
+function activeProductList(rows){
+ return (Array.isArray(rows)?rows:[]).filter(p=>p&&String(p.status??'active').trim().toLowerCase()==='active');
+}
+async function readProductCatalog(){
+ // Primary query is the full active catalog, not the small default search page.
+ let firstError=null,primary=[];
+ try{
+   const response=await api('/api/data?resource=sale_products&status=active&limit=1000');
+   primary=activeProductList(response.records);
+   if(primary.length)return {records:primary,source:'active'};
+ }catch(e){firstError=e}
+ // An empty active snapshot or offline failure must not hide existing products:
+ // use the source read by Manage Products as a fallback, still filtering active.
+ try{
+   const response=await api('/api/data?resource=sale_products&limit=1000');
+   const recovered=activeProductList(response.records);
+   if(recovered.length)return {records:recovered,source:'recovered'};
+   if(!firstError)return {records:[],source:'empty'};
+ }catch(e){if(!firstError)firstError=e}
+ throw firstError||Error('Products load nahi ho sakay.');
+}
+function galleryLoadError(message){
+ $('gallery').innerHTML='<div class="empty smart-product-warning"><strong>Products load nahi ho rahi.</strong><p>'+esc(message)+'</p><button type="button" class="btn" id="retrySmartProducts">↻ Retry Products</button></div>';
+ $('retrySmartProducts').onclick=()=>loadProducts();
+}
+async function loadProducts(){
+ if(productsLoadInFlight)return productsLoadInFlight;
+ productsLoadInFlight=(async()=>{
+   const gallery=$('gallery');
+   if(!products.length)gallery.innerHTML='<div class="empty">Products loading…</div>';
+   try{
+     const result=await readProductCatalog();
+     // Never wipe a previously loaded catalog just because a refresh returned 0.
+     if(!result.records.length&&products.length){
+       status('Product refresh khaali aya hai. Pehle se loaded products safe hain; Retry karein.','warning');
+       renderGallery();
+       return;
+     }
+     products=result.records;
+     category='all';galleryPage=0;
+     categories();renderGallery();
+     if(!products.length) {
+       galleryLoadError('Sale Products mein active products nahi milin. Manage Products se verify karein.');
+       status('Active product list khaali hai; data delete nahi kiya gaya.','warning');
+     }else if(result.source==='recovered') {
+       status(products.length+' products fallback se load ho gayi hain. Active catalog request ko verify karna baqi hai.','warning');
+     }
+   }catch(e){
+     if(products.length){
+       renderGallery();
+       status('Connection error: saved loaded products display ho rahi hain. '+e.message,'warning');
+     }else{
+       galleryLoadError(e.message);
+       status('Product Gallery unavailable: '+e.message,'error');
+     }
+   }
+ })().finally(()=>{productsLoadInFlight=null});
+ return productsLoadInFlight;
+}
 function loadCustomers(chosen){return api('/api/data?resource=cash_sale_customers').then(j=>{customerList=(j.records||[]).filter(x=>x.status==='active');$('customer').innerHTML='<option value="">Walk-in Customer</option>'+customerList.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');if(chosen)$('customer').value=String(chosen);if(active&&!$('invoiceModal').classList.contains('hidden'))fillBillCustomers($('billCustomer').value||active.customer_id)}).catch(e=>status(e.message,'warning'))}
 function setPayment(p){$('payment').value=p;method=p;manualReceived=false;document.querySelectorAll('[data-method]').forEach(b=>b.classList.toggle('active',b.dataset.method===p));syncReceived()}
 $('methods').querySelectorAll('button').forEach(b=>b.onclick=()=>setPayment(b.dataset.method));$('payment').onchange=()=>setPayment($('payment').value);$('received').oninput=()=>{manualReceived=true;syncReceived()};$('discount').oninput=()=>{manualReceived=false;renderTotals()};
