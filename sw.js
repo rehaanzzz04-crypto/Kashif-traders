@@ -1,6 +1,6 @@
 'use strict';
 importScripts('/offline-shell-manifest.js');
-const CACHE = 'kt-shell-20261009-usbbridge10';
+const CACHE = 'kt-shell-20261009-smartoffline1';
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
@@ -20,6 +20,27 @@ self.addEventListener('fetch', event => {
   const request = event.request, url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
   const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
+  // Fast offline Smart Billing navigation and its dedicated assets. Background
+  // refresh never holds up the visible counter and doesn't affect other routes.
+  const smartFiles=new Set(['/smart-billing-counter.html','/smart-billing-counter.css','/smart-billing-counter.js','/smart-billing-pdf.js','/smart-offline-sync.js']);
+  if(smartFiles.has(pathname)){
+    event.respondWith((async()=>{
+      const cache=await caches.open(CACHE);
+      const hit=await cache.match(request)||await cache.match(pathname);
+      if(hit){
+        event.waitUntil(fetch(request,{cache:'no-store'}).then(async response=>{
+          if(response.ok&&!response.redirected)await cache.put(request,response.clone());
+        }).catch(()=>{}));
+        return hit;
+      }
+      try{
+        const response=await fetch(request);
+        if(response.ok&&!response.redirected)await cache.put(request,response.clone());
+        return response;
+      }catch{return new Response('Smart Billing offline shell unavailable. Connect once to prepare.',{status:503});}
+    })());
+    return;
+  }
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
