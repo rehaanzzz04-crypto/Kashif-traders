@@ -45,6 +45,7 @@ self.KT_SHELL_ASSETS = [
   "/cashier-sales.css?v=20260929-inlinepayment1",
   "/cashier-sales.html",
   "/customer-portal.html",
+  "/customer-portal-premium.css?v=20261009-premium1",
   "/document-scan.js",
   "/ecommerce-dashboard.css",
   "/ecommerce-dashboard.css?v=20260916-gulshan2",
