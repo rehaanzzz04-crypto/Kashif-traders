@@ -118,7 +118,7 @@ function activeProductList(rows){
 async function readProductCatalog(){
  // This intentionally matches the successful Manage Products request:
  // ONE native GET, no 3x retry waterfall and no intercepted GET fallback.
- const url='/api/data?resource=sale_products';
+ const url='/api/data?resource=sale_products&without_images=1';
  const snap=products.length?{records:products}:await window.KT_OFFLINE?.savedCatalog?.().catch(()=>null);
  if(!navigator.onLine){
    if(snap?.records?.length)return {records:activeProductList(snap.records),source:'offline'};
