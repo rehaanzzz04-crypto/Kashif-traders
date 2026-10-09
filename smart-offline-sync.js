@@ -265,7 +265,6 @@
   async function savedCatalog(){
     // A freshly opened tab may inspect IndexedDB before the async auth
     // handshake writes the user id to localStorage. Verify online once.
-    if(!owner() && networkAvailable())await ensureIdentity();
     const userId=owner();
     if(!userId)return {records:[],ready:false,reason:'No cached user session'};
     for(const url of catalogCandidates){
@@ -300,11 +299,12 @@
   }
   const previousSmartAPI={sync,items,count:async()=>(await items()).length,prepare,prepareSmartCounter,isOnline:networkAvailable};
   window.KT_OFFLINE={...previousSmartAPI,savedCatalog,storeCatalog,
-    fetchDirect:async(url)=>{
+    fetchDirect:async(url,timeoutMs=5500)=>{
       if(!networkAvailable())throw Error('Internet offline hai');
-      // Live requests need not wait for an auth call; storeCatalog() commits
-      // a verified snapshot after the app receives the catalog.
-      return shortFetch(url,{credentials:'same-origin',cache:'no-store'},12000);
+      // Same native fetch as Manage Products, with one bounded request.
+      // Smart Billing's offline wrapper cannot turn an online response
+      // into a simulated offline-cache failure.
+      return shortFetch(url,{credentials:'same-origin',cache:'no-store'},timeoutMs);
     }
   };
   window.addEventListener('online',()=>{identityCheck=null;sync();});window.addEventListener('offline',()=>badge());
