@@ -119,18 +119,22 @@ async function readProductCatalog(){
  // This intentionally matches the successful Manage Products request:
  // ONE native GET, no 3x retry waterfall and no intercepted GET fallback.
  const url='/api/data?resource=sale_products';
- const snap=await window.KT_OFFLINE?.savedCatalog?.().catch(()=>null);
+ const snap=products.length?{records:products}:await Promise.race([Promise.resolve().then(()=>window.KT_OFFLINE?.savedCatalog?.()),new Promise(resolve=>setTimeout(()=>resolve(null),450))]).catch(()=>null);
  if(!navigator.onLine){
    if(snap?.records?.length)return {records:activeProductList(snap.records),source:'offline'};
    throw Error('No offline product copy on this URL. Connect once and select Prepare Offline.');
  }
  try{
    if(!window.KT_OFFLINE?.fetchDirect)throw Error('Product request adapter not ready');
-   const res=await window.KT_OFFLINE.fetchDirect(url,5500);
-   const body=await res.json().catch(()=>({}));
-   if(!res.ok)throw Error(body.error||'Product API error '+res.status);
-   if(!Array.isArray(body.records))throw Error('Product API: records missing');
-   const records=activeProductList(body.records);
+   const res=await window.KT_OFFLINE.fetchDirect(url,5000);
+   const contentType=String(res.headers.get('content-type')||'').toLowerCase();
+   if(res.redirected||/\/login(?:\.html)?$/.test(new URL(res.url||location.href,location.href).pathname))throw Error('Product API login par redirect ho rahi hai. ERP login dobara karein.');
+   if(!contentType.includes('json'))throw Error('Product API returned '+(contentType.includes('html')?'HTML':'non-JSON')+' (HTTP '+res.status+'). Preview login/protection check karein.');
+   let body;try{body=await res.json()}catch{throw Error('Product API invalid JSON (HTTP '+res.status+').')}
+   if(!res.ok)throw Error(body?.error||'Product API HTTP '+res.status);
+   const source=Array.isArray(body?.records)?body.records:Array.isArray(body?.data?.records)?body.data.records:null;
+   if(!source)throw Error('Product API unexpected JSON format; Manage Products se list recover karein.');
+   const records=activeProductList(source);
    if(records.length)return {records,source:'live'};
    // Never convert an empty/incorrect server response into a successful
    // offline-ready state or overwrite a previously saved catalog.
@@ -142,8 +146,9 @@ async function readProductCatalog(){
  }
 }
 function galleryLoadError(message){
- $('gallery').innerHTML='<div class="empty smart-product-warning"><strong>Products load nahi ho rahi.</strong><p>'+esc(message)+'</p><button type="button" class="btn" id="retrySmartProducts">↻ Retry Products</button></div>';
+ $('gallery').innerHTML='<div class="empty smart-product-warning"><strong>Products load nahi ho rahi.</strong><p>'+esc(message)+'</p><button type="button" class="btn" id="retrySmartProducts">↻ Retry Products</button><button class="outline" type="button" id="recoverFromManager">Manage Products se Load</button></div>';
  $('retrySmartProducts').onclick=()=>loadProducts();
+ $('recoverFromManager').onclick=()=>openLegacy('/cash-sale-products.html','Manage Products — Load Gallery');
 }
 async function loadProducts(){
  if(productsLoadInFlight)return productsLoadInFlight;
@@ -151,7 +156,7 @@ async function loadProducts(){
    const gallery=$('gallery');
    if(!products.length)gallery.innerHTML='<div class="empty">Products loading…</div>';
    // Render the persisted catalog BEFORE contacting the server.
-   const hadOfflineCopy=await showStoredProducts();
+   const hadOfflineCopy=await Promise.race([showStoredProducts(),new Promise(resolve=>setTimeout(()=>resolve(false),650))]);
    if(!navigator.onLine){
      if(!hadOfflineCopy){
        updateCatalogState('Offline catalog missing on this URL','warning');
