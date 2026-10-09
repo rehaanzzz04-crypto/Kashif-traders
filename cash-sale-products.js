@@ -110,6 +110,12 @@
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw Error(j.error || "Products load nahi ho sakay");
       products = j.records || [];
+      // When Manage Products is embedded in Smart Billing, reuse this
+      // successful server result in its gallery and offline product cache.
+      // No additional API call; never send data across origins.
+      if(window.parent!==window){
+        try{window.parent.postMessage({type:'kt-manage-products-loaded',records:products},location.origin);}catch{}
+      }
       renderProducts();
       $("mpStatus").textContent = products.length + " products loaded.";
     } catch (e) {
