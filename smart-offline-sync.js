@@ -274,11 +274,22 @@
     }catch{return null}
   }
   async function savedCatalog(){
-    const userId=owner();
+    // Local JSON backup is fast and durable across refreshes on this origin.
+    // IndexedDB can be slow or blocked, so never wait for it before backup.
+    let userId=owner();
+    if(!userId && navigator.onLine){
+      await Promise.race([ensureIdentity().catch(()=>false),new Promise(resolve=>setTimeout(resolve,false,1200))]);
+      userId=owner();
+    }
     if(!userId)return {records:[],ready:false,reason:'No cached user session'};
+    const backup=readCatalogBackup(userId);
+    if(backup?.records?.length)return backup;
     for(const url of catalogCandidates){
       try{
-        const snap=await get('snapshots',userId+':'+url);
+        const snap=await Promise.race([
+          get('snapshots',userId+':'+url),
+          new Promise(resolve=>setTimeout(resolve,null,1000))
+        ]);
         if(!snap||!String(snap.type||'').includes('json'))continue;
         const json=JSON.parse(await snap.blob.text());
         const records=(Array.isArray(json.records)?json.records:[]).filter(
