@@ -272,8 +272,22 @@ async function cashSales(sql, req, user) {
       discount = Math.min(subtotal, Math.max(0, b.discount === undefined ? Number(current.discount) : Number(b.discount) || 0)),
       total = subtotal - discount,
       requested = Math.max(0, cleanAmount(b.amount_received) ?? 0),
-      customerId = asId(current.customer_id),
       processor = user.full_name || user.employee_code;
+
+    // Pending bills can attach a registered customer before settlement.
+    // Finalized bills are never reassigned through this payment flow.
+    if (b.customer_id !== undefined && current.status !== "pending")
+      return { status: 409, data: { error: "Finalized invoice ka customer is flow se change nahi ho sakta" } };
+    const customerId = b.customer_id === undefined ? asId(current.customer_id) : asId(b.customer_id);
+    let customerName = cleanText(current.customer_name) || "Walk-in Customer";
+    if (b.customer_id !== undefined) {
+      if (customerId) {
+        const customer = (await sql`SELECT id,name,status FROM cash_sale_customers WHERE id=${customerId}`)[0];
+        if (!customer || customer.status !== "active")
+          return { status: 400, data: { error: "Active Cash Sale customer select karein" } };
+        customerName = customer.name;
+      } else customerName = "Walk-in Customer";
+    }
 
     let applied = 0, method = cleanText(b.payment_method);
     if (nextStatus === "paid") {
@@ -298,6 +312,8 @@ async function cashSales(sql, req, user) {
     const finalized = ["paid","partial","credit"].includes(nextStatus);
     const rows = await sql`WITH updated AS (
         UPDATE cash_sale_queue SET
+          customer_id=${customerId},
+          customer_name=${customerName},
           items=${JSON.stringify(items)},
           subtotal=${subtotal},
           discount=${discount},
