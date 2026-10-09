@@ -252,7 +252,57 @@
       if(res.ok)await saveSnapshot(canonical(url),res,owner());
     }catch{}
   }
-  window.KT_OFFLINE={sync,items,count:async()=>(await items()).length,prepare,prepareSmartCounter,isOnline:networkAvailable,fetchDirect:async (url)=>{if(!networkAvailable())throw Error('Internet offline hai');const r=await shortFetch(url,{credentials:'same-origin',cache:'no-store'},12000);if(r.ok&&owner())await saveSnapshot(canonical(url),r,owner()).catch(()=>{});return r;}};
+  // Smart Counter's catalog is backed by a confirmed, user-scoped IndexedDB snapshot.
+  // The direct product request previously raced /api/auth?action=me; when it returned
+  // first, owner() was null and its successful response was never persisted.
+  const catalogURL=canonical('/api/data?resource=sale_products&status=active&limit=1000');
+  const catalogCandidates=[
+    catalogURL,
+    canonical('/api/data?resource=sale_products&limit=1000'),
+    canonical('/api/data?resource=sale_products'),
+    canonical('/api/data?resource=sale_products&status=active')
+  ];
+  async function savedCatalog(){
+    const userId=owner();
+    if(!userId)return {records:[],ready:false,reason:'No cached user session'};
+    for(const url of catalogCandidates){
+      const snap=await get('snapshots',userId+':'+url);
+      if(!snap||!String(snap.type||'').includes('json'))continue;
+      try{
+        const json=JSON.parse(await snap.blob.text());
+        const records=(Array.isArray(json.records)?json.records:[]).filter(
+          p=>p&&String(p.status??'active').trim().toLowerCase()==='active');
+        if(records.length)return {records,ready:true,savedAt:snap.at};
+      }catch{}
+    }
+    return {records:[],ready:false,reason:'No non-empty product snapshot'};
+  }
+  async function storeCatalog(records){
+    if(!Array.isArray(records)||!records.length)return {saved:false,reason:'Empty list is not cached'};
+    // Authenticate before writing: do not attribute products to the wrong user.
+    if(!await ensureIdentity())return {saved:false,reason:'Login verification unavailable'};
+    const userId=owner();if(!userId)return {saved:false,reason:'No verified user'};
+    const active=records.filter(p=>p&&String(p.status??'active').trim().toLowerCase()==='active');
+    if(!active.length)return {saved:false,reason:'No active products'};
+    const res=response({records:active},200);
+    try{
+      await saveSnapshot(catalogURL,res,userId);
+      const snapshot=await get('snapshots',userId+':'+catalogURL);
+      if(!snapshot)throw Error('Snapshot not persisted');
+      const confirmed=JSON.parse(await snapshot.blob.text());
+      if(!Array.isArray(confirmed.records)||confirmed.records.length!==active.length)throw Error('Saved product count mismatch');
+      return {saved:true,count:active.length,savedAt:snapshot.at};
+    }catch(e){return {saved:false,reason:String(e.message||e)}}
+  }
+  const previousSmartAPI={sync,items,count:async()=>(await items()).length,prepare,prepareSmartCounter,isOnline:networkAvailable};
+  window.KT_OFFLINE={...previousSmartAPI,savedCatalog,storeCatalog,
+    fetchDirect:async(url)=>{
+      if(!networkAvailable())throw Error('Internet offline hai');
+      // Live requests need not wait for an auth call; storeCatalog() commits
+      // a verified snapshot after the app receives the catalog.
+      return shortFetch(url,{credentials:'same-origin',cache:'no-store'},12000);
+    }
+  };
   window.addEventListener('online',()=>{identityCheck=null;sync();});window.addEventListener('offline',()=>badge());
   window.addEventListener('load',()=>{badge().catch(console.error);sync();setTimeout(()=>prepareSmartCounter(),1400);});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync();});
