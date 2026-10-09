@@ -712,13 +712,32 @@ async function customerPortal(sql,req,res,staffUser=null){
       };
     });
     const subtotal=items.reduce((n,x)=>n+Number(x.total||0),0),discount=Math.min(subtotal,Math.max(0,Number(b.discount)||0)),total=subtotal-discount;
-    const q=await sql`WITH next_number AS (
+    // Single database statement: lock the pending customer order before allocating
+    // a daily CS number and creating its invoice. Competing Cashier/Smart clicks
+    // cannot create two invoices for the same order.
+    const q=await sql`WITH selected_order AS (
+      SELECT id,customer_id FROM cash_customer_orders
+      WHERE id=${orderId} AND status='pending' AND cash_sale_id IS NULL
+      FOR UPDATE
+    ), next_number AS (
       INSERT INTO cash_sale_daily_counters(business_date,last_number)
-      VALUES ((now() AT TIME ZONE 'Asia/Karachi')::date,1)
+      SELECT (now() AT TIME ZONE 'Asia/Karachi')::date,1 FROM selected_order
       ON CONFLICT (business_date) DO UPDATE SET last_number=cash_sale_daily_counters.last_number+1
       RETURNING 'CS-'||to_char(business_date,'YYYYMMDD')||'-'||last_number AS invoice_number
-    ) INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_name,customer_id,items,subtotal,discount,total,status,amount_received,sale_date,created_at,updated_at) VALUES((SELECT invoice_number FROM next_number),${staffUser.id},${staffUser.full_name||staffUser.employee_code},${o.customer_name},${o.customer_id},${JSON.stringify(items)},${subtotal},${discount},${total},'pending',0,(now() AT TIME ZONE 'Asia/Karachi')::date,now(),now()) RETURNING *`;
-    await sql`UPDATE cash_customer_orders SET status='converted',cash_sale_id=${q[0].id},updated_at=now() WHERE id=${orderId} AND status='pending'`;
+    ), created AS (
+      INSERT INTO cash_sale_queue(invoice_number,created_by_id,created_by_name,customer_name,customer_id,items,subtotal,discount,total,status,amount_received,sale_date,created_at,updated_at)
+      SELECT n.invoice_number,${staffUser.id},${staffUser.full_name||staffUser.employee_code},
+        ${o.customer_name},s.customer_id,${JSON.stringify(items)},${subtotal},${discount},${total},
+        'pending',0,(now() AT TIME ZONE 'Asia/Karachi')::date,now(),now()
+      FROM selected_order s CROSS JOIN next_number n
+      RETURNING *
+    ), linked AS (
+      UPDATE cash_customer_orders o SET status='converted',cash_sale_id=c.id,updated_at=now()
+      FROM created c WHERE o.id=${orderId} AND o.status='pending' AND o.cash_sale_id IS NULL
+      RETURNING o.id
+    )
+    SELECT c.* FROM created c JOIN linked l ON true`;
+    if(!q.length)return res.status(409).json({error:"Order already processed. Customer Orders refresh karein."});
     return res.status(201).json({record:cashInvoiceView(q[0])});
   }
   const customer=sessionToken?(await sql`SELECT c.* FROM cash_customer_sessions s JOIN cash_sale_customers c ON c.id=s.customer_id WHERE s.token_hash=${digest(sessionToken)} AND s.expires_at>now() AND c.status='active' LIMIT 1`)[0]:null;
