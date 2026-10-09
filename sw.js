@@ -1,6 +1,6 @@
 'use strict';
 importScripts('/offline-shell-manifest.js');
-const CACHE = 'kt-shell-20261009-managercatalog1';
+const CACHE = 'kt-shell-20261009-stablecache1';
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
@@ -27,17 +27,20 @@ self.addEventListener('fetch', event => {
     event.respondWith((async()=>{
       const cache=await caches.open(CACHE);
       const hit=await cache.match(request)||await cache.match(pathname);
-      if(hit){
-        event.waitUntil(fetch(request,{cache:'no-store'}).then(async response=>{
-          if(response.ok&&!response.redirected)await cache.put(request,response.clone());
-        }).catch(()=>{}));
-        return hit;
-      }
+      // Versioned JS and CSS can be cache-first. The HTML route must be
+      // network-first when connected, or a new deployment keeps loading old JS.
+      if(request.mode!=='navigate'&&hit)return hit;
       try{
-        const response=await fetch(request);
-        if(response.ok&&!response.redirected)await cache.put(request,response.clone());
+        const response=await fetch(request,{cache:'no-store',signal:AbortSignal.timeout(3500)});
+        if(response.ok&&!response.redirected){
+          await cache.put(request,response.clone());
+          if(request.mode==='navigate')await cache.put(pathname,response.clone());
+        }
         return response;
-      }catch{return new Response('Smart Billing offline shell unavailable. Connect once to prepare.',{status:503});}
+      }catch{
+        if(hit)return hit;
+        return new Response('Smart Billing offline shell unavailable. Open while online once to prepare.',{status:503});
+      }
     })());
     return;
   }
