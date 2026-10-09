@@ -1,0 +1,137 @@
+/* Kashif Traders Customer Portal — premium 2026 layout, scoped to signed-in views. */
+:root{--p-forest:#0b4b3f;--p-dark:#073c32;--p-gold:#c9a85d;--p-bg:#f4f6f2;--p-ink:#1a3029;--p-border:#dfe8e1}
+body{background:#f4f6f2!important;color:var(--p-ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif!important}
+.top{padding:12px 18px!important;background:linear-gradient(120deg,#083d34,#0d594a)!important;border-bottom:2px solid var(--p-gold)!important;box-shadow:0 4px 16px #0b4b3f20}
+.topin{max-width:1320px!important;min-height:48px!important;gap:8px;align-items:center!important}
+.top .portal-brand-copy b{font:800 18px/1.2 Inter,"Segoe UI",sans-serif!important;color:#fff!important;white-space:normal!important}
+.top .portal-brand-copy span{font:700 9px/1.3 Inter,"Segoe UI",sans-serif!important;color:#e6c986!important;letter-spacing:.8px}
+.portal-mark{width:42px;height:42px;border-radius:11px;background:#d6b96b;color:#083f33;border:0;font:900 17px/1 Inter,sans-serif;box-shadow:none}
+#logout{margin-left:auto;min-height:38px!important;padding:9px 12px!important;border-radius:9px!important}
+.wrap{max-width:1320px!important;padding:18px 17px 100px!important}
+#app .card{background:#fff!important;border:1px solid var(--p-border)!important;border-radius:17px!important;box-shadow:0 4px 16px #153a2c0a!important;padding:19px!important}
+#app .portal-screen.hidden{display:none!important}
+.portal-title{margin:0 0 5px!important;font-family:Inter,"Segoe UI",sans-serif!important;font-size:22px!important;letter-spacing:-.5px;color:var(--p-ink)}
+.portal-subtitle{font-size:12px!important;line-height:1.55!important;color:#677970!important;margin:0 0 15px}
+#app .dashboard-card{background:linear-gradient(140deg,#073e34,#0c5948 90%)!important;border:1px solid #c2a56380!important;box-shadow:0 14px 36px #1747371a!important;border-radius:20px!important;padding:21px!important}
+#app .dashboard-card h1{font:800 26px/1.15 Inter,"Segoe UI",sans-serif!important;letter-spacing:-.8px;margin:0 0 7px!important}
+#app .dashboard-card>#meta{color:#f2d58b!important;letter-spacing:.1px!important;font-size:12px!important;font-weight:650}
+#app .dashboard-card .stats{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important;margin:20px 0 17px!important}
+#app .dashboard-card .stat{background:#fff!important;border:1px solid #eef0ec!important;min-height:92px!important;padding:15px!important;border-radius:14px!important;box-shadow:0 6px 15px #081d1412!important}
+#app .dashboard-card .stat:nth-child(3){background:#fffaf0!important}
+#app .dashboard-card .stat small{font-size:10px!important;color:#718077!important;letter-spacing:.25px!important;text-transform:none!important;font-weight:800}
+#app .dashboard-card .stat b{font:850 23px/1.25 Inter,"Segoe UI",sans-serif!important;color:#0b4b3f!important;margin-top:8px!important}
+.portal-home-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;position:relative;z-index:1}
+.portal-home-actions .portal-action{appearance:none;cursor:pointer;display:flex;align-items:center;gap:10px;min-height:68px;padding:12px;border-radius:13px;background:#fff;color:#164736;border:1px solid #e2ebe2;font-weight:850;font-size:13px;text-align:left;transition:background .2s,transform .2s}
+.portal-home-actions .portal-action:active{transform:scale(.98)}
+.portal-home-actions .portal-action:first-child{background:linear-gradient(145deg,#fff8e8,#f8e8bf);border-color:#dfc68b}
+.portal-action-icon{width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:10px;background:#e6f3ec;color:#0b5c43;font-size:18px}
+.portal-home-actions .portal-action:first-child .portal-action-icon{background:#fff;color:#946624}
+#app .portal-screen{animation:portal-appear .16s ease}
+@keyframes portal-appear{from{opacity:.72;transform:translateY(4px)}to{opacity:1;transform:none}}
+.portal-screen-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.portal-screen-heading .portal-title{margin:0!important}
+.portal-screen-heading button{font-size:12px}
+.portal-order-layout{display:grid!important;grid-template-columns:minmax(0,1.05fr) minmax(300px,.75fr)!important;gap:14px!important;align-items:start}
+#orders .portal-order-layout .card{padding:18px!important;margin:0!important}
+#orders .portal-order-layout .portal-order-sidebar{position:sticky;top:91px}
+.portal-searchbar{display:flex;gap:8px;align-items:center}
+.portal-searchbar input{width:100%;border:1px solid #d7e4dc!important;background:#fff!important;border-radius:10px!important;min-height:47px!important;font-size:14px!important;padding:12px!important;outline-offset:2px}
+.portal-categories{display:flex;gap:6px;align-items:center;overflow-x:auto;scrollbar-width:thin;margin:11px 0;padding-bottom:3px}
+.portal-categories button{white-space:nowrap;background:#f0f4f0;border:1px solid #e2e8e1;color:#4b6254;padding:8px 11px;border-radius:999px;cursor:pointer;font-size:11px;font-weight:750}
+.portal-categories button.active{background:var(--p-forest);color:#fff;border-color:var(--p-forest)}
+#orders .product-picker{border:none!important;background:transparent!important;box-shadow:none!important;padding:0!important;margin:0!important}
+#orders .picker-tools{position:static!important;background:transparent!important;padding:0!important;display:grid!important;grid-template-columns:1fr auto!important;gap:9px!important}
+#orders .picker-tools input{background:#fff!important;min-height:44px!important;border-color:#d7e4dc!important}
+#orders .picker-count{background:#e6f3ec!important;color:#155b43!important;border-radius:10px;padding:0 12px!important}
+#orders .picker-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;max-height:480px!important;overflow:auto;align-content:start;padding:2px!important}
+#orders .picker-item{display:grid;grid-template-columns:70px minmax(0,1fr) 32px;align-items:center;gap:9px;min-height:87px;text-align:left;border:1px solid #e1e8e1!important;padding:8px!important;border-radius:12px!important;box-shadow:none!important}
+#orders .picker-item.selected{background:#eaf5ee!important;border:2px solid #0c624b!important;padding:7px!important}
+#orders .picker-item img,#orders .picker-ph{width:68px!important;height:68px!important;aspect-ratio:1!important;object-fit:contain!important;background:#f5f7f3!important}
+#orders .picker-item .picker-name{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;font-size:12px!important;margin:0!important;line-height:1.3}
+#orders .picker-item .picker-meta{font-size:10px!important;white-space:normal!important;margin-top:4px!important}
+#orders .picker-item .picker-check{position:static!important;width:30px!important;height:30px!important;border-radius:50%!important;background:#075345!important;color:#fff!important;border:0!important;font-size:18px;box-shadow:none!important}
+#orders .picker-item.selected .picker-check{background:#c49639!important}
+#orders .picker-footer{position:sticky;bottom:0;background:#fff;border-top:1px solid #e4ebe4;padding:10px 0 0;grid-template-columns:1fr 1.2fr!important;margin:10px 0 0}
+#orders .picker-footer .btn{min-height:42px;font-size:12px!important}
+#orders #openProductPicker{min-height:38px;border-color:#d9c288!important;box-shadow:none;font-size:12px}
+#orders #orderRows{display:grid;gap:8px}
+#orders .orderrow{display:grid!important;grid-template-columns:minmax(0,1fr) 87px 36px!important;gap:7px!important;margin:0!important;padding:9px;border-radius:11px;border:1px solid #e0e9e0;background:#fafcf9}
+#orders .orderrow select,#orders .orderrow input{background:#fff!important;border:1px solid #d9e4d9!important;border-radius:8px!important;min-height:39px!important;font-size:12px!important}
+#orders .orderrow button{border-radius:9px!important;min-height:38px!important;padding:6px!important;color:#a33b36!important;background:#fff6f4!important;border:1px solid #f0d8d4!important;box-shadow:none}
+#orders .order-actions{display:grid!important;grid-template-columns:1fr 1fr!important;gap:7px!important}
+#orders .order-actions #sendOrder{grid-column:1/-1}
+#orders .order-actions .btn{min-height:43px!important}
+.portal-cart-title{font-size:16px!important;font-weight:850!important;font-family:Inter,"Segoe UI",sans-serif!important;margin:0 0 10px}
+.portal-item-count{padding:8px 10px;border-radius:8px;background:#eaf5ed;color:#1a5d44;font-size:12px;font-weight:850}
+.portal-cart-empty{padding:18px 9px;color:#76857c;text-align:center;font-size:12px;border:1px dashed #d9e5da;border-radius:11px}
+.portal-review-lines{display:grid;gap:7px;margin:11px 0}
+.portal-review-line{display:flex;gap:9px;align-items:center;padding:9px;border:1px solid #e4ece4;border-radius:10px;background:#fbfcfb}
+.portal-review-line img,.portal-review-line .mini-placeholder{width:39px;height:42px;object-fit:contain;background:#f5f5ef;border-radius:7px;flex:none}
+.portal-review-line span{min-width:0;flex:1;font-size:12px;font-weight:700}
+.portal-review-line small{display:block;color:#73847a;font-size:10px;margin-top:2px}
+.portal-review-line b{font-size:12px}
+.portal-cart-summary{display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e1e8e1;padding:13px 0;margin-top:10px;font-size:12px;font-weight:850}
+.portal-privacy{margin:10px 0;color:#748278;font-size:11px}
+.portal-warning{font-size:11px;color:#8b661d;background:#fff7e8;border:1px solid #e9d6a7;padding:10px;border-radius:9px}
+.portal-order-filter{display:flex;gap:6px;overflow-x:auto;padding:3px 0 12px}
+.portal-order-filter button{background:#f3f6f2;border:1px solid #e0e8df;border-radius:9px;padding:9px 12px;white-space:nowrap;font-weight:750;color:#41564a;cursor:pointer}
+.portal-order-filter button.active{background:#0e5949;color:#fff;border-color:#0e5949}
+#myOrders #orderList{display:grid;gap:9px}
+#myOrders #orderList .row{margin:0!important;padding:12px!important;border:1px solid #e4ebe4!important;border-radius:12px!important;background:#fff!important;cursor:pointer}
+#myOrders #orderList .row b{font-size:12px}
+#myOrders #orderList .row small{font-size:10px;color:#718278}
+#myOrders #orderList .repeat{min-height:33px!important;padding:6px 10px!important;background:#f6faf7!important;border-color:#bed5c7!important}
+#myOrders .badge{background:#e8f4ec!important;color:#125b3d!important}
+#myOrders .status-rejected .badge{background:#fff0ef!important;border-color:#f1cbc9;color:#b24c43!important}
+#myOrders .status-pending .badge{background:#fff4df!important;border-color:#f3d5a0;color:#8a611e!important}
+.portal-detail{margin:12px 0;padding:14px;background:#f9fbf8;border:1px solid #dce7de;border-radius:12px}
+.portal-detail h3{margin:0 0 6px;font-size:16px}
+.portal-detail .detail-line{display:flex;justify-content:space-between;border-bottom:1px solid #e4ebe4;gap:8px;padding:9px 0;font-size:12px}
+.portal-detail .detail-line:last-child{border-bottom:0}
+#invoices .invoice{border-color:#dee8e0!important}
+.portal-statements-row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid #e3eae3;padding:11px 0;font-size:12px}
+.portal-statements-row b{color:#174b3a}
+.portal-bottom{display:none}
+.portal-profile-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.portal-profile-grid>div{background:#f6faf6;border:1px solid #e2ebe1;padding:13px;border-radius:11px}
+.portal-profile-grid small{display:block;color:#697a6d;margin-bottom:5px}
+.portal-profile-grid strong{word-break:break-word}
+@media(max-width:940px){.portal-order-layout{grid-template-columns:1fr!important}.portal-order-layout .portal-order-sidebar{position:static!important}#orders .picker-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:650px){
+ body{padding-bottom:72px}
+ .top{padding:11px 12px!important;padding-top:max(12px,env(safe-area-inset-top,0px))!important}
+ @media(display-mode:standalone){.top{padding-top:max(24px,env(safe-area-inset-top,24px))!important}}
+ .topin{min-height:42px!important}
+ .top .portal-brand-copy b{font-size:15px!important}
+ .top .portal-brand-copy span{font-size:8px!important;letter-spacing:.4px}
+ .portal-mark{width:36px;height:36px;font-size:14px}
+ #logout{padding:8px 9px!important;font-size:11px}
+ .wrap{padding:11px 9px 108px!important}
+ #app .card{padding:13px!important;border-radius:15px!important;margin-bottom:10px}
+ #app .dashboard-card{padding:15px!important;border-radius:18px!important}
+ #app .dashboard-card h1{font-size:25px!important}
+ #app .dashboard-card .stats{grid-template-columns:1fr!important;gap:7px!important;margin:15px 0!important}
+ #app .dashboard-card .stat{display:grid;grid-template-columns:1fr;align-items:center;padding:12px 13px!important;min-height:67px!important}
+ #app .dashboard-card .stat small{font-size:10px!important}
+ #app .dashboard-card .stat b{font-size:20px!important;margin-top:4px!important}
+ .portal-home-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .portal-home-actions .portal-action{min-height:74px;flex-direction:column;align-items:flex-start;gap:7px;padding:10px;font-size:11px}
+ .portal-action-icon{width:31px;height:31px;font-size:16px}
+ #orders .portal-order-layout .card{padding:13px!important}
+ #orders .picker-grid{grid-template-columns:1fr!important;max-height:450px!important}
+ #orders .picker-item{grid-template-columns:61px minmax(0,1fr) 30px;min-height:75px}
+ #orders .picker-item img,#orders .picker-ph{width:60px!important;height:60px!important}
+ #orders .picker-tools{grid-template-columns:1fr auto!important}
+ #orders .picker-count{font-size:10px!important;padding:0 8px!important}
+ #orders .orderrow{grid-template-columns:minmax(0,1fr) 75px 35px!important}
+ #orders .orderrow select,#orders .orderrow input{font-size:12px!important;padding:8px!important}
+ .portal-screen-heading{margin-bottom:8px}
+ .portal-title{font-size:20px!important}
+ .portal-bottom{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);bottom:0;left:0;right:0;z-index:100;background:#fff;border-top:1px solid #d8e4db;box-shadow:0 -3px 14px #173d3316;min-height:calc(62px + env(safe-area-inset-bottom,0px));padding:6px 4px max(6px,env(safe-area-inset-bottom,0px))}
+ .portal-bottom button{border:0;background:transparent;color:#697b70;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:3px;padding:3px 0;font-size:10px;font-weight:750;cursor:pointer}
+ .portal-bottom button.active{color:#0d644b}
+ .portal-bottom button .bottom-icon{font-size:19px;line-height:1.2}
+ .wa-help{bottom:calc(74px + env(safe-area-inset-bottom,0px))!important;width:45px!important;height:45px!important;font-size:23px!important}
+ .portal-profile-grid{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){#app .portal-screen{animation:none}}
