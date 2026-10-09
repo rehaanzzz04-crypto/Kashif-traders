@@ -262,40 +262,64 @@
     canonical('/api/data?resource=sale_products'),
     canonical('/api/data?resource=sale_products&status=active')
   ];
+  // JSON backup handles browsers that cannot persist Response/Blob in IndexedDB.
+  // Always scope to the signed-in account; never expose another user's catalog.
+  const catalogBackupKey=id=>'kt_smart_catalog_v1:'+id;
+  function readCatalogBackup(id){
+    if(!id)return null;
+    try{
+      const payload=JSON.parse(localStorage.getItem(catalogBackupKey(id))||'null');
+      if(payload?.owner!==id||!Array.isArray(payload.records)||!payload.records.length)return null;
+      return {records:payload.records,savedAt:payload.savedAt,ready:true,source:'local-backup'};
+    }catch{return null}
+  }
   async function savedCatalog(){
-    // A freshly opened tab may inspect IndexedDB before the async auth
-    // handshake writes the user id to localStorage. Verify online once.
     const userId=owner();
     if(!userId)return {records:[],ready:false,reason:'No cached user session'};
     for(const url of catalogCandidates){
-      const snap=await get('snapshots',userId+':'+url);
-      if(!snap||!String(snap.type||'').includes('json'))continue;
       try{
+        const snap=await get('snapshots',userId+':'+url);
+        if(!snap||!String(snap.type||'').includes('json'))continue;
         const json=JSON.parse(await snap.blob.text());
         const records=(Array.isArray(json.records)?json.records:[]).filter(
           p=>p&&String(p.status??'active').trim().toLowerCase()==='active');
-        if(records.length)return {records,ready:true,savedAt:snap.at};
+        if(records.length)return {records,ready:true,savedAt:snap.at,source:'indexeddb'};
       }catch{}
     }
-    return {records:[],ready:false,reason:'No non-empty product snapshot'};
+    return readCatalogBackup(userId)||{records:[],ready:false,reason:'No non-empty product snapshot'};
   }
   async function storeCatalog(records){
-    if(!Array.isArray(records)||!records.length)return {saved:false,reason:'Empty list is not cached'};
-    // Authenticate before writing: do not attribute products to the wrong user.
+    if(!Array.isArray(records)||!records.length)return {saved:false,reason:'Empty catalog rejected'};
     if(!await ensureIdentity())return {saved:false,reason:'Login verification unavailable'};
-    const userId=owner();if(!userId)return {saved:false,reason:'No verified user'};
+    const userId=owner();
+    if(!userId)return {saved:false,reason:'No verified customer account'};
     const active=records.filter(p=>p&&String(p.status??'active').trim().toLowerCase()==='active');
     if(!active.length)return {saved:false,reason:'No active products'};
-    const res=response({records:active},200);
+    const now=new Date().toISOString();
+    // Persist a small, verified JSON backup as well as the IndexedDB snapshot.
+    // Exclude inline images and large metadata to respect storage limits.
+    const compact=active.map(p=>({
+      id:p.id,sku:p.sku,name:p.name,category:p.category,unit:p.unit,barcode:p.barcode,
+      sale_price:p.sale_price,purchase_price:p.purchase_price,status:p.status,
+      product_image_url:typeof p.product_image_url==='string'&&!p.product_image_url.startsWith('data:')?p.product_image_url:null
+    }));
+    let backupOK=false,idbOK=false,backupError='';
     try{
-      await saveSnapshot(catalogURL,res,userId);
-      const snapshot=await get('snapshots',userId+':'+catalogURL);
-      if(!snapshot)throw Error('Snapshot not persisted');
-      if(!snapshot.type.includes('json'))throw Error('Catalog snapshot is not JSON');
-      const confirmed=JSON.parse(await snapshot.blob.text());
-      if(!Array.isArray(confirmed.records)||confirmed.records.length!==active.length)throw Error('Saved product count mismatch');
-      return {saved:true,count:active.length,savedAt:snapshot.at};
-    }catch(e){return {saved:false,reason:String(e.message||e)}}
+      localStorage.setItem(catalogBackupKey(userId),JSON.stringify({owner:userId,savedAt:now,records:compact}));
+      const check=readCatalogBackup(userId);
+      backupOK=check?.records.length===compact.length;
+    }catch(e){backupError=e?.message||'Local storage unavailable'}
+    try{
+      await saveSnapshot(catalogURL,response({records:active},200),userId);
+      const saved=await get('snapshots',userId+':'+catalogURL);
+      if(saved?.blob){
+        const check=JSON.parse(await saved.blob.text());
+        idbOK=Array.isArray(check.records)&&check.records.length===active.length;
+      }
+    }catch{}
+    return backupOK||idbOK
+      ?{saved:true,count:active.length,savedAt:now,source:idbOK?'indexeddb':'local-backup'}
+      :{saved:false,reason:backupError||'IndexedDB and local backup not persisted'};
   }
   const previousSmartAPI={sync,items,count:async()=>(await items()).length,prepare,prepareSmartCounter,isOnline:networkAvailable};
   window.KT_OFFLINE={...previousSmartAPI,savedCatalog,storeCatalog,
