@@ -1,5 +1,6 @@
 'use strict';(()=>{
 const $=id=>document.getElementById(id),money=n=>'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:2}),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),arr=v=>Array.isArray(v)?v:(()=>{try{const x=JSON.parse(v||'[]');return Array.isArray(x)?x:[]}catch{return []}})();
+let activeOrder=null,orders=[],ordersBusy=false,orderLoadBusy=false;
 let products=[],cart=[],selected=new Set(),category='all',galleryPage=0,searchTimer=null,customerList=[],bills=[],billStatus='pending',active=null,busy=false,lastInvoice=null,lastPrinted='',lastPrintTime=0,barcodeStream=null,scannerLoop=0,scannerDetector=null,searchVersion=0,method='Cash',manualReceived=false;
 const galleryChunk=48;const stamp=x=>x?new Date(x).toLocaleString('en-PK',{timeZone:'Asia/Karachi',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 function visibleInvoice(b){const raw=String(b?.invoice_number||b?.invoice_reference||'');const match=/^CS-\d{8}-(\d+)$/.exec(raw);return match?'CS-'+Number(match[1]):raw}
@@ -26,7 +27,7 @@ $('methods').querySelectorAll('button').forEach(b=>b.onclick=()=>setPayment(b.da
 $('productSearch').oninput=()=>{galleryPage=0;renderGallery()};$('quickSearch').oninput=e=>{$('productSearch').value=e.target.value;galleryPage=0;renderGallery()};$('quickSearch').onkeydown=e=>{if(e.key==='Enter'){const p=filtered()[0];if(p){addProduct(p);$('quickSearch').value='';$('productSearch').value='';renderGallery()}}};
 $('addSelected').onclick=()=>{const rows=products.filter(p=>selected.has(String(p.id)));rows.forEach(addProduct);selected.clear();renderGallery();renderTotals();if(rows.length)status(rows.length+' products invoice mein add ho gaye.')};
 $('clearCart').onclick=()=>{if(cart.length&&!confirm('Current invoice items clear karein?'))return;cart=[];selected.clear();manualReceived=false;$('discount').value=0;renderGallery();renderCart()};
-function newSale(){if(cart.length&&!confirm('Current unsaved sale clear karein?'))return;cart=[];selected.clear();manualReceived=false;$('customer').value='';$('discount').value=0;setPayment('Cash');renderCart();renderGallery();status('New sale ready.')}
+function newSale(){if((cart.length||activeOrder)&&!confirm('Current unsaved sale / customer order editor clear karein? Order portal mein pending rahega.'))return;activeOrder=null;document.body.classList.remove('order-mode-active');$('orderModeNotice').textContent='';$('customer').disabled=false;cart=[];selected.clear();manualReceived=false;$('customer').value='';$('discount').value=0;$('complete').textContent='Complete Sale & Print';$('pending').textContent='Save as Pending';$('complete').disabled=false;$('pending').disabled=false;setPayment('Cash');renderCart();renderGallery();status('New sale ready.')}
 $('newSale').onclick=newSale;$('cancel').onclick=newSale;$('back').onclick=()=>location.assign('/');
 $('manageProducts').onclick=()=>openLegacy('/cash-sale-products.html','Manage Products');$('modeGallery').onclick=()=>{$('gallery').scrollIntoView({behavior:'smooth',block:'nearest'})};
 function openLegacy(url,title){$('legacyTitle').textContent=title;$('legacyFrame').src=url;$('legacyModal').classList.remove('hidden')}
@@ -37,7 +38,7 @@ $('billNewCustomer').onclick=()=>{customerModalFromBill=true;$('customerModal').
 $('closeCustomer').onclick=()=>$('customerModal').classList.add('hidden');
 $('customerForm').onsubmit=async e=>{e.preventDefault();try{const j=await api('/api/data?resource=cash_sale_customers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries()))});if(j.pending_sync){status('Customer sync pending. Online verification baad mein hogi.','warning');return}const sourceWasBill=customerModalFromBill;$('customerModal').classList.add('hidden');e.target.reset();await loadCustomers(sourceWasBill?'':j.record.id);if(sourceWasBill){fillBillCustomers(j.record.id);updateBillSettlementView()}customerModalFromBill=false;status('Customer add ho gaya.')}catch(e){status(e.message,'error')}};
 function salePayload(){return {customer_id:Number($('customer').value)||null,customer_name:$('customer').selectedOptions[0]?.textContent||'Walk-in Customer',sale_date:$('saleDate').value,items:cart.map(p=>({...p})),discount:totals().discount}}
-async function createSale(finalize){if(busy||!cart.length){if(!cart.length)status('Invoice mein product add karein.','warning');return}const {total}=totals(),payment=$('payment').value,received=Number($('received').value)||0,customer=Number($('customer').value)||0;let target='pending',cashMethod=payment;
+async function createSale(finalize){if(activeOrder){await approveSelectedOrder();return}if(busy||!cart.length){if(!cart.length)status('Invoice mein product add karein.','warning');return}const {total}=totals(),payment=$('payment').value,received=Number($('received').value)||0,customer=Number($('customer').value)||0;let target='pending',cashMethod=payment;
 if(finalize){if(payment==='Credit'){target='credit'}else if(payment==='Partial'){target='partial';cashMethod='Cash'}else{target='paid'}if((target==='partial'||target==='credit')&&!customer){status('Partial / Credit ke liye registered customer zaroori hai.','warning');return}if(target==='paid'&&received+.005<total){status('Full payment ke liye total amount receive karein.','warning');return}if(target==='partial'&&(received<=0||received+.005>=total)){status('Partial amount 0 se zyada aur grand total se kam honi chahiye.','warning');return}}
 busy=true;$('complete').disabled=$('pending').disabled=true;try{
 const saved=await api('/api/data?resource=cash_sales',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(salePayload())});
@@ -156,8 +157,104 @@ $('printBill').onclick=()=>printInvoice(active);
 $('printTop').onclick=()=>printInvoice(lastInvoice);
 $('shareBill').onclick=()=>shareInvoicePdf(active);
 $('pdf').onclick=()=>shareInvoicePdf(lastInvoice);
-$('navSale').onclick=()=>$('mainWorkspace').scrollIntoView({behavior:'smooth'});$('navPending').onclick=()=>{setBillStatus('pending');$('recent').scrollIntoView({behavior:'smooth'})};$('navPaid').onclick=()=>{setBillStatus('paid');$('recent').scrollIntoView({behavior:'smooth'})};$('navOrders').onclick=()=>openLegacy('/cashier-sales.html','Customer Portal Orders');$('navReport').onclick=()=>openLegacy('/cashier-sales-report.html','Sales Report');$('billsTop').onclick=()=>$('recent').scrollIntoView({behavior:'smooth'});$('holdTop').onclick=()=>$('pending').click();
+
+function orderPending(){return orders.filter(x=>x.status==='pending'&&!x.cash_sale_id)}
+function orderDraftItems(order){
+ const base=arr(order.items);
+ return base.map(i=>{
+  const product=products.find(p=>Number(p.id)===Number(i.product_id));
+  return {id:Number(i.product_id),name:i.name||product?.name||'Product',number:product?.sku||'',sku:product?.sku||'',barcode:product?.barcode||'',unit:i.unit||product?.unit||'pcs',qty:Math.max(.001,Number(i.qty)||1),rate:Math.max(0,Number(i.price??product?.sale_price)||0),defaultRate:Math.max(0,Number(i.price??product?.sale_price)||0)}
+ });
+}
+function paintOrders(){
+ const pending=orderPending();
+ $('orderCount').textContent=pending.length;$('ordersModalCount').textContent=pending.length;
+ $('ordersList').innerHTML=pending.length?pending.map(o=>
+  '<div class="order-card"><div><strong>'+esc(o.order_number)+' · '+esc(o.customer_name)+'</strong><small>'+esc(o.customer_code||'')+' · '+arr(o.items).length+' products · '+esc(stamp(o.created_at))+'</small></div><div class="action-row"><button type="button" class="btn small" data-openorder="'+o.id+'">Open in Counter</button><button type="button" class="danger small" data-rejectorder="'+o.id+'">Reject</button></div></div>'
+ ).join(''):'<div class="empty">Koi pending customer order nahi.</div>';
+ $('ordersList').querySelectorAll('[data-openorder]').forEach(btn=>btn.onclick=()=>openOrder(Number(btn.dataset.openorder)));
+ $('ordersList').querySelectorAll('[data-rejectorder]').forEach(btn=>btn.onclick=()=>rejectCustomerOrder(Number(btn.dataset.rejectorder)));
+}
+async function loadOrders(showError=false){
+ if(orderLoadBusy)return;
+ orderLoadBusy=true;
+ try{
+  const j=await api('/api/data?resource=customer_portal&action=admin_orders');
+  orders=j.records||[];
+  paintOrders();
+  if(activeOrder&&!orderPending().some(o=>Number(o.id)===Number(activeOrder.id))){
+   status('Selected customer order doosri screen par process ho chuka hai. New Sale select karein.','warning');
+   $('complete').disabled=true;$('pending').disabled=true;
+  }
+ }catch(e){if(showError){$('ordersNotice').textContent=e.message;status('Customer Orders online server se confirm nahi hue.','warning')}}
+ finally{orderLoadBusy=false}
+}
+async function openOrders(){
+ $('ordersModal').classList.remove('hidden');
+ $('ordersNotice').textContent='Order select karein. Invoice products, quantity aur rate yahi edit hongay.';
+ await loadOrders(true);
+}
+$('closeOrders').onclick=()=>$('ordersModal').classList.add('hidden');
+function openOrder(id){
+ const order=orderPending().find(o=>Number(o.id)===id);
+ if(!order)return status('Order already processed. Refresh karein.','warning');
+ if((cart.length||activeOrder)&&!confirm('Existing unsaved bill ki jagah selected customer order load karein?'))return;
+ if(!customerList.some(c=>Number(c.id)===Number(order.customer_id))){status('Order customer account load nahi hua. Refresh karein.','warning');return}
+ activeOrder=order;
+ cart=orderDraftItems(order);selected.clear();manualReceived=false;$('discount').value=0;
+ $('customer').value=String(order.customer_id);$('customer').disabled=true;
+ $('saleDate').value=localDay();setPayment('Cash');
+ document.body.classList.add('order-mode-active');
+ $('orderModeNotice').textContent='Customer Order '+order.order_number+' · '+order.customer_name+' · Edit products, qty, rate and discount. Approve & Create Invoice will save once as Pending. Payment follows in the same counter.';
+ $('complete').textContent='Approve & Create Invoice';$('pending').textContent='Approve as Pending';$('complete').disabled=false;$('pending').disabled=false;
+ $('ordersModal').classList.add('hidden');renderCart();
+ $('mainWorkspace').scrollIntoView({behavior:'smooth',block:'start'});
+}
+async function approveSelectedOrder(){
+ if(!activeOrder||busy||ordersBusy)return;
+ const selectedOrder=activeOrder;
+ if(!cart.length)return status('Order invoice mein kam az kam aik product required hai.','warning');
+ if(cart.some(p=>!(Number(p.qty)>0)||!(Number(p.rate)>0)||!(Number(p.id)>0)))return status('Har product ki valid quantity aur rate required hain.','warning');
+ if(!confirm('Customer order '+selectedOrder.order_number+' ko approve karke Pending invoice create karni hai?'))return;
+ ordersBusy=true;busy=true;$('complete').disabled=true;$('pending').disabled=true;
+ try{
+  // Refresh before sending, to avoid approving a recently converted order.
+  const fresh=await api('/api/data?resource=customer_portal&action=admin_orders');
+  const current=(fresh.records||[]).find(o=>Number(o.id)===Number(selectedOrder.id));
+  if(!current||current.status!=='pending'||current.cash_sale_id)throw Error('Order already converted/rejected. Cashier bills refresh karein.');
+  const payload={order_id:selectedOrder.id,items:cart.map(i=>({product_id:Number(i.id),qty:Number(i.qty),price:Number(i.rate)})),discount:totals().discount};
+  const result=await api('/api/data?resource=customer_portal&action=approve_order',{
+   method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  if(result.pending_sync||!result.record?.id)throw Error('Order approval not confirmed. Order list check karein; duplicate request na bhejein.');
+  const saved=result.record;
+  activeOrder=null;document.body.classList.remove('order-mode-active');$('orderModeNotice').textContent='';
+  $('complete').textContent='Complete Sale & Print';$('pending').textContent='Save as Pending';
+  $('customer').disabled=false;cart=[];selected.clear();manualReceived=false;$('discount').value=0;
+  lastInvoice=saved;$('pdf').disabled=false;
+  renderCart();renderGallery();await loadOrders();setBillStatus('pending');openInvoice(saved);
+  status(visibleInvoice(saved)+' order se Pending invoice ban gayi. Isi popup se payment receive karein.');
+ }catch(e){status(e.message+' Server status verify kiye baghair dobara approve na karein.','error');await loadOrders(true).catch(()=>{})}
+ finally{busy=false;ordersBusy=false;$('complete').disabled=false;$('pending').disabled=false;}
+}
+async function rejectCustomerOrder(id){
+ const order=orderPending().find(o=>Number(o.id)===id);
+ if(!order||ordersBusy)return;
+ if(!confirm('Customer order '+order.order_number+' reject karna hai? Invoice create nahi hogi.'))return;
+ ordersBusy=true;
+ try{
+  // Rejection is an online-only decision. The API's current-state guard wins.
+  if(window.KT_OFFLINE?.isOnline && !window.KT_OFFLINE.isOnline())throw Error('Offline mein customer order reject nahi kar sakte.');
+  const result=await api('/api/data?resource=customer_portal&action=reject_order',{
+   method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:id})});
+  if(result.pending_sync||!result.record?.id)throw Error('Reject not confirmed; order refresh karein.');
+  if(activeOrder?.id===id){activeOrder=null;cart=[];document.body.classList.remove('order-mode-active');$('customer').disabled=false;renderCart();}
+  await loadOrders(true);status('Customer order reject ho gaya.');
+ }catch(e){$('ordersNotice').textContent=e.message;status(e.message,'warning')}
+ finally{ordersBusy=false}
+}
+
+$('navSale').onclick=()=>$('mainWorkspace').scrollIntoView({behavior:'smooth'});$('navPending').onclick=()=>{setBillStatus('pending');$('recent').scrollIntoView({behavior:'smooth'})};$('navPaid').onclick=()=>{setBillStatus('paid');$('recent').scrollIntoView({behavior:'smooth'})};$('navOrders').onclick=()=>openOrders();$('navReport').onclick=()=>openLegacy('/cashier-sales-report.html','Sales Report');$('billsTop').onclick=()=>$('recent').scrollIntoView({behavior:'smooth'});$('holdTop').onclick=()=>$('pending').click();
 $('online').textContent=navigator.onLine?'Online':'Offline';const connection=()=>{$('online').textContent=navigator.onLine?'Online':'Offline';$('online').classList.toggle('offline',!navigator.onLine)};addEventListener('online',connection);addEventListener('offline',connection);
 function closeScanner(){cancelAnimationFrame(scannerLoop);barcodeStream?.getTracks().forEach(x=>x.stop());barcodeStream=null;$('scannerVideo').srcObject=null;$('scannerModal').classList.add('hidden')}$('closeScanner').onclick=closeScanner;$('scanTop').onclick=$('scanProduct').onclick=()=>$('scannerModal').classList.remove('hidden');$('findBarcode').onclick=()=>{const code=$('barcode').value.trim();const p=products.find(p=>String(p.barcode||'')===code||String(p.sku||'')===code);if(p){addProduct(p);closeScanner();status(p.name+' added')}else status('Barcode not found.','warning')};$('barcode').onkeydown=e=>{if(e.key==='Enter')$('findBarcode').click()};$('startScanner').onclick=async()=>{try{barcodeStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});$('scannerVideo').srcObject=barcodeStream;await $('scannerVideo').play();if('BarcodeDetector'in window){scannerDetector=new BarcodeDetector({formats:['ean_13','ean_8','code_128','code_39','upc_a']});async function tick(){if(!barcodeStream)return;try{const found=await scannerDetector.detect($('scannerVideo'));if(found[0]?.rawValue){$('barcode').value=found[0].rawValue;$('findBarcode').click();return}}catch{}scannerLoop=requestAnimationFrame(tick)}tick()}}catch(e){status('Camera unavailable. Barcode manually enter karein.','warning')}};
-api('/api/auth?action=me').then(j=>{$('salesman').value=j.user?.full_name||j.user?.employee_code||'Employee'}).catch(()=>{});loadProducts();loadCustomers();loadBills().catch(e=>status(e.message,'warning'));setInterval(()=>{if(!document.hidden&&!busy&&$('invoiceModal').classList.contains('hidden'))loadBills().catch(()=>{})},12000);renderCart();setPayment('Cash');
+api('/api/auth?action=me').then(j=>{$('salesman').value=j.user?.full_name||j.user?.employee_code||'Employee'}).catch(()=>{});loadProducts();loadCustomers();loadBills().catch(e=>status(e.message,'warning'));loadOrders();setInterval(()=>{if(!document.hidden&&!busy&&$('invoiceModal').classList.contains('hidden'))loadBills().catch(()=>{})},12000);setInterval(()=>{if(!document.hidden&&!ordersBusy)loadOrders().catch(()=>{})},15000);renderCart();setPayment('Cash');
 })();
