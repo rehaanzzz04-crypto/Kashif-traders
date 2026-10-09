@@ -2,7 +2,7 @@
 self.KT_SHELL_ASSETS = [
   "/smart-billing-counter.html",
   "/smart-billing-counter.css?v=20261009-pendingpartial1",
-  "/smart-billing-counter.js?v=20261009-pendingpartial1",
+  "/smart-billing-counter.js?v=20261009-orders1",
   "/smart-billing-pdf.js?v=20261009-invoice1",
   "/smart-offline-sync.js?v=20261009-fastoffline1",
   "/admin-dashboard-fix.js",
