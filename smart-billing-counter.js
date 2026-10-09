@@ -107,32 +107,51 @@ function activeProductList(rows){
  return (Array.isArray(rows)?rows:[]).filter(p=>p&&String(p.status??'active').trim().toLowerCase()==='active');
 }
 async function readProductCatalog(){
- let firstError=null,firstCount=-1;
- const urls=['/api/data?resource=sale_products&status=active&limit=1000','/api/data?resource=sale_products&limit=1000','/api/data?resource=sale_products'];
- // First try a genuine network request. The offline wrapper may otherwise
- // return an old *empty* snapshot which masquerades as an empty database.
+ // Use the *exact same API request* as Cash Sale > Manage Products first.
+ // In particular, do not depend on the filtered &limit=1000 query being
+ // available in the network/offline snapshot on every Vercel deployment.
+ const urls=[
+   '/api/data?resource=sale_products',
+   '/api/data?resource=sale_products&status=active&limit=1000',
+   '/api/data?resource=sale_products&limit=1000'
+ ];
+ let lastError=null;
+ const attempts=[];
+ function verifiedRows(data,url,mode){
+   if(!Array.isArray(data?.records)){
+     throw Error('Invalid product response: records list missing');
+   }
+   const active=activeProductList(data.records);
+   attempts.push(mode+': '+url+' records='+data.records.length+' active='+active.length);
+   return active;
+ }
  if(navigator.onLine&&window.KT_OFFLINE?.fetchDirect){
-   for(const url of urls.slice(0,2)){
+   for(const url of urls){
      try{
-       const r=await window.KT_OFFLINE.fetchDirect(url);
-       const data=await r.json().catch(()=>({}));
-       if(!r.ok)throw Error(data.error||'Product API HTTP '+r.status);
-       const records=activeProductList(data.records);
-       if(firstCount<0)firstCount=(data.records||[]).length;
-       if(records.length)return {records,source:'live'};
-     }catch(error){firstError=error}
+       const res=await window.KT_OFFLINE.fetchDirect(url);
+       const data=await res.json().catch(()=>({}));
+       if(!res.ok)throw Error(data.error||'Product API HTTP '+res.status);
+       const active=verifiedRows(data,url,'live');
+       if(active.length)return {records:active,source:'live'};
+     }catch(error){lastError=error;attempts.push('live '+url+': '+String(error.message||error))}
    }
  }
- // Still use available offline snapshots when the internet is actually absent.
+ // Reuse a valid user-scoped snapshot from either Smart Billing or the
+ // existing Manage Products screen (both use the same IndexedDB database).
+ const saved=await window.KT_OFFLINE?.savedCatalog?.().catch(()=>null);
+ if(saved?.records?.length)return {records:activeProductList(saved.records),source:'offline'};
+ // Only now try intercepted fetch, which can fall back to cached GET data.
  for(const url of urls){
    try{
-     const data=await api(url),records=activeProductList(data.records);
-     if(records.length)return {records,source:data._offline_snapshot_at?'offline':'recovered'};
-     if(firstCount<0)firstCount=(data.records||[]).length;
-   }catch(error){if(!firstError)firstError=error}
+     const data=await api(url);
+     const active=verifiedRows(data,url,'cached/network');
+     if(active.length)return {records:active,source:'recovered'};
+   }catch(error){lastError=error;attempts.push('fallback '+url+': '+String(error.message||error))}
  }
- if(firstCount===0)throw Error('Server ne 0 products return ki hain. Working deployment ki DATABASE_URL / Neon connection verify karein; records delete nahi hue.');
- throw firstError||Error('Product server unavailable. Internet/session check karein.');
+ console.warn('Smart Billing catalog diagnostic:',attempts.join('; '));
+ const liveZero=attempts.some(a=>a.startsWith('live ')&&a.includes('records=0'));
+ if(liveZero)throw Error('Gallery ko server se 0 products milin. Manage Products mein products maujood hain — refresh/Retry karein. Agar problem rahe to API diagnostics check karein.');
+ throw lastError||Error('Sale Products API unavailable; network ya saved catalog check karein.');
 }
 function galleryLoadError(message){
  $('gallery').innerHTML='<div class="empty smart-product-warning"><strong>Products load nahi ho rahi.</strong><p>'+esc(message)+'</p><button type="button" class="btn" id="retrySmartProducts">↻ Retry Products</button></div>';
