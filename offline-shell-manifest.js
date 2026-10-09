@@ -2,9 +2,9 @@
 self.KT_SHELL_ASSETS = [
   "/smart-billing-counter.html",
   "/smart-billing-counter.css?v=20261009-productrecover1",
-  "/smart-billing-counter.js?v=20261009-productrecover1",
+  "/smart-billing-counter.js?v=20261009-directproducts1",
   "/smart-billing-pdf.js?v=20261009-invoice1",
-  "/smart-offline-sync.js?v=20261009-networkretry1",
+  "/smart-offline-sync.js?v=20261009-directproducts1",
   "/admin-dashboard-fix.js",
   "/app.css",
   "/app.css?v=20260929-liveui2",
