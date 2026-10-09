@@ -88,22 +88,32 @@ function activeProductList(rows){
  return (Array.isArray(rows)?rows:[]).filter(p=>p&&String(p.status??'active').trim().toLowerCase()==='active');
 }
 async function readProductCatalog(){
- // Primary query is the full active catalog, not the small default search page.
- let firstError=null,primary=[];
- try{
-   const response=await api('/api/data?resource=sale_products&status=active&limit=1000');
-   primary=activeProductList(response.records);
-   if(primary.length)return {records:primary,source:'active'};
- }catch(e){firstError=e}
- // An empty active snapshot or offline failure must not hide existing products:
- // use the source read by Manage Products as a fallback, still filtering active.
- try{
-   const response=await api('/api/data?resource=sale_products&limit=1000');
-   const recovered=activeProductList(response.records);
-   if(recovered.length)return {records:recovered,source:'recovered'};
-   if(!firstError)return {records:[],source:'empty'};
- }catch(e){if(!firstError)firstError=e}
- throw firstError||Error('Products load nahi ho sakay.');
+ let firstError=null,firstCount=-1;
+ const urls=['/api/data?resource=sale_products&status=active&limit=1000','/api/data?resource=sale_products&limit=1000','/api/data?resource=sale_products'];
+ // First try a genuine network request. The offline wrapper may otherwise
+ // return an old *empty* snapshot which masquerades as an empty database.
+ if(navigator.onLine&&window.KT_OFFLINE?.fetchDirect){
+   for(const url of urls.slice(0,2)){
+     try{
+       const r=await window.KT_OFFLINE.fetchDirect(url);
+       const data=await r.json().catch(()=>({}));
+       if(!r.ok)throw Error(data.error||'Product API HTTP '+r.status);
+       const records=activeProductList(data.records);
+       if(firstCount<0)firstCount=(data.records||[]).length;
+       if(records.length)return {records,source:'live'};
+     }catch(error){firstError=error}
+   }
+ }
+ // Still use available offline snapshots when the internet is actually absent.
+ for(const url of urls){
+   try{
+     const data=await api(url),records=activeProductList(data.records);
+     if(records.length)return {records,source:data._offline_snapshot_at?'offline':'recovered'};
+     if(firstCount<0)firstCount=(data.records||[]).length;
+   }catch(error){if(!firstError)firstError=error}
+ }
+ if(firstCount===0)throw Error('Server ne 0 products return ki hain. Working deployment ki DATABASE_URL / Neon connection verify karein; records delete nahi hue.');
+ throw firstError||Error('Product server unavailable. Internet/session check karein.');
 }
 function galleryLoadError(message){
  $('gallery').innerHTML='<div class="empty smart-product-warning"><strong>Products load nahi ho rahi.</strong><p>'+esc(message)+'</p><button type="button" class="btn" id="retrySmartProducts">↻ Retry Products</button></div>';
