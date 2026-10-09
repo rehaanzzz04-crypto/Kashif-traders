@@ -116,51 +116,30 @@ function activeProductList(rows){
  return (Array.isArray(rows)?rows:[]).filter(p=>p&&String(p.status??'active').trim().toLowerCase()==='active');
 }
 async function readProductCatalog(){
- // Use the *exact same API request* as Cash Sale > Manage Products first.
- // In particular, do not depend on the filtered &limit=1000 query being
- // available in the network/offline snapshot on every Vercel deployment.
- const urls=[
-   '/api/data?resource=sale_products',
-   '/api/data?resource=sale_products&status=active&limit=1000',
-   '/api/data?resource=sale_products&limit=1000'
- ];
- let lastError=null;
- const attempts=[];
- function verifiedRows(data,url,mode){
-   if(!Array.isArray(data?.records)){
-     throw Error('Invalid product response: records list missing');
-   }
-   const active=activeProductList(data.records);
-   attempts.push(mode+': '+url+' records='+data.records.length+' active='+active.length);
-   return active;
+ // This intentionally matches the successful Manage Products request:
+ // ONE native GET, no 3x retry waterfall and no intercepted GET fallback.
+ const url='/api/data?resource=sale_products';
+ const snap=await window.KT_OFFLINE?.savedCatalog?.().catch(()=>null);
+ if(!navigator.onLine){
+   if(snap?.records?.length)return {records:activeProductList(snap.records),source:'offline'};
+   throw Error('No offline product copy on this URL. Connect once and select Prepare Offline.');
  }
- if(navigator.onLine&&window.KT_OFFLINE?.fetchDirect){
-   for(const url of urls){
-     try{
-       const res=await window.KT_OFFLINE.fetchDirect(url);
-       const data=await res.json().catch(()=>({}));
-       if(!res.ok)throw Error(data.error||'Product API HTTP '+res.status);
-       const active=verifiedRows(data,url,'live');
-       if(active.length)return {records:active,source:'live'};
-     }catch(error){lastError=error;attempts.push('live '+url+': '+String(error.message||error))}
-   }
+ try{
+   if(!window.KT_OFFLINE?.fetchDirect)throw Error('Product request adapter not ready');
+   const res=await window.KT_OFFLINE.fetchDirect(url,5500);
+   const body=await res.json().catch(()=>({}));
+   if(!res.ok)throw Error(body.error||'Product API error '+res.status);
+   if(!Array.isArray(body.records))throw Error('Product API: records missing');
+   const records=activeProductList(body.records);
+   if(records.length)return {records,source:'live'};
+   // Never convert an empty/incorrect server response into a successful
+   // offline-ready state or overwrite a previously saved catalog.
+   if(snap?.records?.length)return {records:activeProductList(snap.records),source:'offline'};
+   throw Error('Server se active products nahi milin. Manage Products ko check karein.');
+ }catch(error){
+   if(snap?.records?.length)return {records:activeProductList(snap.records),source:'offline'};
+   throw error;
  }
- // Reuse a valid user-scoped snapshot from either Smart Billing or the
- // existing Manage Products screen (both use the same IndexedDB database).
- const saved=await window.KT_OFFLINE?.savedCatalog?.().catch(()=>null);
- if(saved?.records?.length)return {records:activeProductList(saved.records),source:'offline'};
- // Only now try intercepted fetch, which can fall back to cached GET data.
- for(const url of urls){
-   try{
-     const data=await api(url);
-     const active=verifiedRows(data,url,'cached/network');
-     if(active.length)return {records:active,source:'recovered'};
-   }catch(error){lastError=error;attempts.push('fallback '+url+': '+String(error.message||error))}
- }
- console.warn('Smart Billing catalog diagnostic:',attempts.join('; '));
- const liveZero=attempts.some(a=>a.startsWith('live ')&&a.includes('records=0'));
- if(liveZero)throw Error('Gallery ko server se 0 products milin. Manage Products mein products maujood hain — refresh/Retry karein. Agar problem rahe to API diagnostics check karein.');
- throw lastError||Error('Sale Products API unavailable; network ya saved catalog check karein.');
 }
 function galleryLoadError(message){
  $('gallery').innerHTML='<div class="empty smart-product-warning"><strong>Products load nahi ho rahi.</strong><p>'+esc(message)+'</p><button type="button" class="btn" id="retrySmartProducts">↻ Retry Products</button></div>';
@@ -216,6 +195,22 @@ async function loadProducts(){
  return productsLoadInFlight;
 }
 $('prepareOffline').onclick=()=>loadProducts();
+// Manage Products is an existing, functioning product catalog screen. When
+// opened inside Smart Billing, it can hand back the very same API result
+// without another cloud request. Source and origin are strictly checked.
+window.addEventListener('message',async event=>{
+ if(event.origin!==location.origin || event.source!==$('legacyFrame')?.contentWindow)return;
+ if(event.data?.type!=='kt-manage-products-loaded' || !Array.isArray(event.data.records))return;
+ const list=activeProductList(event.data.records);
+ if(!list.length)return;
+ products=list;category='all';galleryPage=0;
+ categories();renderGallery();
+ $('legacyModal').classList.add('hidden');$('legacyFrame').src='about:blank';
+ updateCatalogState('Catalog received · saving offline copy…','loading');
+ await confirmProductCache(products);
+ status(products.length+' products Manage Products se Smart Billing mein load ho gayi.');
+});
+
 function loadCustomers(chosen){return api('/api/data?resource=cash_sale_customers').then(j=>{customerList=(j.records||[]).filter(x=>x.status==='active');$('customer').innerHTML='<option value="">Walk-in Customer</option>'+customerList.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');if(chosen)$('customer').value=String(chosen);if(active&&!$('invoiceModal').classList.contains('hidden'))fillBillCustomers($('billCustomer').value||active.customer_id)}).catch(e=>status(e.message,'warning'))}
 function setPayment(p){$('payment').value=p;method=p;manualReceived=false;document.querySelectorAll('[data-method]').forEach(b=>b.classList.toggle('active',b.dataset.method===p));syncReceived()}
 $('methods').querySelectorAll('button').forEach(b=>b.onclick=()=>setPayment(b.dataset.method));$('payment').onchange=()=>setPayment($('payment').value);$('received').oninput=()=>{manualReceived=true;syncReceived()};$('discount').oninput=()=>{manualReceived=false;renderTotals()};
