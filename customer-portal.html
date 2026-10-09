@@ -281,7 +281,7 @@ body{
 .auth-success{border:1px solid #b9d8c9;background:#eef8f3;color:#195c49;border-radius:10px;padding:9px 10px;font-size:10px;margin-top:8px}
 @media(max-width:820px){.auth-shell{grid-template-columns:1fr;margin:18px auto 0}.auth-visual{padding:20px}.auth-visual h1{font-size:34px}.auth-features{grid-template-columns:1fr 1fr}}
 @media(max-width:560px){.auth-shell{display:block;margin:10px auto 0}.auth-visual{border-radius:18px;padding:18px;margin-bottom:10px}.auth-visual h1{font-size:31px}.auth-visual p{font-size:11px}.auth-features{grid-template-columns:1fr 1fr;gap:7px;margin-top:18px}.auth-feature{padding:10px}.auth-card{padding:15px!important;border-radius:18px!important}.auth-card h2{font-size:27px}.auth-links{grid-template-columns:1fr}.auth-links button:last-child{grid-column:auto}.recovery-actions{grid-template-columns:1fr}}
-</style><script defer src="/offline-register.js?v=20260922-pages1"></script></head><body><header class="top"><div class="topin"><div class="portal-brand"><div class="portal-mark">KT</div><div class="portal-brand-copy"><b>Kashif Traders</b><span>CUSTOMER ORDERING PORTAL</span></div></div><button id="logout" class="btn outline hidden">Logout</button></div></header>
+</style><script defer src="/offline-register.js?v=20260922-pages1"></script><link rel="stylesheet" href="/customer-portal-premium.css?v=20261009-premium1"></head><body><header class="top"><div class="topin"><div class="portal-brand"><div class="portal-mark">KT</div><div class="portal-brand-copy"><b>Kashif Traders</b><span>CUSTOMER ORDERING PORTAL</span></div></div><button id="logout" class="btn outline hidden">Logout</button></div></header>
 <main class="wrap"><section id="login">
   <div class="auth-shell">
     <div class="auth-visual">
@@ -330,10 +330,44 @@ body{
     </div>
   </div>
 </section>
-<section id="app" class="hidden"><div class="card dashboard-card"><h1 id="hello">Customer Dashboard</h1><div id="meta" class="note"></div><div class="stats"><div class="stat"><small>Total Approved Purchases</small><b id="sales">PKR 0</b></div><div class="stat"><small>Total Paid</small><b id="received">PKR 0</b></div><div class="stat"><small>Outstanding Balance</small><b id="outstanding">PKR 0</b></div></div><div class="nav"><button class="btn active" data-tab="orders">▤<br>Orders</button><button class="btn" data-tab="invoices">▧<br>Approved Invoices</button><button class="btn" data-tab="materials">◆<br>Raw Materials</button></div></div>
-<div id="orders" class="tab"><div class="grid"><div class="card"><h2>New Order</h2><p class="note">Products aur quantity select karein. Price customer portal par show nahi hoti.</p><div id="orderRows"></div><div class="order-actions"><button id="addRow" class="btn outline">+ Add Product</button><button id="openProductPicker" class="btn outline">▦ Select by Image</button><button id="sendOrder" class="btn">Send Order</button></div><div id="productPicker" class="product-picker picker-hidden"><div class="picker-tools"><input id="pickerSearch" autocomplete="off" placeholder="Search products..."><div class="picker-count" id="pickerCount">0 selected</div></div><div class="picker-grid" id="pickerGrid"><p class="note">Products loading...</p></div><div class="picker-footer"><button id="pickerCancel" class="btn outline" type="button">Cancel</button><button id="pickerAdd" class="btn" type="button" disabled>Add Selected Products</button></div></div><div id="orderMsg" class="msg"></div></div><div class="card"><h2>My Orders</h2><div id="orderList"></div></div></div></div>
-<div id="invoices" class="tab hidden"><div class="card"><h2>Approved Invoices</h2><p class="note">Sirf cashier se finalized/approved invoices yahan show hoti hain. Pending order ki price hidden rehti hai.</p><div id="billList"></div></div></div>
-<div id="materials" class="tab hidden"><div class="card"><h2>Raw Material Purchase Record</h2><div class="nav"><button class="btn mat active" data-days="15">15 Days</button><button class="btn mat" data-days="30">30 Days</button></div><div class="grid" style="margin:10px 0"><div class="field"><label>From Date</label><input id="matFrom" type="date"></div><div class="field"><label>To Date</label><input id="matTo" type="date"></div></div><button id="matCustom" class="btn outline" type="button">Custom Date Report</button><div id="materialList" class="materials"></div><div class="report-footer"><button class="btn gold" type="button" onclick="window.print()">▤ Download PDF</button><button class="btn" type="button" onclick="window.print()">▣ Print Report</button></div></div></div></section></main>
+<section id="app" class="hidden">
+<div class="card dashboard-card portal-screen" id="home">
+  <h1 id="hello">Welcome</h1><div id="meta" class="note"></div>
+  <div class="stats"><div class="stat"><small>Total Approved Purchases</small><b id="sales">PKR 0</b></div><div class="stat"><small>Total Paid</small><b id="received">PKR 0</b></div><div class="stat"><small>Outstanding Balance</small><b id="outstanding">PKR 0</b></div></div>
+  <div class="portal-home-actions">
+    <button class="portal-action" data-view="orders"><span class="portal-action-icon">🛒</span>New Order</button>
+    <button class="portal-action" data-view="myOrders"><span class="portal-action-icon">☷</span>My Orders</button>
+    <button class="portal-action" data-view="invoices"><span class="portal-action-icon">▤</span>Approved Invoices</button>
+    <button class="portal-action" data-view="statements"><span class="portal-action-icon">▥</span>Statements</button>
+    <button class="portal-action" data-view="materials"><span class="portal-action-icon">◈</span>Raw Materials</button>
+    <button class="portal-action" data-view="profile"><span class="portal-action-icon">♙</span>Profile</button>
+  </div>
+</div>
+<div id="orders" class="portal-screen hidden">
+ <div class="portal-screen-heading"><h2 class="portal-title">New Order</h2><button class="btn outline" type="button" data-view="home">← Dashboard</button></div>
+ <div class="portal-order-layout">
+  <div class="card"><h2 class="portal-title">Select Products</h2><p class="portal-subtitle">Search aur image se products select karein. Product prices customer portal par hidden hain.</p>
+   <div class="portal-searchbar"><input id="pickerSearch" autocomplete="off" placeholder="Search product name, category or barcode"></div>
+   <div id="portalCategories" class="portal-categories"></div>
+   <div id="productPicker" class="product-picker"><div class="picker-tools"><div class="picker-count" id="pickerCount">0 selected</div><button id="pickerCancel" class="btn outline" type="button">Clear Selection</button></div><div class="picker-grid" id="pickerGrid"><p class="note">Products loading...</p></div>
+   <div class="picker-footer"><button id="openProductPicker" class="btn outline" type="button">↻ Refresh</button><button id="pickerAdd" class="btn" type="button" disabled>Add Selected Products</button></div></div>
+  </div>
+  <div class="card portal-order-sidebar"><h2 class="portal-cart-title">Order Review <span id="reviewCount" class="portal-item-count">0 Products</span></h2>
+    <div id="reviewList" class="portal-review-lines"></div><div class="portal-cart-summary"><span>Total Products</span><b id="cartCount">0</b></div>
+    <p class="portal-privacy">Prices cashier approval ke baad approved invoice mein show hongi.</p>
+    <div id="orderRows"></div>
+    <div class="order-actions"><button id="addRow" class="btn outline" type="button">+ Add Product</button><button id="clearOrder" class="btn outline" type="button">Clear Order</button><button id="sendOrder" class="btn" type="button">➤ Send Order</button></div>
+    <div id="orderMsg" class="msg" role="status"></div>
+  </div>
+ </div>
+</div>
+<div id="myOrders" class="portal-screen hidden"><div class="card"><div class="portal-screen-heading"><h2 class="portal-title">My Orders</h2><button class="btn outline" data-view="orders">+ New Order</button></div><div class="portal-order-filter" id="orderFilters"><button class="active" data-order-status="all">All</button><button data-order-status="pending">Pending</button><button data-order-status="converted">Converted</button><button data-order-status="rejected">Rejected</button></div><div id="orderList"></div><div id="orderDetail" class="portal-detail hidden"></div></div></div>
+<div id="invoices" class="portal-screen hidden"><div class="card"><h2 class="portal-title">Approved Invoices</h2><p class="portal-subtitle">Sirf finalized/approved invoices yahan show hoti hain. Pending order ki price hidden rahegi.</p><div id="billList"></div></div></div>
+<div id="statements" class="portal-screen hidden"><div class="card"><h2 class="portal-title">Account Statement</h2><p class="portal-subtitle">Approved purchases aur received payments ka summary.</p><div class="portal-statements-row"><span>Total Approved Purchases</span><b id="statementSales">PKR 0</b></div><div class="portal-statements-row"><span>Total Paid</span><b id="statementPaid">PKR 0</b></div><div class="portal-statements-row"><span>Outstanding Balance</span><b id="statementDue">PKR 0</b></div><button class="btn outline" data-view="invoices" type="button">View Approved Invoices</button></div></div>
+<div id="profile" class="portal-screen hidden"><div class="card"><h2 class="portal-title">Business Profile</h2><div class="portal-profile-grid"><div><small>Business Name</small><strong id="profileName">—</strong></div><div><small>Customer Code</small><strong id="profileCode">—</strong></div><div><small>Mobile Number</small><strong id="profileMobile">—</strong></div></div></div></div>
+<div id="materials" class="portal-screen hidden"><div class="card"><h2 class="portal-title">Raw Material Purchase Record</h2><p class="portal-subtitle">Apni raw material purchase history dekhein.</p><div class="nav"><button class="btn mat active" data-days="15">15 Days</button><button class="btn mat" data-days="30">30 Days</button></div><div class="grid" style="margin:10px 0"><div class="field"><label>From Date</label><input id="matFrom" type="date"></div><div class="field"><label>To Date</label><input id="matTo" type="date"></div></div><button id="matCustom" class="btn outline" type="button">Custom Date Report</button><div id="materialList" class="materials"></div><div class="report-footer"><button class="btn gold" type="button" onclick="window.print()">Download PDF / Print</button></div></div></div>
+<nav class="portal-bottom" aria-label="Customer portal navigation"><button class="active" data-view="home"><span class="bottom-icon">⌂</span>Home</button><button data-view="orders"><span class="bottom-icon">🛒</span>Order</button><button data-view="myOrders"><span class="bottom-icon">☷</span>Orders</button><button data-view="invoices"><span class="bottom-icon">▤</span>Invoices</button><button data-view="profile"><span class="bottom-icon">♙</span>More</button></nav>
+</section></main>
 <script>
 const $=id=>document.getElementById(id),money=v=>"PKR "+Number(v||0).toLocaleString("en-PK",{maximumFractionDigits:2}),esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));let data=null,products=[],pickerSelected=new Set(),customerPopularity=new Map();
 async function api(action,opt={}){const r=await fetch("/api/data?resource=customer_portal&action="+action,opt),j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(Error(j.error||"Request failed"),{status:r.status});return j}
