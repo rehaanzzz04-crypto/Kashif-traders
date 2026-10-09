@@ -20,7 +20,7 @@ function categories(){const cats=['All',...new Set(products.map(p=>p.category||'
 function filtered(){const q=$('productSearch').value.trim().toLowerCase();return products.filter(p=>(category==='all'||(p.category||'Others')===category)&&(!q||[p.name,p.sku,p.barcode,p.category].some(v=>String(v||'').toLowerCase().includes(q)))).sort((a,b)=>{if(!q)return String(a.name).localeCompare(String(b.name));const rank=p=>String(p.barcode||'').toLowerCase()===q?0:String(p.name||'').toLowerCase().startsWith(q)?1:2;return rank(a)-rank(b)||String(a.name).localeCompare(String(b.name))})}
 function renderGallery(){const rows=filtered(),show=rows.slice(0,(galleryPage+1)*galleryChunk);$('gallery').innerHTML=show.map(p=>'<button type="button" class="product '+(selected.has(String(p.id))?'selected':'')+'" data-product="'+p.id+'"><span class="tick">✓</span>'+(p.product_image_url?'<img src="'+esc(p.product_image_url)+'" loading="lazy" decoding="async" alt="">':'<span class="placeholder">KT</span>')+'<strong>'+esc(p.name)+'</strong><span class="price">'+money(p.sale_price)+'</span></button>').join('')+(rows.length>show.length?'<button id="moreProducts" class="outline load-more">Show More Products ('+show.length+' / '+rows.length+')</button>':'')||'<div class="empty">Koi product nahi mila.</div>';for(const btn of $('gallery').querySelectorAll('[data-product]'))btn.onclick=()=>{const id=String(btn.dataset.product);if(selected.has(id))selected.delete(id);else selected.add(id);btn.classList.toggle('selected',selected.has(id));renderTotals()};const more=$('moreProducts');if(more)more.onclick=()=>{galleryPage++;renderGallery()}}
 async function loadProducts(){try{const data=await api('/api/data?resource=sale_products&status=active&limit=1000');products=data.records||[];categories();renderGallery()}catch(e){$('gallery').innerHTML='<div class="empty">'+esc(e.message)+'</div>';status(e.message,'error')}}
-function loadCustomers(chosen){return api('/api/data?resource=cash_sale_customers').then(j=>{customerList=(j.records||[]).filter(x=>x.status==='active');$('customer').innerHTML='<option value="">Walk-in Customer</option>'+customerList.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');if(chosen)$('customer').value=String(chosen)}).catch(e=>status(e.message,'warning'))}
+function loadCustomers(chosen){return api('/api/data?resource=cash_sale_customers').then(j=>{customerList=(j.records||[]).filter(x=>x.status==='active');$('customer').innerHTML='<option value="">Walk-in Customer</option>'+customerList.map(x=>'<option value="'+x.id+'">'+esc(x.name)+'</option>').join('');if(chosen)$('customer').value=String(chosen);if(active&&!$('invoiceModal').classList.contains('hidden'))fillBillCustomers($('billCustomer').value||active.customer_id)}).catch(e=>status(e.message,'warning'))}
 function setPayment(p){$('payment').value=p;method=p;manualReceived=false;document.querySelectorAll('[data-method]').forEach(b=>b.classList.toggle('active',b.dataset.method===p));syncReceived()}
 $('methods').querySelectorAll('button').forEach(b=>b.onclick=()=>setPayment(b.dataset.method));$('payment').onchange=()=>setPayment($('payment').value);$('received').oninput=()=>{manualReceived=true;syncReceived()};$('discount').oninput=()=>{manualReceived=false;renderTotals()};
 $('productSearch').oninput=()=>{galleryPage=0;renderGallery()};$('quickSearch').oninput=e=>{$('productSearch').value=e.target.value;galleryPage=0;renderGallery()};$('quickSearch').onkeydown=e=>{if(e.key==='Enter'){const p=filtered()[0];if(p){addProduct(p);$('quickSearch').value='';$('productSearch').value='';renderGallery()}}};
@@ -31,8 +31,11 @@ $('newSale').onclick=newSale;$('cancel').onclick=newSale;$('back').onclick=()=>l
 $('manageProducts').onclick=()=>openLegacy('/cash-sale-products.html','Manage Products');$('modeGallery').onclick=()=>{$('gallery').scrollIntoView({behavior:'smooth',block:'nearest'})};
 function openLegacy(url,title){$('legacyTitle').textContent=title;$('legacyFrame').src=url;$('legacyModal').classList.remove('hidden')}
 $('closeLegacy').onclick=()=>{$('legacyModal').classList.add('hidden');$('legacyFrame').src='about:blank';loadProducts()};
-$('newCustomer').onclick=()=>$('customerModal').classList.remove('hidden');$('closeCustomer').onclick=()=>$('customerModal').classList.add('hidden');
-$('customerForm').onsubmit=async e=>{e.preventDefault();try{const j=await api('/api/data?resource=cash_sale_customers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries()))});if(j.pending_sync){status('Customer sync pending. Online verification baad mein hogi.','warning');return}$('customerModal').classList.add('hidden');e.target.reset();await loadCustomers(j.record.id);status('Customer add ho gaya.')}catch(e){status(e.message,'error')}};
+let customerModalFromBill=false;
+$('newCustomer').onclick=()=>{customerModalFromBill=false;$('customerModal').classList.remove('hidden')};
+$('billNewCustomer').onclick=()=>{customerModalFromBill=true;$('customerModal').classList.remove('hidden')};
+$('closeCustomer').onclick=()=>$('customerModal').classList.add('hidden');
+$('customerForm').onsubmit=async e=>{e.preventDefault();try{const j=await api('/api/data?resource=cash_sale_customers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(e.target).entries()))});if(j.pending_sync){status('Customer sync pending. Online verification baad mein hogi.','warning');return}const sourceWasBill=customerModalFromBill;$('customerModal').classList.add('hidden');e.target.reset();await loadCustomers(sourceWasBill?'':j.record.id);if(sourceWasBill){fillBillCustomers(j.record.id);updateBillSettlementView()}customerModalFromBill=false;status('Customer add ho gaya.')}catch(e){status(e.message,'error')}};
 function salePayload(){return {customer_id:Number($('customer').value)||null,customer_name:$('customer').selectedOptions[0]?.textContent||'Walk-in Customer',sale_date:$('saleDate').value,items:cart.map(p=>({...p})),discount:totals().discount}}
 async function createSale(finalize){if(busy||!cart.length){if(!cart.length)status('Invoice mein product add karein.','warning');return}const {total}=totals(),payment=$('payment').value,received=Number($('received').value)||0,customer=Number($('customer').value)||0;let target='pending',cashMethod=payment;
 if(finalize){if(payment==='Credit'){target='credit'}else if(payment==='Partial'){target='partial';cashMethod='Cash'}else{target='paid'}if((target==='partial'||target==='credit')&&!customer){status('Partial / Credit ke liye registered customer zaroori hai.','warning');return}if(target==='paid'&&received+.005<total){status('Full payment ke liye total amount receive karein.','warning');return}if(target==='partial'&&(received<=0||received+.005>=total)){status('Partial amount 0 se zyada aur grand total se kam honi chahiye.','warning');return}}
@@ -50,9 +53,94 @@ function receivedOf(b){return Math.max(0,Number(b.amount_received)||0)}function 
 async function loadBills(){const j=await api('/api/data?resource=cash_sales&status='+billStatus+'&limit=150');bills=j.records||[];renderBills();if(billStatus==='pending')$('pendingCount').textContent=bills.length}
 function setBillStatus(v){billStatus=v;document.querySelectorAll('[data-bill-status]').forEach(b=>b.classList.toggle('active',b.dataset.billStatus===v));loadBills().catch(e=>status(e.message,'warning'))}
 document.querySelectorAll('[data-bill-status]').forEach(b=>b.onclick=()=>setBillStatus(b.dataset.billStatus));$('billSearch').oninput=renderBills;$('refresh').onclick=()=>loadBills().catch(e=>status(e.message,'error'));
-function openInvoice(b){if(!b)return;active=b;lastInvoice=b;$('pdf').disabled=false;$('invoiceTitle').textContent='Invoice '+visibleInvoice(b);$('invoiceInfo').innerHTML='<p>'+esc(b.customer_name||'Walk-in Customer')+' · '+esc(b.status)+' · '+arr(b.items).length+' items</p><p>Total '+money(b.total)+' · Received '+money(receivedOf(b))+' · Balance '+money(dueOf(b))+'</p>';$('invoiceStatus').textContent=b.status==='pending'?'Payment receive karain ya existing Cashier tools mein rate edit karein.':b.status==='partial'||b.status==='credit'?'Remaining balance receive kar sakte hain.':'Receipt print/share karein.';$('billReceive').value=dueOf(b);$('billReceive').disabled=!['pending','credit','partial'].includes(b.status);$('confirmBill').disabled=!['pending','credit','partial'].includes(b.status);$('printBill').disabled=!['paid','partial','credit'].includes(b.status);$('shareBill').disabled=false;$('invoiceModal').classList.remove('hidden')}
+function fillBillCustomers(selected){
+ const select=$('billCustomer');
+ const id=String(selected||'');
+ select.innerHTML='<option value="">Walk-in Customer</option>'+customerList.map(c=>'<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
+ if([...select.options].some(o=>o.value===id))select.value=id;
+}
+function planPendingSettlement(selection,amount,total,customerId,receivedVia){
+ const valid=['Cash','Partial','Bank Transfer','EasyPaisa','JazzCash','Credit'];
+ const actual=['Cash','Bank Transfer','EasyPaisa','JazzCash'];
+ if(!valid.includes(selection))throw Error('Payment Method select karein.');
+ if(!Number.isFinite(total)||total<0)throw Error('Invoice total invalid hai.');
+ if(!Number.isFinite(amount)||amount<0)throw Error('Valid received amount enter karein.');
+ if(selection==='Credit'){
+   if(!customerId)throw Error('Credit ke liye registered customer select karein.');
+   return {status:'credit',amount_received:0,payment_method:'Credit'};
+ }
+ if(selection==='Partial'){
+   if(!customerId)throw Error('Partial ke liye registered customer select karein.');
+   if(!(amount>0&&amount+0.005<total))throw Error('Partial received amount 0 se zyada aur total se kam honi chahiye.');
+   if(!actual.includes(receivedVia))throw Error('Partial payment receive karne ka method select karein.');
+   return {status:'partial',amount_received:amount,payment_method:receivedVia};
+ }
+ if(amount+0.005<total)throw Error('Full payment ke liye complete amount receive karein, warna Partial select karein.');
+ return {status:'paid',amount_received:total,payment_method:selection};
+}
+function updateBillSettlementView(){
+ if(!active)return;
+ const pending=active.status==='pending',selection=$('billMethod').value;
+ const via= pending&&selection==='Partial',credit=pending&&selection==='Credit';
+ $('billReceivedViaRow').classList.toggle('hidden',!via);
+ $('billCustomerRow').classList.toggle('hidden',!pending);
+ $('billCustomerHint').textContent=(via||credit)?'Registered customer select karein; outstanding balance customer account mein save hoga.':'Pending invoice ka customer yahan change kar sakte hain.';
+ $('billReceive').disabled=!['pending','partial','credit'].includes(active.status)||credit;
+ if(credit)$('billReceive').value='0';
+ const total=active.status==='pending'?Math.max(0,Number(active.total)||0):dueOf(active);
+ const paid=credit?0:Math.max(0,Math.min(total,Number($('billReceive').value)||0));
+ $('billPaymentPreview').innerHTML='<span>Receiving: <b>'+money(paid)+'</b></span><span>Remaining: <b>'+money(Math.max(0,total-paid))+'</b></span>';
+}
+function openInvoice(b){
+ if(!b)return;
+ active=b;lastInvoice=b;$('pdf').disabled=false;
+ $('invoiceTitle').textContent='Invoice '+visibleInvoice(b);
+ $('invoiceInfo').innerHTML='<p>'+esc(b.customer_name||'Walk-in Customer')+' · '+esc(b.status)+' · '+arr(b.items).length+' items</p><p>Total '+money(b.total)+' · Received '+money(receivedOf(b))+' · Balance '+money(dueOf(b))+'</p>';
+ $('invoiceStatus').textContent=b.status==='pending'?'Payment method select karein. Partial ya Credit ke liye registered customer required hai.':b.status==='partial'||b.status==='credit'?'Remaining balance receive kar sakte hain.':'Receipt print/share karein.';
+ fillBillCustomers(b.customer_id);
+ const pending=b.status==='pending',canReceive=['pending','credit','partial'].includes(b.status);
+ for(const option of $('billMethod').options)option.disabled=!pending&&['Partial','Credit'].includes(option.value);
+ $('billMethod').value='Cash';$('billReceivedVia').value='Cash';
+ $('billReceive').value=pending?Math.max(0,Number(b.total)||0):dueOf(b);
+ $('billMethod').disabled=!canReceive;
+ $('billReceivedVia').disabled=!canReceive;
+ $('confirmBill').disabled=!canReceive;
+ $('printBill').disabled=!['paid','partial','credit'].includes(b.status);
+ $('shareBill').disabled=false;
+ $('invoiceModal').classList.remove('hidden');
+ updateBillSettlementView();
+}
+$('billMethod').onchange=()=>{
+ if(active?.status==='pending')$('billReceive').value=$('billMethod').value==='Partial'||$('billMethod').value==='Credit'?'0':Math.max(0,Number(active.total)||0);
+ updateBillSettlementView();
+};
+$('billReceive').oninput=updateBillSettlementView;
+$('billCustomer').onchange=updateBillSettlementView;
 $('closeInvoice').onclick=()=>$('invoiceModal').classList.add('hidden');
-$('confirmBill').onclick=async()=>{if(!active||busy)return;const amount=Number($('billReceive').value)||0,method=$('billMethod').value,b=active;try{busy=true;$('confirmBill').disabled=true;let body;if(b.status==='pending'){if(amount+.005<Number(b.total)){if(!b.customer_id)throw Error('Partial payment ke liye registered customer required hai.');if(amount<=0)throw Error('Received amount required hai.');body={status:'partial',amount_received:amount,payment_method:method}}else body={status:'paid',amount_received:Number(b.total),payment_method:method};body.items=arr(b.items);body.discount=Number(b.discount)||0}else{if(amount<=0)throw Error('Received amount required hai');body={action:'receive_payment',amount_received:Math.min(amount,dueOf(b)),payment_method:method}}const j=await api('/api/data?resource=cash_sales&id='+b.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(j.pending_sync){$('invoiceStatus').textContent='Payment sync pending. Print not allowed yet.';return}active=j.record;lastInvoice=active;openInvoice(active);await loadBills();status('Payment updated: '+(active.invoice_number||''))}catch(e){$('invoiceStatus').textContent=e.message}finally{busy=false;$('confirmBill').disabled=!active||!['pending','partial','credit'].includes(active.status)}};
+$('confirmBill').onclick=async()=>{
+ if(!active||busy)return;
+ const b=active,amount=Number($('billReceive').value),selection=$('billMethod').value,customerId=Number($('billCustomer').value)||null;
+ let payload;
+ try{
+   if(b.status==='pending'){
+     payload=planPendingSettlement(selection,amount,Number(b.total)||0,customerId,$('billReceivedVia').value);
+     payload={...payload,customer_id:customerId,items:arr(b.items),discount:Number(b.discount)||0};
+   }else if(['partial','credit'].includes(b.status)){
+     if(!['Cash','Bank Transfer','EasyPaisa','JazzCash'].includes(selection))throw Error('Payment receive karne ka method select karein.');
+     if(!Number.isFinite(amount)||amount<=0)throw Error('Valid received amount enter karein.');
+     payload={action:'receive_payment',amount_received:Math.min(amount,dueOf(b)),payment_method:selection};
+   }else return;
+ }catch(e){$('invoiceStatus').textContent=e.message;return}
+ busy=true;$('confirmBill').disabled=true;
+ try{
+   const j=await api('/api/data?resource=cash_sales&id='+b.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+   if(j.pending_sync){$('invoiceStatus').textContent='Payment sync pending. Print not allowed yet.';return}
+   if(!j.record?.id)throw Error('Save confirmation missing; invoice verify karein.');
+   active=j.record;lastInvoice=active;openInvoice(active);await loadBills();
+   status(visibleInvoice(active)+' — '+active.status+' payment save ho gayi.');
+ }catch(e){$('invoiceStatus').textContent=e.message+' — retry se pehle Cashier invoice status verify karein.'}
+ finally{busy=false;$('confirmBill').disabled=!active||!['pending','partial','credit'].includes(active.status)}
+};
 async function printInvoice(b){if(!b||!['paid','partial','credit'].includes(b.status)){status('Paid / Partial / Credit invoice select karein.','warning');return}try{const base='http://127.0.0.1:8788';const h=await fetch(base+'/health',{signal:AbortSignal.timeout(4500)}),health=await h.json();if(!h.ok||!health.ready||health.mode!=='cashier'||health.dryRun!==false)throw Error('Local Cashier USB print bridge ready nahi');if(lastPrinted===String(b.id??b.invoice_reference??b.invoice_number)&&Date.now()-lastPrintTime<20000&&!confirm('Duplicate receipt print karni hai?'))return;const t=Number(b.total)||0,received=Math.min(t,receivedOf(b)),items=arr(b.items).map(p=>({name:String(p.name||'Item'),qty:Number(p.qty)||0,unit:String(p.unit||'pcs'),rate:Number(p.rate)||0,amount:Number(p.qty||0)*Number(p.rate||0)}));if(!items.length||items.length>50)throw Error('USB limit 1-50 products');const payload={jobId:crypto.randomUUID(),confirmPrint:'CASHIER-RECEIPT',receipt:{invoice:visibleInvoice(b),date:stamp(b.paid_at||b.updated_at||b.created_at),customer:b.customer_name||'Walk-in Customer',createdBy:b.created_by_name||'',paidBy:b.paid_by_name||'',payment:b.payment_method||'',items,subtotal:Number(b.subtotal)||items.reduce((n,p)=>n+p.amount,0),discount:Number(b.discount)||0,total:t,received,due:Math.max(0,t-received),status:b.status}};const res=await fetch(base+'/print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:AbortSignal.timeout(24000)}),out=await res.json();if(!res.ok||!out.ok||out.dryRun||out.duplicate)throw Error(out.error||'Printer job failed');lastPrinted=String(b.id??b.invoice_reference??b.invoice_number);lastPrintTime=Date.now();status('Receipt printer job accepted. Physical paper verify karein.')}catch(e){status('USB print unavailable: '+e.message+'. Auto retry nahi hogi.','warning')}}
 async function shareInvoicePdf(b){
  if(!b){status('PDF Share ke liye saved invoice select karein.','warning');return}
