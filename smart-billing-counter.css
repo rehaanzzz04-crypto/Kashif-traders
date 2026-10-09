@@ -3,3 +3,23 @@
 .bill-customer-row{margin:10px 0 12px;padding:11px;border:1px solid #d8e5dc;background:#f5faf6;border-radius:10px}.bill-customer-row label,.dialog>label,#billReceivedViaRow label{display:block;font-size:12px;font-weight:800;margin:8px 0 5px}.bill-customer-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}.bill-customer-controls button{white-space:nowrap;min-height:42px}.bill-hint{color:#64766d;font-size:11px;margin-top:6px}.bill-payment-preview{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;margin:9px 0;padding:10px;border-radius:9px;background:#ebf6ee;color:#174d3b;font-weight:700;font-size:12px}.bill-payment-preview b{font-size:14px}@media(max-width:460px){.bill-customer-controls{grid-template-columns:1fr}.bill-customer-controls button{width:100%}}
 
 .order-card{padding:12px;border:1px solid #dbe6de;background:#fff;border-radius:10px;margin:9px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.order-card strong{display:block}.order-card small{display:block;color:#687870;margin-top:3px}.order-card .btn{white-space:nowrap}.order-mode-active .invoice-layout{border:2px solid #2c795f}.order-mode-active #orderModeNotice{display:block!important;margin:0 0 10px;padding:12px;border:1px solid #bcddc8;background:#ebf6ee;color:#164f39;border-radius:9px;font-weight:700}.order-mode-active #customer{pointer-events:none;background:#edf3ec}.order-mode-active #saleDate{pointer-events:none;background:#edf3ec}
+
+/* Smart Billing customer-order notification: flashes only while orders are pending. */
+.order-alert-tab{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:border-color .2s ease}
+.order-alert-tab .order-bell-icon{display:inline-flex;align-items:center;justify-content:center;font-size:15px;transform-origin:50% 12%}
+.order-alert-tab.has-orders{color:#fff;border-color:#c9a75d;animation:kt-order-multicolor 3s ease-in-out infinite}
+.order-alert-tab.has-orders .count{background:#fff;color:#123e33;font-weight:900}
+.order-alert-tab.has-orders .order-bell-icon{animation:kt-order-bell-wiggle 1.25s ease-in-out infinite}
+.order-bell-toggle{min-width:38px;min-height:38px!important;padding:6px 9px!important;font-size:17px!important;border-radius:10px!important}
+.order-bell-toggle[aria-pressed="false"]{color:#737d75;background:#f1f3f1;border-color:#d5dcd7}
+@keyframes kt-order-multicolor{
+  0%,100%{background:#155344;border-color:#a7d5b9;box-shadow:0 0 0 0 #15926344}
+  25%{background:#245d9b;border-color:#a9cdfa;box-shadow:0 0 0 3px #3e91d426}
+  50%{background:#713c9b;border-color:#d3b7ed;box-shadow:0 0 0 5px #9156c622}
+  75%{background:#ac6114;border-color:#f4d097;box-shadow:0 0 0 3px #e9ac4029}
+}
+@keyframes kt-order-bell-wiggle{0%,15%,65%,100%{transform:rotate(0)}28%{transform:rotate(15deg)}40%{transform:rotate(-13deg)}52%{transform:rotate(8deg)}}
+@media(prefers-reduced-motion:reduce){
+ .order-alert-tab.has-orders,.order-alert-tab.has-orders .order-bell-icon{animation:none!important}
+ .order-alert-tab.has-orders{background:#195c49;color:#fff;border:2px solid #d3a552}
+}
