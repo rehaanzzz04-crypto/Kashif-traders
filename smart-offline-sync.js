@@ -252,7 +252,7 @@
       if(res.ok)await saveSnapshot(canonical(url),res,owner());
     }catch{}
   }
-  window.KT_OFFLINE={sync,items,count:async()=>(await items()).length,prepare,prepareSmartCounter,isOnline:networkAvailable};
+  window.KT_OFFLINE={sync,items,count:async()=>(await items()).length,prepare,prepareSmartCounter,isOnline:networkAvailable,fetchDirect:async (url)=>{if(!networkAvailable())throw Error('Internet offline hai');const r=await shortFetch(url,{credentials:'same-origin',cache:'no-store'},12000);if(r.ok&&owner())await saveSnapshot(canonical(url),r,owner()).catch(()=>{});return r;}};
   window.addEventListener('online',()=>{identityCheck=null;sync();});window.addEventListener('offline',()=>badge());
   window.addEventListener('load',()=>{badge().catch(console.error);sync();setTimeout(()=>prepareSmartCounter(),1400);});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync();});
