@@ -450,7 +450,9 @@ async function saleProducts(sql, req) {
   const id = asId(req.query?.id), b = bodyOf(req);
   if (req.method === "GET") {
     const search = cleanText(req.query?.search) || "", like = `%${search}%`, status = cleanText(req.query?.status), limit = Math.min(1000, Math.max(1, Number(req.query?.limit) || 200));
-    const rows = await sql`SELECT id,sku,name,category,unit,purchase_price,sale_price,reorder_level,barcode,status,created_at,updated_at,(product_image_url IS NOT NULL) has_image,product_image_url
+    const withoutImages = String(req.query?.without_images||'')==='1';
+    const rows = await sql`SELECT id,sku,name,category,unit,purchase_price,sale_price,reorder_level,barcode,status,created_at,updated_at,(product_image_url IS NOT NULL) has_image,
+      CASE WHEN ${withoutImages} THEN NULL ELSE product_image_url END AS product_image_url
       FROM cash_sale_products
       WHERE (${id}::bigint IS NULL OR id=${id})
         AND (${search}='' OR COALESCE(sku,'') ILIKE ${like} OR name ILIKE ${like} OR COALESCE(category,'') ILIKE ${like} OR COALESCE(barcode,'') ILIKE ${like})
