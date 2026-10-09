@@ -1,6 +1,69 @@
 'use strict';(()=>{
 const $=id=>document.getElementById(id),money=n=>'PKR '+Number(n||0).toLocaleString('en-PK',{maximumFractionDigits:2}),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),arr=v=>Array.isArray(v)?v:(()=>{try{const x=JSON.parse(v||'[]');return Array.isArray(x)?x:[]}catch{return []}})();
 let activeOrder=null,orders=[],ordersBusy=false,orderLoadBusy=false;
+const initialPageTitle=document.title;
+let knownOrderIds=null,orderAudio=null,ringAfterUnlock=false,lastBellSoundAt=0;
+let bellEnabled=true;
+try{bellEnabled=localStorage.getItem('kt_smart_order_bell_v1')!=='off'}catch{}
+function freshOrderCount(before,after){
+ if(before===null)return 0; // First load is a baseline, not a new arrival.
+ let count=0;for(const id of after)if(!before.has(id))count++;
+ return count;
+}
+function syncBellToggle(){
+ const control=$('orderBellToggle');
+ control.setAttribute('aria-pressed',String(bellEnabled));
+ control.setAttribute('aria-label',bellEnabled?'Mute customer order bell':'Enable customer order bell');
+ control.title=bellEnabled?'Customer order notification bell on':'Customer order notification bell muted';
+ control.textContent=bellEnabled?'🔊':'🔕';
+}
+function soundOrderBell(){
+ if(!bellEnabled)return;
+ if(!orderAudio||orderAudio.state!=='running'){ringAfterUnlock=true;return}
+ const now=Date.now();
+ if(now-lastBellSoundAt<3000)return; // Debounce overlapping order fetches.
+ lastBellSoundAt=now;
+ try{
+  const start=orderAudio.currentTime+.02;
+  [[880,0],[1175,.19]].forEach(([frequency,delay])=>{
+   const tone=orderAudio.createOscillator(),volume=orderAudio.createGain(),t=start+delay;
+   tone.type='sine';tone.frequency.setValueAtTime(frequency,t);
+   volume.gain.setValueAtTime(.0001,t);
+   volume.gain.exponentialRampToValueAtTime(.15,t+.016);
+   volume.gain.exponentialRampToValueAtTime(.0001,t+.33);
+   tone.connect(volume);volume.connect(orderAudio.destination);
+   tone.start(t);tone.stop(t+.34);
+  });
+ }catch{}
+}
+function unlockOrderAudio(){
+ if(!bellEnabled)return;
+ try{
+  const Context=window.AudioContext||window.webkitAudioContext;
+  if(!Context)return;
+  if(!orderAudio)orderAudio=new Context();
+  const after=()=>{if(ringAfterUnlock&&orderPending().length){ringAfterUnlock=false;soundOrderBell()}};
+  if(orderAudio.state!=='running')orderAudio.resume().then(after).catch(()=>{});
+  else after();
+ }catch{}
+}
+['pointerdown','keydown','touchstart'].forEach(eventName=>document.addEventListener(eventName,unlockOrderAudio,{passive:true}));
+$('orderBellToggle').onclick=()=>{
+ bellEnabled=!bellEnabled;ringAfterUnlock=false;
+ try{localStorage.setItem('kt_smart_order_bell_v1',bellEnabled?'on':'off')}catch{}
+ syncBellToggle();
+ if(bellEnabled)unlockOrderAudio();
+};
+syncBellToggle();
+function updateOrderButton(pendingCount){
+ const btn=$('navOrders');
+ btn.classList.toggle('has-orders',pendingCount>0);
+ btn.setAttribute('aria-label','Customer Orders, '+pendingCount+' pending');
+ btn.title=pendingCount>0?pendingCount+' pending customer order(s)':'No pending customer orders';
+ document.title=pendingCount>0?'('+pendingCount+') 🔔 '+initialPageTitle:initialPageTitle;
+ if(!pendingCount)ringAfterUnlock=false;
+}
+
 let products=[],cart=[],selected=new Set(),category='all',galleryPage=0,searchTimer=null,customerList=[],bills=[],billStatus='pending',active=null,busy=false,lastInvoice=null,lastPrinted='',lastPrintTime=0,barcodeStream=null,scannerLoop=0,scannerDetector=null,searchVersion=0,method='Cash',manualReceived=false;
 const galleryChunk=48;const stamp=x=>x?new Date(x).toLocaleString('en-PK',{timeZone:'Asia/Karachi',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
 function visibleInvoice(b){const raw=String(b?.invoice_number||b?.invoice_reference||'');const match=/^CS-\d{8}-(\d+)$/.exec(raw);return match?'CS-'+Number(match[1]):raw}
@@ -168,7 +231,7 @@ function orderDraftItems(order){
 }
 function paintOrders(){
  const pending=orderPending();
- $('orderCount').textContent=pending.length;$('ordersModalCount').textContent=pending.length;
+ $('orderCount').textContent=pending.length;$('ordersModalCount').textContent=pending.length;updateOrderButton(pending.length);
  $('ordersList').innerHTML=pending.length?pending.map(o=>
   '<div class="order-card"><div><strong>'+esc(o.order_number)+' · '+esc(o.customer_name)+'</strong><small>'+esc(o.customer_code||'')+' · '+arr(o.items).length+' products · '+esc(stamp(o.created_at))+'</small></div><div class="action-row"><button type="button" class="btn small" data-openorder="'+o.id+'">Open in Counter</button><button type="button" class="danger small" data-rejectorder="'+o.id+'">Reject</button></div></div>'
  ).join(''):'<div class="empty">Koi pending customer order nahi.</div>';
@@ -181,7 +244,14 @@ async function loadOrders(showError=false){
  try{
   const j=await api('/api/data?resource=customer_portal&action=admin_orders');
   orders=j.records||[];
+  const currentOrderIds=new Set(orderPending().map(o=>String(o.id)));
+  const arrivals=freshOrderCount(knownOrderIds,currentOrderIds);
+  knownOrderIds=currentOrderIds;
   paintOrders();
+  if(arrivals>0){
+   $('ordersNotice').textContent=arrivals+' naya Customer Order received. Smart Billing se open karein.';
+   soundOrderBell();
+  }
   if(activeOrder&&!orderPending().some(o=>Number(o.id)===Number(activeOrder.id))){
    status('Selected customer order doosri screen par process ho chuka hai. New Sale select karein.','warning');
    $('complete').disabled=true;$('pending').disabled=true;
@@ -256,5 +326,5 @@ async function rejectCustomerOrder(id){
 $('navSale').onclick=()=>$('mainWorkspace').scrollIntoView({behavior:'smooth'});$('navPending').onclick=()=>{setBillStatus('pending');$('recent').scrollIntoView({behavior:'smooth'})};$('navPaid').onclick=()=>{setBillStatus('paid');$('recent').scrollIntoView({behavior:'smooth'})};$('navOrders').onclick=()=>openOrders();$('navReport').onclick=()=>openLegacy('/cashier-sales-report.html','Sales Report');$('billsTop').onclick=()=>$('recent').scrollIntoView({behavior:'smooth'});$('holdTop').onclick=()=>$('pending').click();
 $('online').textContent=navigator.onLine?'Online':'Offline';const connection=()=>{$('online').textContent=navigator.onLine?'Online':'Offline';$('online').classList.toggle('offline',!navigator.onLine)};addEventListener('online',connection);addEventListener('offline',connection);
 function closeScanner(){cancelAnimationFrame(scannerLoop);barcodeStream?.getTracks().forEach(x=>x.stop());barcodeStream=null;$('scannerVideo').srcObject=null;$('scannerModal').classList.add('hidden')}$('closeScanner').onclick=closeScanner;$('scanTop').onclick=$('scanProduct').onclick=()=>$('scannerModal').classList.remove('hidden');$('findBarcode').onclick=()=>{const code=$('barcode').value.trim();const p=products.find(p=>String(p.barcode||'')===code||String(p.sku||'')===code);if(p){addProduct(p);closeScanner();status(p.name+' added')}else status('Barcode not found.','warning')};$('barcode').onkeydown=e=>{if(e.key==='Enter')$('findBarcode').click()};$('startScanner').onclick=async()=>{try{barcodeStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});$('scannerVideo').srcObject=barcodeStream;await $('scannerVideo').play();if('BarcodeDetector'in window){scannerDetector=new BarcodeDetector({formats:['ean_13','ean_8','code_128','code_39','upc_a']});async function tick(){if(!barcodeStream)return;try{const found=await scannerDetector.detect($('scannerVideo'));if(found[0]?.rawValue){$('barcode').value=found[0].rawValue;$('findBarcode').click();return}}catch{}scannerLoop=requestAnimationFrame(tick)}tick()}}catch(e){status('Camera unavailable. Barcode manually enter karein.','warning')}};
-api('/api/auth?action=me').then(j=>{$('salesman').value=j.user?.full_name||j.user?.employee_code||'Employee'}).catch(()=>{});loadProducts();loadCustomers();loadBills().catch(e=>status(e.message,'warning'));loadOrders();setInterval(()=>{if(!document.hidden&&!busy&&$('invoiceModal').classList.contains('hidden'))loadBills().catch(()=>{})},12000);setInterval(()=>{if(!document.hidden&&!ordersBusy)loadOrders().catch(()=>{})},15000);renderCart();setPayment('Cash');
+api('/api/auth?action=me').then(j=>{$('salesman').value=j.user?.full_name||j.user?.employee_code||'Employee'}).catch(()=>{});loadProducts();loadCustomers();loadBills().catch(e=>status(e.message,'warning'));loadOrders();setInterval(()=>{if(!document.hidden&&!busy&&$('invoiceModal').classList.contains('hidden'))loadBills().catch(()=>{})},12000);setInterval(()=>{if(!document.hidden&&!ordersBusy)loadOrders().catch(()=>{})},15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadOrders().catch(()=>{})});renderCart();setPayment('Cash');
 })();
