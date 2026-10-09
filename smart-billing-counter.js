@@ -82,7 +82,41 @@ body.querySelectorAll('[data-remove]').forEach(el=>el.onclick=()=>{cart.splice(N
 function addProduct(p){const old=cart.find(x=>String(x.id)===String(p.id));if(old)old.qty+=1;else cart.push({id:p.id,name:p.name,number:p.sku||'',sku:p.sku||'',barcode:p.barcode||'',unit:p.unit||'pcs',qty:1,rate:Number(p.sale_price||0),defaultRate:Number(p.sale_price||0)});renderCart()}
 function categories(){const cats=['All',...new Set(products.map(p=>p.category||'Others'))];$('categories').innerHTML=cats.map(c=>'<button type="button" data-category="'+esc(c)+'" class="'+(category===(c==='All'?'all':c)?'active':'')+'">'+esc(c)+'</button>').join('');$('categories').querySelectorAll('button').forEach(b=>b.onclick=()=>{category=b.dataset.category==='All'?'all':b.dataset.category;galleryPage=0;categories();renderGallery()})}
 function filtered(){const q=$('productSearch').value.trim().toLowerCase();return products.filter(p=>(category==='all'||(p.category||'Others')===category)&&(!q||[p.name,p.sku,p.barcode,p.category].some(v=>String(v||'').toLowerCase().includes(q)))).sort((a,b)=>{if(!q)return String(a.name).localeCompare(String(b.name));const rank=p=>String(p.barcode||'').toLowerCase()===q?0:String(p.name||'').toLowerCase().startsWith(q)?1:2;return rank(a)-rank(b)||String(a.name).localeCompare(String(b.name))})}
-function renderGallery(){const rows=filtered(),show=rows.slice(0,(galleryPage+1)*galleryChunk);$('gallery').innerHTML=show.map(p=>'<button type="button" class="product '+(selected.has(String(p.id))?'selected':'')+'" data-product="'+p.id+'"><span class="tick">✓</span>'+(p.product_image_url?'<img src="'+esc(p.product_image_url)+'" loading="lazy" decoding="async" alt="">':'<span class="placeholder">KT</span>')+'<strong>'+esc(p.name)+'</strong><span class="price">'+money(p.sale_price)+'</span></button>').join('')+(rows.length>show.length?'<button id="moreProducts" class="outline load-more">Show More Products ('+show.length+' / '+rows.length+')</button>':'')||'<div class="empty">Koi product nahi mila.</div>';for(const btn of $('gallery').querySelectorAll('[data-product]'))btn.onclick=()=>{const id=String(btn.dataset.product);if(selected.has(id))selected.delete(id);else selected.add(id);btn.classList.toggle('selected',selected.has(id));renderTotals()};const more=$('moreProducts');if(more)more.onclick=()=>{galleryPage++;renderGallery()}}
+const imagePending=new Set();
+let productImageObserver=null;
+async function requestProductImage(id){
+ if(imagePending.has(String(id))||!navigator.onLine)return;
+ const p=products.find(x=>String(x.id)===String(id));if(!p||!p.has_image||p.product_image_url)return;
+ imagePending.add(String(id));
+ try{
+  const res=await window.KT_OFFLINE.fetchDirect('/api/data?resource=sale_products&id='+encodeURIComponent(id),7000);
+  if(!res.ok)return;
+  const data=await res.json();
+  const image=data.records?.[0]?.product_image_url;
+  if(typeof image==='string'&&image){
+    p.product_image_url=image;
+    // Only replace the image slot, never rebuild the bill or selected state.
+    const tile=[...$('gallery').querySelectorAll('[data-product]')].find(n=>n.dataset.product===String(id));
+    const slot=tile?.querySelector('.placeholder');
+    if(slot){const img=document.createElement('img');img.loading='lazy';img.decoding='async';img.alt='';img.src=image;slot.replaceWith(img)}
+  }
+ }catch{}finally{imagePending.delete(String(id))}
+}
+function lazyGalleryImages(){
+ productImageObserver?.disconnect();
+ if(!('IntersectionObserver' in window))return;
+ productImageObserver=new IntersectionObserver(entries=>{
+  for(const entry of entries)if(entry.isIntersecting){
+   productImageObserver.unobserve(entry.target);
+   requestProductImage(entry.target.dataset.product);
+  }
+ },{root:$('gallery'),rootMargin:'120px'});
+ for(const tile of $('gallery').querySelectorAll('[data-product]')){
+  const p=products.find(x=>String(x.id)===tile.dataset.product);
+  if(p?.has_image&&!p.product_image_url)productImageObserver.observe(tile);
+ }
+}
+function renderGallery(){const rows=filtered(),show=rows.slice(0,(galleryPage+1)*galleryChunk);$('gallery').innerHTML=show.map(p=>'<button type="button" class="product '+(selected.has(String(p.id))?'selected':'')+'" data-product="'+p.id+'"><span class="tick">✓</span>'+(p.product_image_url?'<img src="'+esc(p.product_image_url)+'" loading="lazy" decoding="async" alt="">':'<span class="placeholder">KT</span>')+'<strong>'+esc(p.name)+'</strong><span class="price">'+money(p.sale_price)+'</span></button>').join('')+(rows.length>show.length?'<button id="moreProducts" class="outline load-more">Show More Products ('+show.length+' / '+rows.length+')</button>':'')||'<div class="empty">Koi product nahi mila.</div>';for(const btn of $('gallery').querySelectorAll('[data-product]'))btn.onclick=()=>{const id=String(btn.dataset.product);if(selected.has(id))selected.delete(id);else selected.add(id);btn.classList.toggle('selected',selected.has(id));renderTotals()};const more=$('moreProducts');if(more)more.onclick=()=>{galleryPage++;renderGallery()};lazyGalleryImages()}
 function updateCatalogState(text,level='loading'){
  const el=$('catalogState');if(!el)return;
  el.textContent=text;el.dataset.state=level;
