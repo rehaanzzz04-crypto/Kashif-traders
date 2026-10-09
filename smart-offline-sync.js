@@ -10,12 +10,12 @@
   // A Wi-Fi link can report online even when the cloud cannot be reached.
   // A bounded retry circuit lets offline snapshot reads return immediately.
   let unreachableUntil=0;
-  const networkAvailable=()=>localOrigin||(navigator.onLine&&Date.now()>=unreachableUntil);
-  function shortFetch(input,init={},ms=1900){
+  const networkAvailable=()=>localOrigin||navigator.onLine;
+  function shortFetch(input,init={},ms=6500){
     const options={...init};
-    if(!options.signal && typeof AbortSignal.timeout==='function')options.signal=AbortSignal.timeout(localOrigin?5000:ms);
+    if(!options.signal && typeof AbortSignal.timeout==='function')options.signal=AbortSignal.timeout(localOrigin?12000:ms);
     return nativeFetch(input,options).catch(error=>{
-      if(!localOrigin && (!navigator.onLine || error?.name==='AbortError' || error instanceof TypeError))unreachableUntil=Date.now()+12000;
+      if(!localOrigin && (!navigator.onLine || error?.name==='AbortError' || error instanceof TypeError))unreachableUntil=Date.now()+1500;
       throw error;
     });
   }
@@ -26,7 +26,7 @@
   async function ensureIdentity() {
     if(!networkAvailable()){const saved=session();return Boolean(saved?.user&&Date.now()-Date.parse(saved.saved_at)<12*60*60*1000);}
     if(!identityCheck)identityCheck=(async()=>{
-      try {const r=await shortFetch('/api/auth?action=me',{cache:'no-store'},1800);
+      try {const r=await shortFetch('/api/auth?action=me',{cache:'no-store'},6500);
         if([401,403].includes(r.status)){localStorage.removeItem(AUTH);return false;}
         if(!r.ok)throw Error('Authentication unavailable');
         const data=await r.json();if(!data.user)return false;
@@ -143,7 +143,7 @@
   async function syncUnlocked() {
     if(running||!networkAvailable()||!owner())return;running=true;
     try {
-      const r=await shortFetch('/api/auth?action=me',{cache:'no-store'},1800);if(!r.ok)return;
+      const r=await shortFetch('/api/auth?action=me',{cache:'no-store'},6500);if(!r.ok)return;
       const auth=await r.json();if(String(auth.user?.id)!==owner())return;
       for(const item of await items()) {
         if(item.state==='review')break;
@@ -173,9 +173,15 @@
     if(!await ensureIdentity())return response({error:'Login required'},401);
     if(method==='GET') {
       if(networkAvailable()) {
-        try {const id=owner(),res=await shortFetch(input,init,2200);if(res.ok)await saveSnapshot(url,res,id).catch(()=>{});return res;} catch {}
+        try {
+          const id=owner(),res=await shortFetch(input,init,8500);
+          if(res.ok)await saveSnapshot(url,res,id).catch(()=>{});
+          if(res.ok || [401,403].includes(res.status))return res;
+          const fallback=await cached(url);
+          return fallback||res;
+        } catch {}
       }
-      return await cached(url)||response({error:'Yeh data phone par save nahi hai. Online khol kar Offline Data Tayyar karein.'},503);
+      return await cached(url)||response({error:'Products is browser mein offline saved nahi. Internet connection check karke Retry Products karein.',offline_cache_missing:true},503);
     }
     if(mutations.has(method)&&supported(u)&&owner()) {
       let raw=init.body;
