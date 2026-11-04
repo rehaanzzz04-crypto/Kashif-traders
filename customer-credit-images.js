@@ -2,7 +2,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const LIMIT=3,MAX_BYTES=700000;
-let pending=[],existing=[],billId=null,customerId=null,admin=false,viewerUrl=null,selectedImage=null,previewUrls=[];
+let pending=[],existing=[],billId=null,customerId=null,admin=false,viewerUrl=null,selectedImage=null,previewUrls=[],galleryImages=[],galleryIndex=0;
 const escapeHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
 const showError=message=>{const el=$('notice');if(el)el.textContent=message;};
 async function request(action,body=null,extra=''){
@@ -116,7 +116,10 @@ async function openImage(imageId){
   $('billViewContent').replaceChildren(image);
   $('billViewerTitle').textContent=d.filename||'Original Credit Bill';
   $('deleteBillImage').hidden=!admin;
-  $('billImageViewer').showModal();
+  if(!$('billImageViewer').open)$('billImageViewer').showModal();
+  $('billGalleryPrev').disabled=galleryImages.length<2;
+  $('billGalleryNext').disabled=galleryImages.length<2;
+  $('billGalleryCount').textContent=galleryImages.length>1?String(galleryIndex+1)+' / '+galleryImages.length:'';
  }catch(e){showError(e.message);}
 }
 function closeViewer(){
@@ -131,10 +134,7 @@ async function removeImage(imageId){
   await request('bill_image_delete',{image_id:Number(imageId)});
   existing=existing.filter(x=>Number(x.id)!==Number(imageId));
   if(selectedImage?.id==imageId)closeViewer();
-  if(billId){
-   const statement=window.CustomerCreditStatement;
-   statement?.refresh?.();
-  }
+  window.dispatchEvent(new CustomEvent('credit-bill-image-changed',{detail:{billId}}));
   render();
  }catch(e){showError(e.message);}
 }
@@ -144,10 +144,25 @@ $('cameraBillInput').onchange=e=>{addFiles([...e.target.files]);e.target.value='
 $('galleryBillInput').onchange=e=>{addFiles([...e.target.files]);e.target.value='';};
 $('billImagePreview').addEventListener('click',e=>{
  const open=e.target.closest('[data-open-img]'),drop=e.target.closest('[data-drop-img]'),remove=e.target.closest('[data-remove-img]');
- if(open)openImage(Number(open.dataset.openImg));
+ if(open){galleryImages=existing.slice();galleryIndex=Math.max(0,galleryImages.findIndex(v=>Number(v.id)===Number(open.dataset.openImg)));openImage(Number(open.dataset.openImg));}
  if(drop){pending.splice(Number(drop.dataset.dropImg),1);render();}
  if(remove)removeImage(Number(remove.dataset.removeImg));
 });
+async function openBillGallery(id){
+ try{
+  const result=await request('bill_images',null,'&bill_id='+encodeURIComponent(id));
+  galleryImages=result.images||[];
+  if(!galleryImages.length){showError('This bill has no attached photos.');return;}
+  galleryIndex=0;await openImage(galleryImages[galleryIndex].id);
+ }catch(e){showError(e.message);}
+}
+async function moveGallery(delta){
+ if(!galleryImages.length)return;
+ galleryIndex=(galleryIndex+delta+galleryImages.length)%galleryImages.length;
+ await openImage(galleryImages[galleryIndex].id);
+}
+$('billGalleryPrev').onclick=()=>moveGallery(-1);
+$('billGalleryNext').onclick=()=>moveGallery(1);
 $('closeBillImage').onclick=closeViewer;
 $('billImageViewer').addEventListener('close',()=>{if(viewerUrl)URL.revokeObjectURL(viewerUrl);viewerUrl=null;selectedImage=null;});
 $('downloadBillImage').onclick=()=>{
@@ -155,9 +170,5 @@ $('downloadBillImage').onclick=()=>{
  const a=document.createElement('a');a.href=viewerUrl;a.download=selectedImage.filename||'original-bill.jpg';a.click();
 };
 $('deleteBillImage').onclick=()=>selectedImage&&removeImage(selectedImage.id);
-window.CreditBillImages={reset,saveAfterBill,openForBill:async(id,cid,canEdit)=>{
- admin=Boolean(canEdit);billId=Number(id);customerId=Number(cid);existing=[];pending=[];await loadBill(id,cid,canEdit);
- $('billImageSection').hidden=false;
- $('editor').showModal();
-},openImage,loadBill};
+window.CreditBillImages={reset,saveAfterBill,openBillGallery,openImage,loadBill};
 })();
