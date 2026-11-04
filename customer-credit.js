@@ -7,8 +7,77 @@ let customers=[],selected=null,statement=null,filter='all',editing='customer',ca
 const alert=s=>{$('notice').textContent=s||'';};
 async function api(path,body){const r=await fetch('/api/data?resource=customer_credit&action='+path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},credentials:'same-origin',cache:'no-store',body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok){const detail=j.existing_customer?' Existing customer: '+j.existing_customer.name+(j.existing_customer.mobile?' ('+j.existing_customer.mobile+')':'')+'. Please select the existing record.':'';throw Error((j.error||('Request failed ('+r.status+')'))+detail);}return j;}
 async function loadCustomers(preserve=true){try{const d=await api('customers');customers=d.customers||[];canEdit=d.can_edit;const bills=customers.reduce((t,c)=>t+Number(c.billed),0),received=customers.reduce((t,c)=>t+Number(c.received),0);$('allBills').textContent=money(bills);$('allPaid').textContent=money(received);$('allDue').textContent=money(bills-received);$('allCustomers').textContent=customers.length;renderCustomers();if(selected&&preserve&&customers.some(x=>Number(x.id)===selected))await loadStatement(selected);else if(!selected&&customers.length)await loadStatement(customers[0].id);}catch(e){alert(e.message);$('customerList').innerHTML='<div class="empty">Unable to load customers. Sign in and check internet connection.</div>';}}
-function renderCustomers(){const query=$('search').value.trim().toLowerCase();const rows=customers.filter(c=>(c.name+' '+(c.mobile||'')).toLowerCase().includes(query)&& (filter==='all'||(filter==='due'?Number(c.billed)-Number(c.received)>0:Number(c.billed)-Number(c.received)<=0)));$('customerList').innerHTML=rows.length?rows.map(c=>{const due=Number(c.billed)-Number(c.received);return '<button class="customerrow '+(Number(c.id)===selected?'active':'')+'" data-customer="'+Number(c.id)+'"><span><strong>'+esc(c.name)+'</strong><small>'+esc(c.mobile||'No mobile')+' · '+Number(c.entries||0)+' entries</small></span><b class="'+(due>0?'due':'')+'">'+money(due)+'</b></button>'}).join(''):'<div class="empty">No customers found.</div>';}
-async function loadStatement(id){try{const d=await api('statement&customer_id='+encodeURIComponent(id));selected=Number(id);statement=d;canEdit=d.can_edit;$('customerTitle').textContent=d.customer.name;$('customerInfo').textContent=(d.customer.mobile||'No mobile')+(d.customer.notes?' · '+d.customer.notes:'');$('editCustomer').hidden=!canEdit;$('sumBills').textContent=money(d.totals.billed);$('sumPaid').textContent=money(d.totals.received);$('sumDue').textContent=money(Number(d.totals.billed)-Number(d.totals.received));$('statementWarning').textContent=d.has_more?'Only first 5,000 entries displayed. Totals include all records.':'';renderCustomers();renderStatement();}catch(e){alert(e.message);}}
+let directoryExpanded=true, directoryViewMore=false, directoryPage=1, directoryRequest=0;
+const CUSTOMER_PAGE_SIZE=20;
+const mobileDirectory=()=>window.matchMedia('(max-width:850px)').matches;
+function setDirectoryExpanded(value){
+ directoryExpanded=Boolean(value);
+ $('directoryContent').hidden=!directoryExpanded;
+ $('toggleDirectory').textContent=directoryExpanded?'Collapse':'Expand';
+ $('toggleDirectory').setAttribute('aria-expanded',String(directoryExpanded));
+ $('directorySelected').hidden=directoryExpanded||!selected;
+ $('customerDirectory').classList.toggle('is-collapsed',!directoryExpanded);
+ if(!directoryExpanded)updateDirectorySelection();
+}
+function updateDirectorySelection(){
+ $('directoryTotal').textContent=String(customers.length);
+ const row=customers.find(x=>Number(x.id)===Number(selected));
+ $('directorySelectedName').textContent=row?.name||'Select a customer';
+ $('directorySelectedBalance').textContent=row?money(Number(row.billed)-Number(row.received)):'';
+}
+function renderCustomers(){
+ updateDirectorySelection();
+ const query=$('search').value.trim().toLowerCase();
+ const eligible=customers.filter(c=>(c.name+' '+(c.mobile||'')).toLowerCase().includes(query)
+   && (filter==='all'||(filter==='due'?Number(c.billed)-Number(c.received)>0:Number(c.billed)-Number(c.received)<=0)));
+ const sortBy=$('customerSort').value;
+ eligible.sort((a,b)=>{
+  if(sortBy==='due')return (Number(b.billed)-Number(b.received))-(Number(a.billed)-Number(a.received))||a.name.localeCompare(b.name);
+  if(sortBy==='newest')return Number(b.id)-Number(a.id);
+  return a.name.localeCompare(b.name,undefined,{sensitivity:'base'})||Number(a.id)-Number(b.id);
+ });
+ const searching=Boolean(query);
+ const isCompact=!searching&&!directoryViewMore;
+ const pageSize=searching?CUSTOMER_PAGE_SIZE:isCompact?5:CUSTOMER_PAGE_SIZE;
+ const pageCount=Math.max(1,Math.ceil(eligible.length/pageSize));
+ directoryPage=Math.min(Math.max(directoryPage,1),pageCount);
+ const offset=(directoryPage-1)*pageSize;
+ const visible=eligible.slice(offset,offset+pageSize);
+ $('customerList').innerHTML=visible.length?visible.map(c=>{
+  const due=Number(c.billed)-Number(c.received);
+  return '<button class="customerrow '+(Number(c.id)===selected?'active':'')+'" data-customer="'+Number(c.id)+'" type="button">'
+   +'<span><strong>'+esc(c.name)+'</strong><small>'+esc(c.mobile||'No mobile')+'</small></span>'
+   +'<b class="'+(due>0?'due':'')+'">'+money(due)+'</b></button>';
+ }).join(''):'<div class="empty">'+(query?'No matching customers.':'No customers found.')+'</div>';
+ $('directoryShowing').textContent=eligible.length
+   ?'Showing '+(offset+1)+'–'+Math.min(offset+visible.length,eligible.length)+' of '+eligible.length
+   :'0 customers found';
+ $('viewMoreCustomers').hidden=searching||directoryViewMore||eligible.length<=5;
+ $('directoryPages').hidden=isCompact||eligible.length<=pageSize;
+ $('previousCustomerPage').disabled=directoryPage===1;
+ $('nextCustomerPage').disabled=directoryPage>=pageCount;
+ $('directoryPageLabel').textContent='Page '+directoryPage+' / '+pageCount;
+}
+async function loadStatement(id,collapseAfterSelection=false){
+ const request=++directoryRequest;
+ try{
+  const d=await api('statement&customer_id='+encodeURIComponent(id));
+  if(request!==directoryRequest)return;
+  selected=Number(id);statement=d;canEdit=d.can_edit;
+  $('customerTitle').textContent=d.customer.name;
+  $('customerInfo').textContent=(d.customer.mobile||'No mobile')+(d.customer.notes?' · '+d.customer.notes:'');
+  $('editCustomer').hidden=!canEdit;
+  $('sumBills').textContent=money(d.totals.billed);
+  $('sumPaid').textContent=money(d.totals.received);
+  $('sumDue').textContent=money(Number(d.totals.billed)-Number(d.totals.received));
+  $('statementWarning').textContent=d.has_more?'Only first 5,000 entries displayed. Totals include all records.':'';
+  if(collapseAfterSelection && mobileDirectory()){
+   setDirectoryExpanded(false);
+   document.querySelector('.details')?.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+  renderCustomers();renderStatement();
+ }catch(e){if(request===directoryRequest)alert(e.message);}
+}
 function renderStatement(){if(!statement)return;const from=$('fromDate').value,to=$('toDate').value;let running=0;let html='';let displayed=0;for(const e of statement.entries){const date=String(e.entry_date).slice(0,10),amt=Number(e.amount);running+=e.entry_type==='bill'?amt:-amt;if((from&&date<from)||(to&&date>to))continue;displayed++;html+='<tr><td><b>'+esc(date)+'</b><small>'+esc(e.bill_no||(e.entry_type==='bill'?'Bill #':'Payment #')+e.id)+'</small></td><td><b>'+(e.entry_type==='bill'?'Credit Bill':'Payment Received')+'</b><small>'+esc(e.payment_method||e.notes||'—')+'</small>'+(e.payment_method&&e.notes?'<small>'+esc(e.notes)+'</small>':'')+(e.entry_type==='payment'&&statement.allocations?.allocations_by_payment?.[Number(e.id)]?'<small>Adjusted: '+esc(statement.allocations.allocations_by_payment[Number(e.id)].applied.map(a=>a.bill_no+' ('+money(a.amount)+')').join(', ')||'Unallocated advance')+'</small>':'')+'</td><td>'+(e.entry_type==='bill'?money(amt):'—')+'</td><td>'+(e.entry_type==='payment'?money(amt):'—')+'</td><td><b>'+money(running)+'</b></td><td class="screenonly">'+(canEdit?'<button class="rowaction" data-edit="'+Number(e.id)+'">Edit</button> <button class="rowaction" data-void="'+Number(e.id)+'">Void</button>':'—')+'</td></tr>';} $('statementBody').innerHTML=html||'<tr><td colspan="6" class="empty">'+(displayed?'':'No transactions for selected dates.')+'</td></tr>';}
 let invoiceSnapshot={pending_bills:[],unapplied_advance:0},pendingRequest=0;
 async function loadPendingInvoices(){
@@ -94,7 +163,27 @@ $('entryForm').addEventListener('submit',async e=>{e.preventDefault();let body,a
  }
  if($('recordId').value)body.id=Number($('recordId').value);if(!body.id&&editing!=='customer'&&!body.customer_id)return alert('Create a customer first.');$('save').disabled=true;try{const d=await api(action,body);$('editor').close();if(editing==='customer'&&!body.id)selected=Number(d.customer.id);if(editing!=='customer')selected=Number(body.customer_id);alert('Record saved successfully.');await loadCustomers();}catch(err){alert(err.message);}finally{$('save').disabled=false;}});
 $('statementBody').addEventListener('click',async e=>{const edit=e.target.closest('[data-edit]'),voidBtn=e.target.closest('[data-void]');if(!canEdit||!statement)return;if(edit){const x=statement.entries.find(e=>Number(e.id)===Number(edit.dataset.edit));if(x)openEditor(x.entry_type,x);}if(voidBtn){const id=Number(voidBtn.dataset.void);if(!confirm('Void this record? Its amount will be removed from customer balance. An audit history will be retained.'))return;try{await api('void',{id});alert('Entry voided.');await loadCustomers();}catch(err){alert(err.message);}}});
-$('customerList').addEventListener('click',e=>{const b=e.target.closest('[data-customer]');if(b)loadStatement(Number(b.dataset.customer));});$('newCustomer').onclick=()=>openEditor('customer');$('newBill').onclick=()=>openEditor('bill');$('newPayment').onclick=()=>openEditor('payment');$('editCustomer').onclick=()=>statement&&openEditor('customer',statement.customer);$('closeDialog').onclick=$('cancelDialog').onclick=()=>$('editor').close();$('refresh').onclick=()=>loadCustomers();$('search').oninput=renderCustomers;document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('selected',x===b));renderCustomers();});$('fromDate').onchange=$('toDate').onchange=renderStatement;$('resetDates').onclick=()=>{$('fromDate').value='';$('toDate').value='';renderStatement();};
+$('customerList').addEventListener('click',e=>{
+ const b=e.target.closest('[data-customer]');
+ if(b)loadStatement(Number(b.dataset.customer),true);
+});
+$('toggleDirectory').onclick=()=>setDirectoryExpanded(!directoryExpanded);
+$('changeCustomer').onclick=()=>{
+ setDirectoryExpanded(true);
+ $('search').focus();
+ $('customerDirectory').scrollIntoView({behavior:'smooth',block:'start'});
+};
+$('viewMoreCustomers').onclick=()=>{
+ directoryViewMore=true;directoryPage=1;renderCustomers();
+};
+$('previousCustomerPage').onclick=()=>{
+ if(directoryPage>1){directoryPage--;renderCustomers();$('customerDirectory').scrollIntoView({behavior:'smooth',block:'start'});}
+};
+$('nextCustomerPage').onclick=()=>{
+ directoryPage++;renderCustomers();$('customerDirectory').scrollIntoView({behavior:'smooth',block:'start'});
+};
+$('customerSort').onchange=()=>{directoryPage=1;renderCustomers();};
+$('newCustomer').onclick=()=>openEditor('customer');$('newBill').onclick=()=>openEditor('bill');$('newPayment').onclick=()=>openEditor('payment');$('editCustomer').onclick=()=>statement&&openEditor('customer',statement.customer);$('closeDialog').onclick=$('cancelDialog').onclick=()=>$('editor').close();$('refresh').onclick=()=>loadCustomers();$('search').oninput=()=>{directoryPage=1;renderCustomers();};document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;directoryPage=1;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('selected',x===b));renderCustomers();});$('fromDate').onchange=$('toDate').onchange=renderStatement;$('resetDates').onclick=()=>{$('fromDate').value='';$('toDate').value='';renderStatement();};
 function paramsForStatement(action){
  const q=new URLSearchParams({resource:'customer_credit',action,customer_id:String(selected)});
  if($('fromDate').value)q.set('from',$('fromDate').value);
