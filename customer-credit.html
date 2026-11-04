@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123d32"><title>Customer Credit | Kashif Traders</title>
-<link rel="stylesheet" href="/customer-credit.css?v=3"></head><body>
+<link rel="stylesheet" href="/customer-credit.css?v=4"></head><body>
 <header class="top"><div class="brand"><span class="mark">KT</span><div><strong>Kashif Traders</strong><small>CUSTOMER CREDIT WORKSPACE</small></div></div><a class="back" href="/">← Dashboard</a></header>
 <main class="wrap">
 <section class="intro"><div><span class="eyebrow">CUSTOMER ACCOUNTS</span><h1>Customer Credit</h1><p>Manual credit bills, received payments and customer-wise statements. Independent from ERP sales and inventory.</p></div><div class="actions"><button id="newCustomer">+ Customer</button><button id="newBill">+ Credit Bill</button><button id="newPayment" class="gold">+ Payment</button></div></section>
@@ -46,6 +46,21 @@
 <div id="invoicePicker" hidden><label>Pending Invoice<select id="targetBill"><option value="">Choose pending invoice</option></select></label>
 <div id="invoiceBalance" class="allocation-hint" aria-live="polite"></div></div>
 <div id="allocationPreview" class="allocation-preview" aria-live="polite"></div></div><label id="methodField" hidden>Payment Method<select id="method"><option>Cash</option><option>Bank Transfer</option><option>Easypaisa</option><option>JazzCash</option><option>Other</option></select></label></div>
-<label>Notes (optional)<textarea id="notes" maxlength="1000" rows="3" placeholder="Optional details"></textarea></label>
+<label>Notes (optional)<textarea id="notes" maxlength="1000" rows="3" placeholder="Optional details"></textarea></label><section id="billImageSection" class="bill-images-section" hidden>
+<div class="bill-image-head"><strong>Original Bill Images</strong><small>Optional • Up to 3 photos • Private record</small></div>
+<div class="bill-image-actions">
+<button type="button" class="subtle" id="captureBillImage">Camera</button>
+<button type="button" class="subtle" id="chooseBillImage">Gallery</button>
+</div>
+<input id="cameraBillInput" type="file" accept="image/*" capture="environment" hidden>
+<input id="galleryBillInput" type="file" accept="image/*" multiple hidden>
+<div id="billImagePreview" class="bill-image-preview" aria-live="polite"></div>
+<p class="muted">Photos readable rahengi, automatically compressed aur sirf is bill ke saath save hongi.</p>
+</section>
 <div class="dialogactions"><button type="button" class="subtle" id="cancelDialog">Cancel</button><button type="submit" id="save">Save Record</button></div></form></dialog>
-<script src="/customer-credit.js?v=6"></script></body></html>
+<dialog id="billImageViewer" class="bill-image-viewer" aria-label="Original bill photo">
+<div class="bill-view-head"><strong id="billViewerTitle">Original Bill</strong><button type="button" id="closeBillImage" class="subtle">Close</button></div>
+<div id="billViewContent" class="bill-view-content"></div>
+<div class="bill-view-actions"><button type="button" id="downloadBillImage" class="subtle">Download</button><button type="button" id="deleteBillImage" class="subtle" hidden>Remove Image</button></div>
+</dialog><script src="/customer-credit-images.js?v=1"></script>
+<script src="/customer-credit.js?v=7"></script></body></html>
