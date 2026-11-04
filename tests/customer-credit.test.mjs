@@ -73,3 +73,41 @@ test('WhatsApp recipient uses saved number with normalized Pakistan country code
  assert.equal(customerCreditWhatsappNumber(''),null);
  assert.equal(customerCreditWhatsappNumber('123'),null);
 });
+
+import { calculateCreditAllocations, previewAutoAllocation } from '../lib/customer-credit-allocations.js';
+
+test('Older pending invoice is automatically paid first and excess becomes customer advance',()=>{
+ const ledger=[
+  {id:1,entry_type:'bill',entry_date:'2026-11-01',amount:10000,bill_no:'B-01'},
+  {id:2,entry_type:'bill',entry_date:'2026-11-02',amount:8000,bill_no:'B-02'},
+  {id:3,entry_type:'payment',entry_date:'2026-11-03',amount:12000,allocation_mode:'auto'},
+ ];
+ const result=calculateCreditAllocations(ledger);
+ assert.equal(result.pending_total,6000);
+ assert.equal(result.pending_bills[0].id,2);
+ assert.deepEqual(result.allocations_by_payment[3].applied.map(x=>x.amount),[10000,2000]);
+ const preview=previewAutoAllocation(result.pending_bills,7000);
+ assert.equal(preview.applied[0].amount,6000);
+ assert.equal(preview.advance,1000);
+});
+
+test('Invoice-specific payments do not settle unrelated pending bills',()=>{
+ const ledger=[
+  {id:10,entry_type:'bill',entry_date:'2026-11-01',amount:3000,bill_no:'B-10'},
+  {id:11,entry_type:'bill',entry_date:'2026-11-02',amount:5000,bill_no:'B-11'},
+  {id:12,entry_type:'payment',entry_date:'2026-11-03',amount:2500,allocation_mode:'invoice',target_bill_id:11}
+ ];
+ const result=calculateCreditAllocations(ledger);
+ assert.deepEqual(result.pending_bills.map(b=>[b.id,b.due]),[[10,3000],[11,2500]]);
+ assert.equal(result.allocations_by_payment[12].applied[0].bill_id,11);
+});
+
+test('Legacy payments without allocation mode adjust oldest bills and voided entries are ignored',()=>{
+ const ledger=[
+  {id:21,entry_type:'bill',entry_date:'2026-11-01',amount:4000,bill_no:'B-21'},
+  {id:22,entry_type:'payment',entry_date:'2026-11-02',amount:1500},
+  {id:23,entry_type:'payment',entry_date:'2026-11-03',amount:2000,voided_at:'2026-11-04'},
+ ];
+ assert.equal(calculateCreditAllocations(ledger).pending_total,2500);
+ assert.equal(calculateCreditAllocations(ledger,{excludeEntryId:22}).pending_total,4000);
+});
