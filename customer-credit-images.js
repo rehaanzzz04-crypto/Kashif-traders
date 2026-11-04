@@ -113,6 +113,12 @@ async function openImage(imageId){
   if(viewerUrl)URL.revokeObjectURL(viewerUrl);
   viewerUrl=URL.createObjectURL(blob);selectedImage=d;
   const image=new Image();image.src=viewerUrl;image.alt='Original credit bill photo';image.draggable=false;
+  image.title='Tap image to zoom';
+  image.dataset.zoom='1';
+  image.addEventListener('click',()=>{
+   const z=Number(image.dataset.zoom||'1'),next=z===1?1.8:z===1.8?2.6:1;
+   image.dataset.zoom=String(next);image.style.width=(next*100)+'%';
+  });
   $('billViewContent').replaceChildren(image);
   $('billViewerTitle').textContent=d.filename||'Original Credit Bill';
   $('deleteBillImage').hidden=!admin;
