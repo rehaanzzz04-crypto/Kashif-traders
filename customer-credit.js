@@ -43,25 +43,24 @@ function pdfFileName(thermal=false){
 }
 async function performPdf(button,thermal){
  if(!validSelection())return;
+ if(thermal){
+  const q=paramsForStatement('thermal_pdf');
+  // Use a dedicated HTML print surface: PDFs opened in Android's viewer
+  // cannot reliably call window.print().
+  const page=new URL('/customer-credit-print.html',location.origin);
+  page.searchParams.set('customer_id',String(selected));
+  if($('fromDate').value)page.searchParams.set('from',$('fromDate').value);
+  if($('toDate').value)page.searchParams.set('to',$('toDate').value);
+  const target=window.open(page.href,'_blank');
+  if(!target)location.href=page.href;
+  return;
+ }
  const old=button.textContent;button.disabled=true;button.textContent='Preparing…';
- let preview=thermal?window.open('about:blank','_blank'):null;
  try{
-  const blob=await fetchStatementPdf(thermal?'thermal_pdf':'pdf');
-  if(thermal){
-   const url=URL.createObjectURL(blob);
-   if(preview&&!preview.closed){
-    preview.location.href=url;
-    setTimeout(()=>{try{preview.focus();preview.print();}catch(e){}},1400);
-   }else{
-    blobDownload(blob,pdfFileName(true));
-    alert('80mm PDF saved. Open it and select your 80mm printer.');
-   }
-   setTimeout(()=>URL.revokeObjectURL(url),90000);
-  }else{
-   blobDownload(blob,pdfFileName(false));
-   alert('Professional statement PDF downloaded.');
-  }
- }catch(e){if(preview&&!preview.closed)preview.close();alert(e.message);}
+  const blob=await fetchStatementPdf('pdf');
+  blobDownload(blob,pdfFileName(false));
+  alert('Professional PDF downloaded.');
+ }catch(e){alert(e.message);}
  finally{button.disabled=false;button.textContent=old;}
 }
 function normalizedMobile(value){
@@ -74,25 +73,31 @@ function normalizedMobile(value){
 async function whatsappShare(){
  if(!validSelection())return;
  const phone=normalizedMobile(statement.customer.mobile);
- if(!phone){alert('Customer ka valid Pakistan WhatsApp number save karein.');return;}
+ if(!phone){alert('Customer ka valid WhatsApp mobile number save karein.');return;}
  const button=$('whatsappStatement'),old=button.textContent;
- button.disabled=true;button.textContent='Sending…';
+ button.disabled=true;button.textContent='Preparing PDF…';
  try{
-  const r=await fetch('/api/data?resource=customer_credit&action=send_whatsapp',{
-   method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({customer_id:selected,from:$('fromDate').value||'',to:$('toDate').value||''})
-  });
-  const result=await r.json().catch(()=>({}));
-  if(r.ok&&result.sent){alert('WhatsApp Business API accepted the statement for '+statement.customer.name+'.');return;}
-  if(r.status!==503)throw Error(result.error||'WhatsApp send failed');
-  // Dedicated WhatsApp account isn't configured. Do not claim the PDF was sent.
+  // Share the actual PDF file using the device share sheet. wa.me only
+  // sends text, and cannot attach a PDF automatically.
   const blob=await fetchStatementPdf('pdf');
-  blobDownload(blob,pdfFileName(false));
-  const text='Kashif Traders - Your Customer Credit statement PDF has been prepared. Please attach the saved PDF.';
-  const url='https://wa.me/'+phone+'?text='+encodeURIComponent(text);
-  alert('Direct WhatsApp PDF sending is not configured. PDF downloaded; WhatsApp chat will open. Attach the downloaded PDF manually.');
-  window.open(url,'_blank','noopener');
- }catch(e){alert(e.message);}
+  const filename=pdfFileName(false);
+  let shared=false;
+  const file=new File([blob],filename,{type:'application/pdf'});
+  if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
+   try{
+    await navigator.share({files:[file],title:'Kashif Traders Customer Credit Statement',
+     text:'Credit statement for '+statement.customer.name+' ('+statement.customer.mobile+'). Select WhatsApp and the saved customer contact.'});
+    shared=true;
+   }catch(err){
+    if(err?.name==='AbortError')return;
+    // Some embedded browsers have Share but refuse file attachments.
+   }
+  }
+  if(shared){alert('PDF device share menu ko diya gaya. WhatsApp mein sahi customer chat select karke send confirm karein.');return;}
+  blobDownload(blob,filename);
+  alert('Is browser mein direct file sharing available nahi. PDF download ho gayi hai. WhatsApp mein '+statement.customer.mobile+' ki chat khol kar paperclip se Documents > '+filename+' attach karein.');
+  // Do NOT send any misleading text-only message or claim the PDF was sent.
+ }catch(err){alert(err.message||'PDF share failed');}
  finally{button.disabled=false;button.textContent=old;}
 }
 $('printStatement').onclick=()=>performPdf($('printStatement'),true);
