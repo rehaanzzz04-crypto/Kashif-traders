@@ -1,4 +1,5 @@
 import { withOfflineReplay } from './_offline-replay.js';
+import customerCreditHandler from '../lib/customer-credit-handler.js';
 import { saveSupplierBillItems } from './_supplier-bill-items.js';
 import { neon } from "@neondatabase/serverless";
 import { getSessionUser, canAccess } from "./_auth.js";
@@ -758,6 +759,7 @@ async function customerPortal(sql,req,res,staffUser=null){
 }
 
 async function handler(req, res) {
+  if (req.query?.resource === 'customer_credit') return customerCreditHandler(req, res);
   const resource = String(req.query?.resource || "").trim();
   if (!allowed.has(resource))
     return res.status(400).json({ error: "Unknown resource" });
