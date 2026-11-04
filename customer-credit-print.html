@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#123d32">
+<title>80mm Customer Credit Print | Kashif Traders</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e8efea;color:#15231b;font-family:Arial,Helvetica,sans-serif}
+.print-actions{max-width:520px;margin:16px auto;padding:12px;border:1px solid #bbccbe;background:white;border-radius:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+button{font:700 15px Arial,sans-serif;border-radius:9px;padding:12px 16px;border:1px solid #123d32;background:#123d32;color:white;cursor:pointer}
+button.secondary{background:white;color:#123d32}
+#status{max-width:520px;margin:9px auto;color:#374d40;padding:0 12px;text-align:center;font-size:13px}
+#receipt{width:80mm;margin:10px auto;background:white;padding:3mm 3mm 5mm;color:#111;box-shadow:0 3px 16px #203b2525;line-height:1.23}
+.store{text-align:center;font-size:19px;font-weight:900;line-height:1.15;letter-spacing:.2px}
+.subtitle{text-align:center;font-size:11px;font-weight:800;margin-top:3px}
+.rule{border-top:1px dashed #111;margin:8px 0}
+.meta{font-size:11px;display:grid;gap:3px}
+.meta .name{font-size:12px;font-weight:800;overflow-wrap:anywhere}
+.summary{font-size:11px;display:grid;gap:5px}
+.sumrow{display:flex;justify-content:space-between;gap:8px}
+.sumrow b:last-child{white-space:nowrap;font-variant-numeric:tabular-nums}
+.final{font-size:13px;font-weight:900;border-top:1.5px solid #111;border-bottom:1.5px solid #111;padding:7px 0;margin-top:4px}
+.transactions{margin-top:6px}
+.trans{padding:7px 0 6px;border-bottom:1px dashed #555;break-inside:avoid;page-break-inside:avoid}
+.trans-title{font-size:11px;font-weight:800;overflow-wrap:anywhere}
+.trans-detail{display:flex;justify-content:space-between;gap:6px;font-size:11px;font-variant-numeric:tabular-nums;margin-top:4px}
+.trans-detail b:last-child{white-space:nowrap}
+.trans-note{font-size:10px;margin-top:3px;overflow-wrap:anywhere}
+.footer{text-align:center;font-size:11px;font-weight:800;margin-top:11px}
+@page{margin:0}
+@media print{
+ html,body{width:80mm!important;min-width:80mm!important;background:#fff!important;margin:0!important;padding:0!important}
+ .print-actions,#status{display:none!important}
+ #receipt{width:80mm!important;max-width:80mm!important;box-shadow:none!important;margin:0!important;padding:2mm 3mm 3mm!important;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+ .trans{break-inside:avoid;page-break-inside:avoid}
+}
+</style></head>
+<body>
+<nav class="print-actions" aria-label="Print options">
+<button id="printNow" type="button">🖨 Print 80mm</button>
+<button class="secondary" id="pdfDownload" type="button">Download 80mm PDF</button>
+<button class="secondary" id="goBack" type="button">Back</button>
+</nav>
+<div id="status" role="status" aria-live="polite">Loading customer statement…</div>
+<main id="receipt" aria-label="80mm customer statement"><div class="store">KASHIF TRADERS</div><div class="subtitle">CUSTOMER CREDIT STATEMENT</div><div class="rule"></div><div class="meta">Loading…</div></main>
+<script src="/customer-credit-print.js?v=1"></script>
+</body></html>
