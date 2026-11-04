@@ -22,5 +22,10 @@ jobs:
           node-version: '22'
       - name: Install dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
-      - name: Verify PDF and WhatsApp statement logic
+      - name: Check Customer Credit JavaScript syntax
+        run: |
+          node --check customer-credit.js
+          node --check lib/customer-credit-handler.js
+          node --check lib/customer-credit-allocations.js
+      - name: Verify Customer Credit statements and invoice allocation
         run: node --test tests/customer-credit.test.mjs
