@@ -37,3 +37,33 @@
 @media(max-width:850px){.customerlist{max-height:none}.directory-head-actions{flex-wrap:nowrap}.directory-head-actions button{padding:8px 7px}}
 @media(max-width:420px){.directory-head-actions button{font-size:10px;padding:7px 6px}.directory-head h2{font-size:17px}.directory-sort select{max-width:170px}}
 @media print{#customerDirectory{display:none!important}}
+
+
+/* Secure original bill image archive — compact on mobile */
+.bill-images-section{margin-top:17px;padding:13px;border-radius:11px;border:1px solid #dce7de;background:#f7faf7}
+.bill-images-section[hidden]{display:none!important}
+.bill-image-head{display:grid;gap:5px}.bill-image-head strong{font-size:13px;color:#123d32}
+.bill-image-head small{font-size:11px;color:#718375}
+.bill-image-actions{display:flex;gap:8px;margin:10px 0}
+.bill-image-actions button{font-size:12px;padding:9px 14px}
+.bill-image-preview{display:flex;gap:8px;flex-wrap:wrap}
+.bill-image-empty{padding:12px;color:#76857b;font-size:12px}
+.bill-image-chip{width:94px;min-height:100px;position:relative;background:white;border:1px solid #d6e2da;border-radius:9px;padding:5px;display:flex;flex-direction:column;align-items:center;gap:5px}
+.bill-image-chip img{width:82px;height:76px;object-fit:contain;border-radius:5px;background:#edf2ed}
+.bill-image-chip small{font-size:10px;color:#557162}
+.bill-image-chip.existing{width:125px}
+.bill-thumb-link{background:transparent!important;color:#123d32!important;border:0!important;padding:2px!important;width:100%;min-height:84px;display:grid;justify-items:center;gap:5px}
+.bill-file-thumb{background:#eaf3eb;border:1px solid #d1e2d5;border-radius:7px;display:grid;place-items:center;width:60px;height:48px;font-size:12px;font-weight:900;color:#1e4e3a}
+.bill-filename{display:block;width:100%;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bill-image-remove{position:absolute;right:-5px;top:-5px;border:1px solid #e9e0dc!important;background:#fff!important;color:#9a3025!important;border-radius:50%;width:25px;height:25px;padding:0!important;font-size:17px;display:grid;place-items:center;line-height:1}
+.bill-view-button{background:#eaf3ec;color:#14503b;border:1px solid #c6d8cb;font-size:10px;padding:5px 8px;margin-top:6px;border-radius:8px;display:inline-flex;white-space:nowrap}
+.bill-image-viewer{width:min(96vw,780px);padding:12px;max-height:95dvh}
+.bill-view-head,.bill-view-actions,.bill-gallery-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0}
+.bill-view-head strong{font-size:14px;overflow-wrap:anywhere}
+.bill-view-content{height:min(68dvh,850px);width:100%;overflow:auto;display:grid;place-items:start center;background:#eff3ef;border-radius:9px;touch-action:pan-x pan-y pinch-zoom}
+.bill-view-content img{max-width:none;width:100%;height:auto;object-fit:contain}
+.bill-gallery-nav button{font-size:12px;padding:7px 11px}
+.bill-gallery-nav small{font-size:12px;font-weight:750;color:#45634f}
+.bill-view-actions button{font-size:12px;padding:9px 12px}
+@media(max-width:500px){.bill-image-viewer{padding:10px}.bill-view-content{height:65dvh}.bill-image-chip{width:83px}.bill-image-chip img{width:72px}}
+@media print{#billImageSection,#billImageViewer,.bill-view-button{display:none!important}}
