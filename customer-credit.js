@@ -78,7 +78,7 @@ async function loadStatement(id,collapseAfterSelection=false){
   renderCustomers();renderStatement();
  }catch(e){if(request===directoryRequest)alert(e.message);}
 }
-function renderStatement(){if(!statement)return;const from=$('fromDate').value,to=$('toDate').value;let running=0;let html='';let displayed=0;for(const e of statement.entries){const date=String(e.entry_date).slice(0,10),amt=Number(e.amount);running+=e.entry_type==='bill'?amt:-amt;if((from&&date<from)||(to&&date>to))continue;displayed++;html+='<tr><td><b>'+esc(date)+'</b><small>'+esc(e.bill_no||(e.entry_type==='bill'?'Bill #':'Payment #')+e.id)+'</small></td><td><b>'+(e.entry_type==='bill'?'Credit Bill':'Payment Received')+'</b><small>'+esc(e.payment_method||e.notes||'—')+'</small>'+(e.payment_method&&e.notes?'<small>'+esc(e.notes)+'</small>':'')+(e.entry_type==='payment'&&statement.allocations?.allocations_by_payment?.[Number(e.id)]?'<small>Adjusted: '+esc(statement.allocations.allocations_by_payment[Number(e.id)].applied.map(a=>a.bill_no+' ('+money(a.amount)+')').join(', ')||'Unallocated advance')+'</small>':'')+'</td><td>'+(e.entry_type==='bill'?money(amt):'—')+'</td><td>'+(e.entry_type==='payment'?money(amt):'—')+'</td><td><b>'+money(running)+'</b></td><td class="screenonly">'+(canEdit?'<button class="rowaction" data-edit="'+Number(e.id)+'">Edit</button> <button class="rowaction" data-void="'+Number(e.id)+'">Void</button>':'—')+'</td></tr>';} $('statementBody').innerHTML=html||'<tr><td colspan="6" class="empty">'+(displayed?'':'No transactions for selected dates.')+'</td></tr>';}
+function renderStatement(){if(!statement)return;const from=$('fromDate').value,to=$('toDate').value;let running=0;let html='';let displayed=0;for(const e of statement.entries){const date=String(e.entry_date).slice(0,10),amt=Number(e.amount);running+=e.entry_type==='bill'?amt:-amt;if((from&&date<from)||(to&&date>to))continue;displayed++;html+='<tr><td><b>'+esc(date)+'</b><small>'+esc(e.bill_no||(e.entry_type==='bill'?'Bill #':'Payment #')+e.id)+'</small></td><td><b>'+(e.entry_type==='bill'?'Credit Bill':'Payment Received')+'</b><small>'+esc(e.payment_method||e.notes||'—')+'</small>'+(e.payment_method&&e.notes?'<small>'+esc(e.notes)+'</small>':'')+(e.entry_type==='payment'&&statement.allocations?.allocations_by_payment?.[Number(e.id)]?'<small>Adjusted: '+esc(statement.allocations.allocations_by_payment[Number(e.id)].applied.map(a=>a.bill_no+' ('+money(a.amount)+')').join(', ')||'Unallocated advance')+'</small>':'')+(e.entry_type==='bill'&&Number(statement.images_by_bill?.[String(e.id)]||0)>0?'<button type="button" class="bill-view-button" data-bill-images="'+Number(e.id)+'">View Bill ('+Number(statement.images_by_bill[String(e.id)])+')</button>':'')+'</td><td>'+(e.entry_type==='bill'?money(amt):'—')+'</td><td>'+(e.entry_type==='payment'?money(amt):'—')+'</td><td><b>'+money(running)+'</b></td><td class="screenonly">'+(canEdit?'<button class="rowaction" data-edit="'+Number(e.id)+'">Edit</button> <button class="rowaction" data-void="'+Number(e.id)+'">Void</button>':'—')+'</td></tr>';} $('statementBody').innerHTML=html||'<tr><td colspan="6" class="empty">'+(displayed?'':'No transactions for selected dates.')+'</td></tr>';}
 let invoiceSnapshot={pending_bills:[],unapplied_advance:0},pendingRequest=0;
 async function loadPendingInvoices(){
  if(editing!=='payment')return;
@@ -138,6 +138,7 @@ async function openEditor(type,row=null){
   $('entryDate').value=row?String(row.entry_date).slice(0,10):today();
   $('amount').value=row?.amount||'';$('reference').value=row?.bill_no||'';$('method').value=row?.payment_method||'Cash';
  }
+ window.CreditBillImages?.reset(type,row,canEdit);
  if(type==='payment'){
   $('allocationMode').value=row?.allocation_mode==='invoice'?'invoice':'auto';
   $('targetBill').dataset.desired=row?.target_bill_id||'';
@@ -161,8 +162,25 @@ $('entryForm').addEventListener('submit',async e=>{e.preventDefault();let body,a
    if(Number(body.amount)>bill.due)return alert('Payment is greater than pending invoice balance.');
   }
  }
- if($('recordId').value)body.id=Number($('recordId').value);if(!body.id&&editing!=='customer'&&!body.customer_id)return alert('Create a customer first.');$('save').disabled=true;try{const d=await api(action,body);$('editor').close();if(editing==='customer'&&!body.id)selected=Number(d.customer.id);if(editing!=='customer')selected=Number(body.customer_id);alert('Record saved successfully.');await loadCustomers();}catch(err){alert(err.message);}finally{$('save').disabled=false;}});
-$('statementBody').addEventListener('click',async e=>{const edit=e.target.closest('[data-edit]'),voidBtn=e.target.closest('[data-void]');if(!canEdit||!statement)return;if(edit){const x=statement.entries.find(e=>Number(e.id)===Number(edit.dataset.edit));if(x)openEditor(x.entry_type,x);}if(voidBtn){const id=Number(voidBtn.dataset.void);if(!confirm('Void this record? Its amount will be removed from customer balance. An audit history will be retained.'))return;try{await api('void',{id});alert('Entry voided.');await loadCustomers();}catch(err){alert(err.message);}}});
+ if($('recordId').value)body.id=Number($('recordId').value);if(!body.id&&editing!=='customer'&&!body.customer_id)return alert('Create a customer first.');
+ $('save').disabled=true;
+ try{
+  const d=await api(action,body);
+  let photoWarning='';
+  if(editing==='bill'&&d.entry?.id){
+   try{await window.CreditBillImages?.saveAfterBill(d.entry.id,body.customer_id);}
+   catch(err){photoWarning=err.message;}
+  }
+  $('editor').close();
+  if(editing==='customer'&&!body.id)selected=Number(d.customer.id);
+  if(editing!=='customer')selected=Number(body.customer_id);
+  alert(photoWarning||'Record saved successfully.');
+  await loadCustomers();
+ }catch(err){alert(err.message);}
+ finally{$('save').disabled=false;}
+});
+$('statementBody').addEventListener('click',async e=>{const view=e.target.closest('[data-bill-images]');if(view){window.CreditBillImages?.openBillGallery(Number(view.dataset.billImages));return;}const edit=e.target.closest('[data-edit]'),voidBtn=e.target.closest('[data-void]');if(!canEdit||!statement)return;if(edit){const x=statement.entries.find(e=>Number(e.id)===Number(edit.dataset.edit));if(x)openEditor(x.entry_type,x);}if(voidBtn){const id=Number(voidBtn.dataset.void);if(!confirm('Void this record? Its amount will be removed from customer balance. An audit history will be retained.'))return;try{await api('void',{id});alert('Entry voided.');await loadCustomers();}catch(err){alert(err.message);}}});
+window.addEventListener('credit-bill-image-changed',()=>{if(selected)loadStatement(selected);});
 $('customerList').addEventListener('click',e=>{
  const b=e.target.closest('[data-customer]');
  if(b)loadStatement(Number(b.dataset.customer),true);
