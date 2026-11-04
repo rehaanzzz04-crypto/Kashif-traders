@@ -9,6 +9,25 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const date=s=>{const d=String(s||'').slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(d)?d.slice(8,10)+'-'+d.slice(5,7)+'-'+d.slice(2,4):d};
 const status=message=>{$('status').textContent=message};
 let loaded=false;
+const PAPER_WIDTH_MM=80;
+let paperStyle=null;
+function setThermalPageLength(){
+ // A 80mm paper is 302.36 CSS px. Match the receipt's actual content
+ // to the print page to avoid unused A4-length pages.
+ const receipt=$('receipt');
+ if(!receipt)return;
+ const px=receipt.scrollHeight;
+ const mm=Math.ceil(px*25.4/96)+2;
+ const length=Math.max(60,Math.min(1200,mm));
+ if(!paperStyle){
+  paperStyle=document.createElement('style');
+  paperStyle.id='ktThermalPaperSize';
+  document.head.appendChild(paperStyle);
+ }
+ paperStyle.textContent='@page{size:'+PAPER_WIDTH_MM+'mm '+length+'mm;margin:0}';
+ return length;
+}
+
 function show(data){
  const c=data.customer,rows=data.entries||[],range=from||to?date(from||'Beginning')+' to '+date(to||'Latest'):'All Dates';
  let running=0,opening=0,billed=0,paid=0;
@@ -40,7 +59,7 @@ function show(data){
  }).join(''):'<div class="trans">No transactions in selected period.</div>';
  $('receipt').innerHTML=header+summary+'<div class="rule"></div><div class="transactions">'+transactions+'</div><div class="footer">THANK YOU</div>';
  document.title='80mm Credit - '+c.name;
- loaded=true;status('Ready to print. Tap Print 80mm and select the 80mm thermal printer. If the device print service is unavailable, save PDF and print from your printer app.');
+ loaded=true;setThermalPageLength();status('Ready to print. Tap Print 80mm and select the 80mm thermal printer. If the device print service is unavailable, save PDF and print from your printer app.');
 }
 async function load(){
  if(!Number.isSafeInteger(customerId)||customerId<=0){status('Invalid customer. Go back and select a customer.');return;}
@@ -53,7 +72,8 @@ async function load(){
  show(data);
  }catch(e){status(e.message||'Statement could not be loaded. Sign in and try again.');}
 }
-$('printNow').onclick=()=>{if(!loaded){status('Statement has not loaded yet.');return;}window.print();};
+$('printNow').onclick=()=>{if(!loaded){status('Statement has not loaded yet.');return;}setThermalPageLength();window.print();};
+window.addEventListener('beforeprint',setThermalPageLength);
 $('goBack').onclick=()=>{if(history.length>1)history.back();else location.href='/customer-credit.html';};
 $('pdfDownload').onclick=async()=>{
  if(!loaded)return status('Statement has not loaded yet.');
