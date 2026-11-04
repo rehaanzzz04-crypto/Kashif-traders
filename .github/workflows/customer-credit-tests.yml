@@ -1,0 +1,26 @@
+name: Customer Credit checks
+on:
+  push:
+    branches:
+      - working-from-production-20261008
+    paths:
+      - 'customer-credit.*'
+      - 'lib/customer-credit-*.js'
+      - 'tests/customer-credit.test.mjs'
+      - '.github/workflows/customer-credit-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  customer-credit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Verify PDF and WhatsApp statement logic
+        run: node --test tests/customer-credit.test.mjs
