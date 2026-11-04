@@ -14,7 +14,90 @@ function openEditor(type,row=null){editing=type;$('entryForm').reset();$('record
 $('entryForm').addEventListener('submit',async e=>{e.preventDefault();let body,action=editing==='customer'?'customer':'entry';if(editing==='customer'){body={name:$('name').value,mobile:$('mobile').value,notes:$('notes').value};}else{body={customer_id:Number($('customerId').value),entry_type:editing,entry_date:$('entryDate').value,amount:$('amount').value,bill_no:$('reference').value,payment_method:$('method').value,notes:$('notes').value};}if($('recordId').value)body.id=Number($('recordId').value);if(!body.id&&editing!=='customer'&&!body.customer_id)return alert('Create a customer first.');$('save').disabled=true;try{const d=await api(action,body);$('editor').close();if(editing==='customer'&&!body.id)selected=Number(d.customer.id);if(editing!=='customer')selected=Number(body.customer_id);alert('Record saved successfully.');await loadCustomers();}catch(err){alert(err.message);}finally{$('save').disabled=false;}});
 $('statementBody').addEventListener('click',async e=>{const edit=e.target.closest('[data-edit]'),voidBtn=e.target.closest('[data-void]');if(!canEdit||!statement)return;if(edit){const x=statement.entries.find(e=>Number(e.id)===Number(edit.dataset.edit));if(x)openEditor(x.entry_type,x);}if(voidBtn){const id=Number(voidBtn.dataset.void);if(!confirm('Void this record? Its amount will be removed from customer balance. An audit history will be retained.'))return;try{await api('void',{id});alert('Entry voided.');await loadCustomers();}catch(err){alert(err.message);}}});
 $('customerList').addEventListener('click',e=>{const b=e.target.closest('[data-customer]');if(b)loadStatement(Number(b.dataset.customer));});$('newCustomer').onclick=()=>openEditor('customer');$('newBill').onclick=()=>openEditor('bill');$('newPayment').onclick=()=>openEditor('payment');$('editCustomer').onclick=()=>statement&&openEditor('customer',statement.customer);$('closeDialog').onclick=$('cancelDialog').onclick=()=>$('editor').close();$('refresh').onclick=()=>loadCustomers();$('search').oninput=renderCustomers;document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('selected',x===b));renderCustomers();});$('fromDate').onchange=$('toDate').onchange=renderStatement;$('resetDates').onclick=()=>{$('fromDate').value='';$('toDate').value='';renderStatement();};
-$('printStatement').onclick=()=>{if(!statement)return alert('Select a customer first');document.title='Kashif Traders - '+statement.customer.name+' Credit Statement';window.print();};
+function paramsForStatement(action){
+ const q=new URLSearchParams({resource:'customer_credit',action,customer_id:String(selected)});
+ if($('fromDate').value)q.set('from',$('fromDate').value);
+ if($('toDate').value)q.set('to',$('toDate').value);
+ return q;
+}
+function validSelection(){
+ if(!statement||!selected){alert('Select a customer first');return false;}
+ if(statement.has_more){alert('This customer has more than 5,000 records. Use a shorter date range after full export is available.');return false;}
+ if($('fromDate').value&&$('toDate').value&&$('fromDate').value>$('toDate').value){alert('From date must not be after To date.');return false;}
+ return true;
+}
+async function fetchStatementPdf(action){
+ const r=await fetch('/api/data?'+paramsForStatement(action),{credentials:'same-origin',cache:'no-store'});
+ if(!r.ok){const j=await r.json().catch(()=>({}));throw Error(j.error||'Statement PDF failed');}
+ return r.blob();
+}
+function blobDownload(blob,filename){
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=url;a.download=filename;
+ document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+function pdfFileName(thermal=false){
+ const name=(statement?.customer?.name||'Customer').replace(/[^a-z0-9_-]+/gi,'-').slice(0,45);
+ return 'KT-'+name+'-'+(thermal?'80mm-':'')+'Credit-Statement.pdf';
+}
+async function performPdf(button,thermal){
+ if(!validSelection())return;
+ const old=button.textContent;button.disabled=true;button.textContent='Preparing…';
+ let preview=thermal?window.open('about:blank','_blank'):null;
+ try{
+  const blob=await fetchStatementPdf(thermal?'thermal_pdf':'pdf');
+  if(thermal){
+   const url=URL.createObjectURL(blob);
+   if(preview&&!preview.closed){
+    preview.location.href=url;
+    setTimeout(()=>{try{preview.focus();preview.print();}catch(e){}},1400);
+   }else{
+    blobDownload(blob,pdfFileName(true));
+    alert('80mm PDF saved. Open it and select your 80mm printer.');
+   }
+   setTimeout(()=>URL.revokeObjectURL(url),90000);
+  }else{
+   blobDownload(blob,pdfFileName(false));
+   alert('Professional statement PDF downloaded.');
+  }
+ }catch(e){if(preview&&!preview.closed)preview.close();alert(e.message);}
+ finally{button.disabled=false;button.textContent=old;}
+}
+function normalizedMobile(value){
+ let d=String(value||'').replace(/\D/g,'');
+ if(/^00923\d{9}$/.test(d))d=d.slice(2);
+ else if(/^03\d{9}$/.test(d))d='92'+d.slice(1);
+ else if(/^3\d{9}$/.test(d))d='92'+d;
+ return /^923\d{9}$/.test(d)?d:null;
+}
+async function whatsappShare(){
+ if(!validSelection())return;
+ const phone=normalizedMobile(statement.customer.mobile);
+ if(!phone){alert('Customer ka valid Pakistan WhatsApp number save karein.');return;}
+ const button=$('whatsappStatement'),old=button.textContent;
+ button.disabled=true;button.textContent='Sending…';
+ try{
+  const r=await fetch('/api/data?resource=customer_credit&action=send_whatsapp',{
+   method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({customer_id:selected,from:$('fromDate').value||'',to:$('toDate').value||''})
+  });
+  const result=await r.json().catch(()=>({}));
+  if(r.ok&&result.sent){alert('WhatsApp Business API accepted the statement for '+statement.customer.name+'.');return;}
+  if(r.status!==503)throw Error(result.error||'WhatsApp send failed');
+  // Dedicated WhatsApp account isn't configured. Do not claim the PDF was sent.
+  const blob=await fetchStatementPdf('pdf');
+  blobDownload(blob,pdfFileName(false));
+  const text='Kashif Traders - Your Customer Credit statement PDF has been prepared. Please attach the saved PDF.';
+  const url='https://wa.me/'+phone+'?text='+encodeURIComponent(text);
+  alert('Direct WhatsApp PDF sending is not configured. PDF downloaded; WhatsApp chat will open. Attach the downloaded PDF manually.');
+  window.open(url,'_blank','noopener');
+ }catch(e){alert(e.message);}
+ finally{button.disabled=false;button.textContent=old;}
+}
+$('printStatement').onclick=()=>performPdf($('printStatement'),true);
+$('pdfStatement').onclick=()=>performPdf($('pdfStatement'),false);
+$('whatsappStatement').onclick=whatsappShare;
 $('exportCsv').onclick=()=>{if(!statement)return alert('Select a customer first');let balance=0;const rows=[['Date','Reference','Type','Notes','Debit PKR','Credit PKR','Running Balance PKR']];for(const e of statement.entries){const date=String(e.entry_date).slice(0,10),amt=Number(e.amount);balance+=e.entry_type==='bill'?amt:-amt;if(($('fromDate').value&&date<$('fromDate').value)||($('toDate').value&&date>$('toDate').value))continue;rows.push([date,e.bill_no||'',e.entry_type,e.notes||'',e.entry_type==='bill'?amt.toFixed(2):'',e.entry_type==='payment'?amt.toFixed(2):'',balance.toFixed(2)]);}const csv=rows.map(row=>row.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')).join('\r\n'),blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='KT-Customer-Credit-'+statement.customer.id+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),3000);};
 loadCustomers();
 })();
