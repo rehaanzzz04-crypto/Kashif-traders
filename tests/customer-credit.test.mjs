@@ -111,3 +111,16 @@ test('Legacy payments without allocation mode adjust oldest bills and voided ent
  assert.equal(calculateCreditAllocations(ledger).pending_total,2500);
  assert.equal(calculateCreditAllocations(ledger,{excludeEntryId:22}).pending_total,4000);
 });
+
+import {validateBillImage,MAX_BILL_IMAGE_BYTES,MAX_BILL_IMAGES} from '../lib/customer-credit-images.js';
+
+test('Bill image archive enforces three images and a private compressed image size limit',()=>{
+ assert.equal(MAX_BILL_IMAGES,3);
+ assert.equal(MAX_BILL_IMAGE_BYTES,700000);
+ const jpeg=Buffer.concat([Buffer.from([0xff,0xd8,0xff,0xe0]),Buffer.alloc(40)]);
+ const result=validateBillImage(jpeg.toString('base64'));
+ assert.equal(result.mime,'image/jpeg');
+ assert.equal(result.bytes.length,jpeg.length);
+ assert.throws(()=>validateBillImage(Buffer.alloc(24).toString('base64')),/JPEG|WebP/);
+ assert.throws(()=>validateBillImage(Buffer.alloc(700001,1).toString('base64')),/oversized|700 KB/);
+});
