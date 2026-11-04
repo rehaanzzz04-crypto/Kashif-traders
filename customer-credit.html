@@ -1,12 +1,39 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123d32"><title>Customer Credit | Kashif Traders</title>
-<link rel="stylesheet" href="/customer-credit.css?v=2"></head><body>
+<link rel="stylesheet" href="/customer-credit.css?v=3"></head><body>
 <header class="top"><div class="brand"><span class="mark">KT</span><div><strong>Kashif Traders</strong><small>CUSTOMER CREDIT WORKSPACE</small></div></div><a class="back" href="/">← Dashboard</a></header>
 <main class="wrap">
 <section class="intro"><div><span class="eyebrow">CUSTOMER ACCOUNTS</span><h1>Customer Credit</h1><p>Manual credit bills, received payments and customer-wise statements. Independent from ERP sales and inventory.</p></div><div class="actions"><button id="newCustomer">+ Customer</button><button id="newBill">+ Credit Bill</button><button id="newPayment" class="gold">+ Payment</button></div></section>
 <div id="notice" role="status" aria-live="polite"></div>
 <div class="stats"><div class="stat"><small>Total Credit Sales</small><strong id="allBills">Rs 0</strong></div><div class="stat"><small>Total Received</small><strong id="allPaid">Rs 0</strong></div><div class="stat"><small>Outstanding</small><strong id="allDue">Rs 0</strong></div><div class="stat"><small>Customers</small><strong id="allCustomers">0</strong></div></div>
-<div class="layout"><section class="panel customers"><div class="panelhead"><div><span class="eyebrow">DIRECTORY</span><h2>Customers</h2></div><button class="subtle" id="refresh">Refresh</button></div><input id="search" type="search" placeholder="Search name or mobile…" aria-label="Search customers"><div class="filters"><button data-filter="all" class="selected">All</button><button data-filter="due">Outstanding</button><button data-filter="clear">Clear / Advance</button></div><div id="customerList" class="customerlist"><div class="empty">Loading customers…</div></div></section>
+<div class="layout"><section class="panel customers" id="customerDirectory" aria-label="Customer Directory">
+<div class="panelhead directory-head">
+  <div><span class="eyebrow">DIRECTORY</span><h2>Customers <span id="directoryTotal" class="directory-count">0</span></h2></div>
+  <div class="directory-head-actions"><button class="subtle" type="button" id="refresh">Refresh</button><button class="subtle" type="button" id="toggleDirectory" aria-expanded="true" aria-controls="directoryContent">Collapse</button></div>
+</div>
+<div class="directory-selected" id="directorySelected" hidden>
+  <div><small>SELECTED CUSTOMER</small><strong id="directorySelectedName">—</strong><span id="directorySelectedBalance"></span></div>
+  <button type="button" class="subtle" id="changeCustomer">Change</button>
+</div>
+<div id="directoryContent">
+  <input id="search" type="search" placeholder="Search customer name or mobile…" aria-label="Search customers" autocomplete="off">
+  <div class="filters"><button type="button" data-filter="all" class="selected">All</button><button type="button" data-filter="due">Outstanding</button><button type="button" data-filter="clear">Clear / Advance</button></div>
+  <div class="directory-sort">
+    <label for="customerSort">Sort by</label>
+    <select id="customerSort" aria-label="Sort customers"><option value="name">Name A–Z</option><option value="due">Highest Outstanding</option><option value="newest">Recently Added</option></select>
+  </div>
+  <div id="customerList" class="customerlist" aria-live="polite"><div class="empty">Loading customers…</div></div>
+  <div class="directory-pagination">
+    <small id="directoryShowing" aria-live="polite"></small>
+    <button type="button" id="viewMoreCustomers" class="subtle" hidden>View More</button>
+    <div id="directoryPages" class="directory-page-buttons" hidden>
+      <button type="button" class="subtle" id="previousCustomerPage">Previous</button>
+      <span id="directoryPageLabel" aria-live="polite"></span>
+      <button type="button" class="subtle" id="nextCustomerPage">Next</button>
+    </div>
+  </div>
+</div>
+</section>
 <section class="panel details"><div class="panelhead"><div><span class="eyebrow">ACCOUNT STATEMENT</span><h2 id="customerTitle">Select a customer</h2><p class="muted" id="customerInfo">Choose a customer to see complete credit history.</p></div><button class="subtle" id="editCustomer" hidden>Edit</button></div>
 <div class="substats"><div><small>Total Bills</small><b id="sumBills">Rs 0</b></div><div><small>Payments</small><b id="sumPaid">Rs 0</b></div><div><small>Balance</small><b id="sumDue">Rs 0</b></div></div>
 <div class="statementtools"><input id="fromDate" type="date" aria-label="From date"><input id="toDate" type="date" aria-label="To date"><button id="resetDates" class="subtle">All Dates</button><button id="printStatement" class="subtle">Print 80mm</button><button id="pdfStatement" class="subtle">PDF Statement</button><button id="whatsappStatement" class="subtle">WhatsApp PDF</button><button id="exportCsv" class="subtle">CSV</button></div>
@@ -21,4 +48,4 @@
 <div id="allocationPreview" class="allocation-preview" aria-live="polite"></div></div><label id="methodField" hidden>Payment Method<select id="method"><option>Cash</option><option>Bank Transfer</option><option>Easypaisa</option><option>JazzCash</option><option>Other</option></select></label></div>
 <label>Notes (optional)<textarea id="notes" maxlength="1000" rows="3" placeholder="Optional details"></textarea></label>
 <div class="dialogactions"><button type="button" class="subtle" id="cancelDialog">Cancel</button><button type="submit" id="save">Save Record</button></div></form></dialog>
-<script src="/customer-credit.js?v=5"></script></body></html>
+<script src="/customer-credit.js?v=6"></script></body></html>
