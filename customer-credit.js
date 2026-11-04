@@ -10,8 +10,87 @@ async function loadCustomers(preserve=true){try{const d=await api('customers');c
 function renderCustomers(){const query=$('search').value.trim().toLowerCase();const rows=customers.filter(c=>(c.name+' '+(c.mobile||'')).toLowerCase().includes(query)&& (filter==='all'||(filter==='due'?Number(c.billed)-Number(c.received)>0:Number(c.billed)-Number(c.received)<=0)));$('customerList').innerHTML=rows.length?rows.map(c=>{const due=Number(c.billed)-Number(c.received);return '<button class="customerrow '+(Number(c.id)===selected?'active':'')+'" data-customer="'+Number(c.id)+'"><span><strong>'+esc(c.name)+'</strong><small>'+esc(c.mobile||'No mobile')+' · '+Number(c.entries||0)+' entries</small></span><b class="'+(due>0?'due':'')+'">'+money(due)+'</b></button>'}).join(''):'<div class="empty">No customers found.</div>';}
 async function loadStatement(id){try{const d=await api('statement&customer_id='+encodeURIComponent(id));selected=Number(id);statement=d;canEdit=d.can_edit;$('customerTitle').textContent=d.customer.name;$('customerInfo').textContent=(d.customer.mobile||'No mobile')+(d.customer.notes?' · '+d.customer.notes:'');$('editCustomer').hidden=!canEdit;$('sumBills').textContent=money(d.totals.billed);$('sumPaid').textContent=money(d.totals.received);$('sumDue').textContent=money(Number(d.totals.billed)-Number(d.totals.received));$('statementWarning').textContent=d.has_more?'Only first 5,000 entries displayed. Totals include all records.':'';renderCustomers();renderStatement();}catch(e){alert(e.message);}}
 function renderStatement(){if(!statement)return;const from=$('fromDate').value,to=$('toDate').value;let running=0;let html='';let displayed=0;for(const e of statement.entries){const date=String(e.entry_date).slice(0,10),amt=Number(e.amount);running+=e.entry_type==='bill'?amt:-amt;if((from&&date<from)||(to&&date>to))continue;displayed++;html+='<tr><td><b>'+esc(date)+'</b><small>'+esc(e.bill_no||(e.entry_type==='bill'?'Bill #':'Payment #')+e.id)+'</small></td><td><b>'+(e.entry_type==='bill'?'Credit Bill':'Payment Received')+'</b><small>'+esc(e.payment_method||e.notes||'—')+'</small>'+(e.payment_method&&e.notes?'<small>'+esc(e.notes)+'</small>':'')+'</td><td>'+(e.entry_type==='bill'?money(amt):'—')+'</td><td>'+(e.entry_type==='payment'?money(amt):'—')+'</td><td><b>'+money(running)+'</b></td><td class="screenonly">'+(canEdit?'<button class="rowaction" data-edit="'+Number(e.id)+'">Edit</button> <button class="rowaction" data-void="'+Number(e.id)+'">Void</button>':'—')+'</td></tr>';} $('statementBody').innerHTML=html||'<tr><td colspan="6" class="empty">'+(displayed?'':'No transactions for selected dates.')+'</td></tr>';}
-function openEditor(type,row=null){editing=type;$('entryForm').reset();$('recordId').value=row?.id||'';$('customerFields').hidden=type!=='customer';$('entryFields').hidden=type==='customer';$('methodField').hidden=type!=='payment';$('referenceLabel').firstChild.textContent=type==='payment'?'Payment Reference (optional)':'Bill Number / Reference';$('dialogTitle').textContent=(row?'Edit ':'Add ')+(type==='customer'?'Customer':type==='bill'?'Credit Bill':'Payment');$('notes').value=row?.notes||'';if(type==='customer'){$('name').value=row?.name||'';$('mobile').value=row?.mobile||'';}else{$('customerId').innerHTML=customers.map(c=>'<option value="'+Number(c.id)+'">'+esc(c.name)+'</option>').join('');$('customerId').value=row?.customer_id||selected||customers[0]?.id||'';$('entryDate').value=row?String(row.entry_date).slice(0,10):today();$('amount').value=row?.amount||'';$('reference').value=row?.bill_no||'';$('method').value=row?.payment_method||'Cash';} $('editor').showModal();}
-$('entryForm').addEventListener('submit',async e=>{e.preventDefault();let body,action=editing==='customer'?'customer':'entry';if(editing==='customer'){body={name:$('name').value,mobile:$('mobile').value,notes:$('notes').value};}else{body={customer_id:Number($('customerId').value),entry_type:editing,entry_date:$('entryDate').value,amount:$('amount').value,bill_no:$('reference').value,payment_method:$('method').value,notes:$('notes').value};}if($('recordId').value)body.id=Number($('recordId').value);if(!body.id&&editing!=='customer'&&!body.customer_id)return alert('Create a customer first.');$('save').disabled=true;try{const d=await api(action,body);$('editor').close();if(editing==='customer'&&!body.id)selected=Number(d.customer.id);if(editing!=='customer')selected=Number(body.customer_id);alert('Record saved successfully.');await loadCustomers();}catch(err){alert(err.message);}finally{$('save').disabled=false;}});
+let invoiceSnapshot={pending_bills:[],unapplied_advance:0},pendingRequest=0;
+async function loadPendingInvoices(){
+ if(editing!=='payment')return;
+ const customerId=Number($('customerId').value),request=++pendingRequest;
+ invoiceSnapshot={pending_bills:[],unapplied_advance:0};
+ $('targetBill').innerHTML='<option value="">Loading pending invoices…</option>';
+ if(!customerId)return;
+ try{
+  const query='pending_invoices&customer_id='+encodeURIComponent(customerId)
+     +($('recordId').value?'&exclude_entry_id='+encodeURIComponent($('recordId').value):'');
+  const result=await api(query);
+  if(request!==pendingRequest)return;
+  invoiceSnapshot=result.allocation||invoiceSnapshot;
+  const previous=$('targetBill').dataset.desired||$('targetBill').value;
+  $('targetBill').innerHTML='<option value="">Select Pending Invoice</option>'
+   +invoiceSnapshot.pending_bills.map(b=>'<option value="'+Number(b.id)+'">'+esc(b.bill_no)+' | '+esc(b.date)+' | Due: '+money(b.due)+'</option>').join('');
+  if(invoiceSnapshot.pending_bills.some(b=>String(b.id)===String(previous)))$('targetBill').value=String(previous);
+  $('targetBill').dataset.desired='';
+  renderAllocationPreview();
+ }catch(e){if(request===pendingRequest){$('targetBill').innerHTML='<option value="">Cannot load pending invoices</option>';$('allocationPreview').textContent=e.message;}}
+}
+function renderAllocationPreview(){
+ if(editing!=='payment')return;
+ const mode=$('allocationMode').value,isInvoice=mode==='invoice',entered=Number($('amount').value||0);
+ $('invoicePicker').hidden=!isInvoice;
+ const bills=invoiceSnapshot.pending_bills||[];
+ const target=bills.find(b=>String(b.id)===$('targetBill').value);
+ $('invoiceBalance').textContent=target?'Invoice '+target.bill_no+' — Remaining '+money(target.due):'Select an outstanding invoice.';
+ if(!Number.isFinite(entered)||entered<=0){$('allocationPreview').textContent='Enter payment amount to preview invoice adjustment.';return;}
+ if(isInvoice){
+  $('allocationPreview').textContent=target
+   ?'Apply '+money(entered)+' to '+target.bill_no+' (remaining '+money(target.due)+')'+(entered>target.due?' — Amount exceeds invoice balance.':'')
+   :'Select a pending invoice to apply this payment.';
+  return;
+ }
+ let left=Math.round(entered*100),text=[];
+ for(const bill of bills){
+  const take=Math.min(left,Math.round(bill.due*100));if(take>0)text.push(bill.bill_no+': '+money(take/100));
+  left-=take;if(left<=0)break;
+ }
+ $('allocationPreview').textContent=(text.length?'Auto adjustment (oldest first): '+text.join(' · '):'No pending invoice to adjust.')
+ +(left>0?' · Customer advance: '+money(left/100):'');
+}
+async function openEditor(type,row=null){
+ editing=type;$('entryForm').reset();$('recordId').value=row?.id||'';
+ $('customerFields').hidden=type!=='customer';$('entryFields').hidden=type==='customer';
+ $('methodField').hidden=type!=='payment';$('allocationFields').hidden=type!=='payment';
+ $('referenceLabel').firstChild.textContent=type==='payment'?'Payment Reference (optional)':'Bill Number / Reference';
+ $('dialogTitle').textContent=(row?'Edit ':'Add ')+(type==='customer'?'Customer':type==='bill'?'Credit Bill':'Payment');
+ $('notes').value=row?.notes||'';
+ if(type==='customer'){$('name').value=row?.name||'';$('mobile').value=row?.mobile||'';}
+ else{
+  $('customerId').innerHTML=customers.map(c=>'<option value="'+Number(c.id)+'">'+esc(c.name)+'</option>').join('');
+  $('customerId').value=row?.customer_id||selected||customers[0]?.id||'';
+  $('entryDate').value=row?String(row.entry_date).slice(0,10):today();
+  $('amount').value=row?.amount||'';$('reference').value=row?.bill_no||'';$('method').value=row?.payment_method||'Cash';
+ }
+ if(type==='payment'){
+  $('allocationMode').value=row?.allocation_mode==='invoice'?'invoice':'auto';
+  $('targetBill').dataset.desired=row?.target_bill_id||'';
+  invoiceSnapshot={pending_bills:[],unapplied_advance:0};
+  $('allocationPreview').textContent='Loading outstanding invoices…';
+  renderAllocationPreview();
+ }
+ $('editor').showModal();
+ if(type==='payment')await loadPendingInvoices();
+}
+$('allocationMode').addEventListener('change',renderAllocationPreview);
+$('targetBill').addEventListener('change',renderAllocationPreview);
+$('amount').addEventListener('input',renderAllocationPreview);
+$('customerId').addEventListener('change',()=>{if(editing==='payment'){$('targetBill').dataset.desired='';loadPendingInvoices();}});
+$('entryForm').addEventListener('submit',async e=>{e.preventDefault();let body,action=editing==='customer'?'customer':'entry';if(editing==='customer'){body={name:$('name').value,mobile:$('mobile').value,notes:$('notes').value};}else{body={customer_id:Number($('customerId').value),entry_type:editing,entry_date:$('entryDate').value,amount:$('amount').value,bill_no:$('reference').value,payment_method:$('method').value,notes:$('notes').value};}if(editing==='payment'){
+  body.allocation_mode=$('allocationMode').value;
+  body.target_bill_id=body.allocation_mode==='invoice'?Number($('targetBill').value)||null:null;
+  if(body.allocation_mode==='invoice'){
+   const bill=invoiceSnapshot.pending_bills?.find(x=>x.id===body.target_bill_id);
+   if(!bill)return alert('Select a pending invoice.');
+   if(Number(body.amount)>bill.due)return alert('Payment is greater than pending invoice balance.');
+  }
+ }
+ if($('recordId').value)body.id=Number($('recordId').value);if(!body.id&&editing!=='customer'&&!body.customer_id)return alert('Create a customer first.');$('save').disabled=true;try{const d=await api(action,body);$('editor').close();if(editing==='customer'&&!body.id)selected=Number(d.customer.id);if(editing!=='customer')selected=Number(body.customer_id);alert('Record saved successfully.');await loadCustomers();}catch(err){alert(err.message);}finally{$('save').disabled=false;}});
 $('statementBody').addEventListener('click',async e=>{const edit=e.target.closest('[data-edit]'),voidBtn=e.target.closest('[data-void]');if(!canEdit||!statement)return;if(edit){const x=statement.entries.find(e=>Number(e.id)===Number(edit.dataset.edit));if(x)openEditor(x.entry_type,x);}if(voidBtn){const id=Number(voidBtn.dataset.void);if(!confirm('Void this record? Its amount will be removed from customer balance. An audit history will be retained.'))return;try{await api('void',{id});alert('Entry voided.');await loadCustomers();}catch(err){alert(err.message);}}});
 $('customerList').addEventListener('click',e=>{const b=e.target.closest('[data-customer]');if(b)loadStatement(Number(b.dataset.customer));});$('newCustomer').onclick=()=>openEditor('customer');$('newBill').onclick=()=>openEditor('bill');$('newPayment').onclick=()=>openEditor('payment');$('editCustomer').onclick=()=>statement&&openEditor('customer',statement.customer);$('closeDialog').onclick=$('cancelDialog').onclick=()=>$('editor').close();$('refresh').onclick=()=>loadCustomers();$('search').oninput=renderCustomers;document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('selected',x===b));renderCustomers();});$('fromDate').onchange=$('toDate').onchange=renderStatement;$('resetDates').onclick=()=>{$('fromDate').value='';$('toDate').value='';renderStatement();};
 function paramsForStatement(action){
