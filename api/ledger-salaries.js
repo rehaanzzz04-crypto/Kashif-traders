@@ -3,6 +3,8 @@ const txt=v=>String(v??'').trim();
 const num=v=>Number(v);
 const validMonth=v=>/^\d{4}-(0[1-9]|1[0-2])$/.test(v);
 async function setup(sql){
+ await sql`CREATE TABLE IF NOT EXISTS kt_standalone_ledger(id BIGSERIAL PRIMARY KEY,entry_type TEXT NOT NULL CHECK(entry_type IN ('sale','supplier_payment','expense','given','received')),entry_date DATE NOT NULL DEFAULT CURRENT_DATE,person_name TEXT,amount NUMERIC(14,2) NOT NULL CHECK(amount>0),details TEXT,created_by BIGINT,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
+
  await sql`CREATE TABLE IF NOT EXISTS kt_ledger_salary_employees(id BIGSERIAL PRIMARY KEY,name TEXT NOT NULL,monthly_salary NUMERIC(14,2) NOT NULL CHECK(monthly_salary>0),active BOOLEAN NOT NULL DEFAULT TRUE,created_at TIMESTAMPTZ DEFAULT now())`;
  await sql`CREATE TABLE IF NOT EXISTS kt_ledger_salary_months(id BIGSERIAL PRIMARY KEY,employee_id BIGINT NOT NULL REFERENCES kt_ledger_salary_employees(id),salary_month TEXT NOT NULL,salary_amount NUMERIC(14,2) NOT NULL CHECK(salary_amount>0),created_at TIMESTAMPTZ DEFAULT now(),UNIQUE(employee_id,salary_month))`;
  await sql`CREATE TABLE IF NOT EXISTS kt_ledger_salary_payments(id BIGSERIAL PRIMARY KEY,employee_id BIGINT NOT NULL REFERENCES kt_ledger_salary_employees(id),salary_month TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('advance','salary')),amount NUMERIC(14,2) NOT NULL CHECK(amount>0),paid_on DATE NOT NULL,remarks TEXT,ledger_id BIGINT NOT NULL UNIQUE REFERENCES kt_standalone_ledger(id),created_at TIMESTAMPTZ DEFAULT now())`;
