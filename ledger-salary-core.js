@@ -2,6 +2,7 @@ import { requireUser, bodyOf } from './api/_auth.js';
 const txt=v=>String(v??'').trim();
 const num=v=>Number(v);
 const validMonth=v=>/^\d{4}-(0[1-9]|1[0-2])$/.test(v);
+const validDate=v=>{if(!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;const d=new Date(v+'T00:00:00Z');return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===v};
 async function setup(sql){
  await sql`CREATE TABLE IF NOT EXISTS kt_standalone_ledger(id BIGSERIAL PRIMARY KEY,entry_type TEXT NOT NULL CHECK(entry_type IN ('sale','supplier_payment','expense','given','received')),entry_date DATE NOT NULL DEFAULT CURRENT_DATE,person_name TEXT,amount NUMERIC(14,2) NOT NULL CHECK(amount>0),details TEXT,created_by BIGINT,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`;
 
@@ -34,7 +35,7 @@ export default async function handler(req,res){
  if(action==='employee'){
  const name=txt(b.name),salary=num(b.monthly_salary),joining=txt(b.joining_date);
  if(!name||name.length>120||!Number.isFinite(salary)||salary<=0||salary>100000000)return res.status(400).json({error:'Valid employee name and monthly salary required'});
- if(!/^\d{4}-\d{2}-\d{2}$/.test(joining)||joining>new Date().toISOString().slice(0,10))return res.status(400).json({error:'Valid joining date required'});
+ if(!validDate(joining)||joining>new Date().toISOString().slice(0,10))return res.status(400).json({error:'Valid joining date required'});
  const employeeId=Number(b.employee_id);
  if(Number.isInteger(employeeId)&&employeeId>0){
  const updated=await sql`UPDATE kt_ledger_salary_employees SET name=${name},monthly_salary=${salary},joining_date=${joining}::date WHERE id=${employeeId} RETURNING id`;
@@ -46,7 +47,7 @@ export default async function handler(req,res){
  }
  if(action==='payment'){
  const employeeId=Number(b.employee_id),kind=txt(b.kind),amount=num(b.amount),date=txt(b.paid_on),remarks=txt(b.remarks),requestKey=txt(b.request_key);
- if(!Number.isInteger(employeeId)||employeeId<1||!['advance','salary'].includes(kind)||!Number.isFinite(amount)||amount<=0||amount>100000000||!/^\d{4}-\d{2}-\d{2}$/.test(date)||remarks.length>500||!/^[a-zA-Z0-9_-]{12,100}$/.test(requestKey))return res.status(400).json({error:'Invalid payment details'});
+ if(!Number.isInteger(employeeId)||employeeId<1||!['advance','salary'].includes(kind)||!Number.isFinite(amount)||amount<=0||amount>100000000||!validDate(date)||remarks.length>500||!/^[a-zA-Z0-9_-]{12,100}$/.test(requestKey))return res.status(400).json({error:'Invalid payment details'});
  const previous=await sql`SELECT id,ledger_id FROM kt_ledger_salary_payments WHERE request_key LIKE ${requestKey + ':%'} LIMIT 1`;
  if(previous.length)return res.json({ok:true,already_recorded:true,id:previous[0].id,ledger_id:previous[0].ledger_id});
  const employee=await sql`SELECT id,name,monthly_salary,joining_date::text FROM kt_ledger_salary_employees WHERE id=${employeeId} AND active=TRUE`;
