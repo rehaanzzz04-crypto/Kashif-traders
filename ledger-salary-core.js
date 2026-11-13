@@ -11,7 +11,7 @@ async function setup(sql){
  await sql`CREATE TABLE IF NOT EXISTS kt_ledger_salary_payments(id BIGSERIAL PRIMARY KEY,employee_id BIGINT NOT NULL REFERENCES kt_ledger_salary_employees(id),salary_month TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN ('advance','salary')),amount NUMERIC(14,2) NOT NULL CHECK(amount>0),paid_on DATE NOT NULL,remarks TEXT,ledger_id BIGINT NOT NULL REFERENCES kt_standalone_ledger(id),created_at TIMESTAMPTZ DEFAULT now())`;
  await sql`ALTER TABLE kt_ledger_salary_payments DROP CONSTRAINT IF EXISTS kt_ledger_salary_payments_ledger_id_key`;
  await sql`ALTER TABLE kt_ledger_salary_payments ADD COLUMN IF NOT EXISTS request_key TEXT`;
- await sql`DROP INDEX IF EXISTS kt_ledger_salary_payments_request_key_idx`;
+
  await sql`CREATE UNIQUE INDEX IF NOT EXISTS kt_ledger_salary_payments_request_key_idx ON kt_ledger_salary_payments(request_key) WHERE request_key IS NOT NULL`;
 }
 export default async function handler(req,res){
@@ -34,7 +34,7 @@ export default async function handler(req,res){
  if(action==='employee'){
  const name=txt(b.name),salary=num(b.monthly_salary),joining=txt(b.joining_date);
  if(!name||name.length>120||!Number.isFinite(salary)||salary<=0||salary>100000000)return res.status(400).json({error:'Valid employee name and monthly salary required'});
- if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(joining)||joining>new Date().toISOString().slice(0,10))return res.status(400).json({error:'Valid joining date required'});
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(joining)||joining>new Date().toISOString().slice(0,10))return res.status(400).json({error:'Valid joining date required'});
  const employeeId=Number(b.employee_id);
  if(Number.isInteger(employeeId)&&employeeId>0){
  const updated=await sql`UPDATE kt_ledger_salary_employees SET name=${name},monthly_salary=${salary},joining_date=${joining}::date WHERE id=${employeeId} RETURNING id`;
