@@ -21,6 +21,7 @@ export default async function handler(req,res){
  const {sql,user}=auth;
  if(String(user.designation||'').toLowerCase()!=='admin')return res.status(403).json({error:'Admin access required'});
  await setup(sql);
+ if(req.method==='GET'&&req.query?.voucher){const ledgerId=Number(req.query.voucher);if(!Number.isSafeInteger(ledgerId)||ledgerId<1)return res.status(400).json({error:'Invalid voucher ID'});const allocations=await sql`SELECT p.id,p.employee_id,p.salary_month,p.kind,p.amount::text,p.paid_on::text,p.remarks,p.ledger_id,e.name FROM kt_ledger_salary_payments p JOIN kt_ledger_salary_employees e ON e.id=p.employee_id WHERE p.ledger_id=${ledgerId} ORDER BY p.salary_month,p.id`;if(!allocations.length)return res.status(404).json({error:'Voucher not found'});return res.json({allocations})}
  if(req.method==='GET'){
  const month=txt(req.query?.month)||new Date().toISOString().slice(0,7);
  if(!validMonth(month))return res.status(400).json({error:'Invalid month'});
